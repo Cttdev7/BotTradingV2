@@ -1,2 +1,5 @@
 design-extract/
 .DS_Store
+bot/.env
+bot/__pycache__/
+bot/strategy.json
