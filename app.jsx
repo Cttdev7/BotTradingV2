@@ -154,9 +154,11 @@ function App() {
 
   // Sync données réelles depuis le serveur bot toutes les 30s
   useEffect(() => {
+    let cancelled = false;
     const sync = async () => {
       try {
         const { connected, usdc, positions, activity } = await window.fetchBotData();
+        if (cancelled) return;
         setApiConnected(connected);
         setLivePositions({ polyedge: positions });
         setLiveActivity(activity);
@@ -168,12 +170,12 @@ function App() {
           venue:    'Polymarket',
         } : b));
       } catch {
-        setApiConnected(false);
+        if (!cancelled) setApiConnected(false);
       }
     };
     sync();
     const id = setInterval(sync, 30000);
-    return () => clearInterval(id);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
   const go = (page, botId = null) => { setNav({ page, botId }); window.scrollTo?.(0, 0);

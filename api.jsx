@@ -34,18 +34,20 @@ function mapPosition(p) {
 }
 
 function mapActivity(a) {
-  const side  = (a.side || a.type || 'buy').toLowerCase().replace('sell', 'sell').replace('buy', 'buy');
-  const price = parseFloat(a.price || 0);
-  const qty   = parseFloat(a.size  || a.shares || 0);
-  const ts    = a.timestamp ? new Date(a.timestamp).getTime()
-              : a.createdAt ? new Date(a.createdAt).getTime()
-              : Date.now();
+  // Polymarket data-api retourne { action: "BUY"/"SELL" } ou { side: "buy"/"sell" }
+  const rawSide = (a.action || a.side || 'buy').toLowerCase();
+  const side    = rawSide.includes('sell') ? 'sell' : 'buy';
+  const price   = parseFloat(a.price || 0);
+  const qty     = parseFloat(a.size  || a.shares || 0);
+  const ts      = a.timestamp ? new Date(a.timestamp).getTime()
+                : a.createdAt ? new Date(a.createdAt).getTime()
+                : Date.now();
   return {
     id:     a.id || a.transactionHash || Math.random(),
     bot:    'polyedge',
     market: 'polymarket',
     sym:    a.outcome || a.asset || 'YES',
-    side:   side.includes('sell') ? 'sell' : 'buy',
+    side,
     price,
     qty,
     value:  price * qty,

@@ -11,11 +11,10 @@ function StrategyPage({ bot, onBack }) {
 
   // Charge la stratégie sauvegardée depuis le backend
   React.useEffect(() => {
-    fetch('http://localhost:5000/api/strategy')
+    fetch('http://localhost:5000/api/strategy/polyedge')
       .then((r) => r.json())
       .then((d) => {
         if (d.prompt !== undefined) setPrompt(d.prompt);
-        if (d.name)    setName(d.name);
         if (d.enabled !== undefined) setEnabled(d.enabled);
       })
       .catch(() => {}); // pas de backend lancé, ok

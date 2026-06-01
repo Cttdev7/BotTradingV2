@@ -7,6 +7,7 @@ Nécessite PRIVATE_KEY + API_SECRET + API_PASSPHRASE dans .env.
 En mode simulation (DRY_RUN=true), les ordres sont loggés sans être envoyés.
 """
 
+from __future__ import annotations
 import json
 import time
 import hmac
@@ -23,6 +24,8 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"  # sécurité par défa
 # ── Auth L2 ───────────────────────────────────────────────────────────────────
 
 def _auth_headers(method: str, path: str, body: str = "") -> dict:
+    if not config.API_SECRET:
+        raise ValueError("API_SECRET manquant dans .env — impossible de signer les ordres")
     ts = str(int(time.time() * 1000))
     message = ts + method + path + body
     try:

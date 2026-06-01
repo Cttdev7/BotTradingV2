@@ -118,6 +118,8 @@ Analyse ces marchés selon la stratégie et retourne tes décisions en JSON."""
         system=system_prompt,
     )
 
+    if not response.content:
+        return []
     raw = response.content[0].text.strip()
 
     # Extraire le JSON même si Claude ajoute du texte autour
@@ -126,7 +128,10 @@ Analyse ces marchés selon la stratégie et retourne tes décisions en JSON."""
     if start == -1 or end == 0:
         return []
 
-    decisions = json.loads(raw[start:end])
+    try:
+        decisions = json.loads(raw[start:end])
+    except json.JSONDecodeError:
+        return []
     return [d for d in decisions if d.get("action") in ("buy", "sell")]
 
 

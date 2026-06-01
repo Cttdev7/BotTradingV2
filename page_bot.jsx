@@ -55,11 +55,11 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
     { label: 'Trades', value: window.fmtNum(bot.trades) },
   ];
 
-  const stratExamples = [
+  const stratExamples = React.useMemo(() => [
     'Achète YES quand la probabilité est < 40% et que le volume dépasse 10 000 USDC.',
     'Mise sur NO pour les marchés électoraux quand le favori dépasse 70%.',
     'Arbitrage : achète le côté sous-évalué quand YES + NO ≠ 1.00 avec un écart > 3%.',
-  ];
+  ], []);
 
   return (
     <div>

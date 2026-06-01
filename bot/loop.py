@@ -95,7 +95,7 @@ def run_cycle(bot_id: str = "polyedge"):
         log("Aucune opportunité détectée pour cette stratégie")
         return
 
-    # 4. Exécution des ordres
+    # 4. Exécution des ordres (charge l'historique une seule fois)
     for d in decisions:
         try:
             log(f"→ {d['action'].upper()} {d['outcome']} sur {d['condition_id'][:12]}… "
@@ -106,7 +106,6 @@ def run_cycle(bot_id: str = "polyedge"):
                 side=d["action"],
                 amount_usdc=d["amount_usdc"],
             )
-            # 5. Sauvegarde dans l'historique
             record = {
                 "time":         datetime.datetime.now().isoformat(),
                 "bot":          bot_id,
@@ -117,14 +116,18 @@ def run_cycle(bot_id: str = "polyedge"):
                 "amount_usdc":  d["amount_usdc"],
                 "reason":       d["reason"],
                 "result":       result,
-                "pnl":          None,  # calculé à la clôture
+                "pnl":          None,
             }
-            history = load_history()
             history.append(record)
-            save_history(history)
             log(f"  ✅ Ordre exécuté")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
+
+    # 5. Sauvegarde une seule fois après tous les ordres
+    try:
+        save_history(history)
+    except Exception as e:
+        log(f"  ⚠️  Impossible de sauvegarder l'historique : {e}")
 
 # ── Réflexion périodique ──────────────────────────────────────────────────────
 
@@ -159,7 +162,7 @@ if __name__ == "__main__":
     log(f"   Mode : {'SIMULATION (DRY_RUN)' if trader.DRY_RUN else '⚠️  TRADING RÉEL'}")
     log(f"   Wallet : {config.WALLET_ADDRESS[:10]}…")
 
-    last_reflect = 0
+    last_reflect = time.time()  # première réflexion après 24h, pas au démarrage
 
     while True:
         try:
