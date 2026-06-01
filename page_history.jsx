@@ -8,19 +8,21 @@ function HistoryPage({ bots }) {
   const [side, setSide] = React.useState('all');
   const botName = (id) => (bots.find((b) => b.id === id) || {}).name || id;
 
-  const rows = TXNS.filter((t) => {
+  const rows = React.useMemo(() => TXNS.filter((t) => {
     if (market !== 'all' && t.market !== market) return false;
     if (side !== 'all' && t.side !== side) return false;
     if (q && !(t.sym.toLowerCase().includes(q.toLowerCase()) || botName(t.bot).toLowerCase().includes(q.toLowerCase()))) return false;
     return true;
-  });
+  }), [q, market, side, bots]);
 
-  // group by day
-  const groups = {};
-  rows.forEach((t) => {
-    const d = new Date(t.time).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    (groups[d] = groups[d] || []).push(t);
-  });
+  const groups = React.useMemo(() => {
+    const g = {};
+    rows.forEach((t) => {
+      const d = new Date(t.time).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+      (g[d] = g[d] || []).push(t);
+    });
+    return g;
+  }, [rows]);
 
   const realized = rows.reduce((s, t) => s + (t.pnl || 0), 0);
   const filled = rows.length;

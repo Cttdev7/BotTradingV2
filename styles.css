@@ -106,6 +106,8 @@ button { font-family: inherit; }
 
 .pf-row:hover, .hist-row:hover, .pf-row:hover * { }
 .pf-row:hover { background: var(--fill); }
+.bot-item .bot-edit-btn { opacity: 0; transition: opacity .15s; }
+.bot-item:hover .bot-edit-btn { opacity: 1; }
 
 /* ---------- layout ---------- */
 .app { display: flex; height: 100%; }

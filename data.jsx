@@ -33,6 +33,7 @@ const fmtUSD = (n, dp = 0) =>
 const fmtSigned = (n, dp = 2) => (n >= 0 ? '+' : '') + n.toFixed(dp);
 const fmtPct = (n, dp = 2) => fmtSigned(n, dp) + '%';
 const fmtNum = (n) => n.toLocaleString('en-US');
+const fmtSignedUSD = (n, dp = 0) => (n >= 0 ? '+' : '-') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
 
 const MARKETS = {
   crypto:     { label: 'Crypto',     color: 'var(--orange)', tint: '#FF9500' },
@@ -149,20 +150,20 @@ function makeTxns() {
 }
 const TXNS = makeTxns();
 
-// portfolio aggregates
-const PORTFOLIO = (() => {
-  const totalCapital = BOTS.reduce((s, b) => s + b.capital, 0);
+// portfolio aggregates — recalculable depuis les bots courants
+function computePortfolio(bots) {
+  const totalCapital = bots.reduce((s, b) => s + b.capital, 0);
   const cash = 28800;
   const totalValue = totalCapital + cash;
-  const dayAbs = BOTS.reduce((s, b) => s + b.pnlDayAbs, 0);
-  const dayPct = (dayAbs / (totalValue - dayAbs)) * 100;
-  const totalPnlAbs = BOTS.reduce((s, b) => s + b.pnlTotalAbs, 0);
-  // aggregate equity curve = sum of bot series day-by-day
+  const dayAbs = bots.reduce((s, b) => s + b.pnlDayAbs, 0);
+  const dayPct = totalValue > dayAbs ? (dayAbs / (totalValue - dayAbs)) * 100 : 0;
+  const totalPnlAbs = bots.reduce((s, b) => s + b.pnlTotalAbs, 0);
   const n = 90;
   const agg = Array.from({ length: n }, (_, i) =>
-    BOTS.reduce((s, b) => s + b.series[i], 0) + cash);
+    bots.reduce((s, b) => s + (b.series[i] || 0), 0) + cash);
   return { totalCapital, cash, totalValue, dayAbs, dayPct, totalPnlAbs, series: agg };
-})();
+}
+const PORTFOLIO = computePortfolio(BOTS);
 
 const RANGES = ['1J', '1S', '1M', '3M', '1A', 'Max'];
 // slice a 90-pt series to a range (approx)
@@ -174,5 +175,5 @@ function sliceRange(series, range) {
 
 Object.assign(window, {
   BOTS, POSITIONS, TXNS, PORTFOLIO, MARKETS, RANGES,
-  fmtUSD, fmtSigned, fmtPct, fmtNum, sliceRange, makeSeries,
+  fmtUSD, fmtSigned, fmtPct, fmtNum, fmtSignedUSD, sliceRange, makeSeries, computePortfolio,
 });

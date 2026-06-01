@@ -8,17 +8,18 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename }) {
   const [range, setRange] = React.useState('1M');
   const [editingName, setEditingName] = React.useState(false);
   const [draftName, setDraftName] = React.useState(bot.name);
+  React.useEffect(() => { if (!editingName) setDraftName(bot.name); }, [bot.name]);
   const series = sliceRange(bot.series, range);
   const periodPct = ((series[series.length - 1] - series[0]) / series[0]) * 100;
   const positions = POSITIONS[bot.id] || [];
   const isPoly = bot.market === 'polymarket';
-  const trades = TXNS.filter((t) => t.bot === bot.id).slice(0, 8);
+  const trades = React.useMemo(() => TXNS.filter((t) => t.bot === bot.id).slice(0, 8), [bot.id]);
   const m = MARKETS[bot.market];
 
   const stats = [
     { label: 'P&L total', value: fmtPct(bot.pnlTotalPct), accent: bot.pnlTotalPct >= 0 ? 'var(--green)' : 'var(--red)' },
     { label: 'Win rate', value: bot.winRate + '%' },
-    { label: 'Sharpe', value: bot.sharpe.toFixed(2) },
+    { label: 'Sharpe', value: (bot.sharpe ?? 0).toFixed(2) },
     { label: 'Max drawdown', value: bot.maxDD.toFixed(1) + '%', accent: 'var(--red)' },
     { label: 'Trades', value: window.fmtNum(bot.trades) },
   ];
@@ -37,10 +38,10 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename }) {
               <input autoFocus value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') { onRename(bot.id, draftName); setEditingName(false); }
+                  if (e.key === 'Enter') { const n = draftName.trim(); if (n) onRename(bot.id, n); setEditingName(false); }
                   if (e.key === 'Escape') { setEditingName(false); setDraftName(bot.name); }
                 }}
-                onBlur={() => { onRename(bot.id, draftName); setEditingName(false); }}
+                onBlur={() => { const n = draftName.trim(); if (n) onRename(bot.id, n); setEditingName(false); }}
                 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-.02em', background: 'transparent',
                   border: 'none', borderBottom: '2px solid var(--accent)', outline: 'none',
                   color: 'var(--text)', fontFamily: 'inherit', padding: '0 4px 2px', maxWidth: 260 }} />

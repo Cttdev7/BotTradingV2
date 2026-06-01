@@ -1,12 +1,12 @@
 // ============================================================
 // page_portfolio.jsx — global portfolio overview
 // ============================================================
-function PortfolioPage({ bots, onOpen }) {
-  const { PORTFOLIO, MARKETS, RANGES, fmtUSD, fmtPct, sliceRange,
+function PortfolioPage({ bots, onOpen, portfolio }) {
+  const { MARKETS, RANGES, fmtUSD, fmtPct, sliceRange,
     Card, SectionTitle, AreaChart, Donut, Segmented, Stat, Delta, BotGlyph, Meter, Sparkline } = window;
   const [range, setRange] = React.useState('3M');
   const [allocMode, setAllocMode] = React.useState('bot');
-  const series = sliceRange(PORTFOLIO.series, range);
+  const series = sliceRange(portfolio.series, range);
   const periodPct = ((series[series.length - 1] - series[0]) / series[0]) * 100;
 
   const palette = ['var(--accent)', 'var(--green)', 'var(--purple)', 'var(--orange)', 'var(--teal)', 'var(--red)'];
@@ -16,13 +16,13 @@ function PortfolioPage({ bots, onOpen }) {
   bots.forEach((b) => { byMarket[b.market] = (byMarket[b.market] || 0) + b.capital; });
   const allocByMarket = Object.entries(byMarket).filter(([, v]) => v > 0).map(([k, v]) => ({
     label: MARKETS[k].label, value: v, color: MARKETS[k].color }));
-  allocByMarket.push({ label: 'Liquidités', value: PORTFOLIO.cash, color: 'var(--text-3)' });
+  allocByMarket.push({ label: 'Liquidités', value: portfolio.cash, color: 'var(--text-3)' });
 
   const alloc = allocMode === 'bot' ? allocByBot : allocByMarket;
-  const investedPct = ((PORTFOLIO.totalCapital) / PORTFOLIO.totalValue) * 100;
+  const investedPct = ((portfolio.totalCapital) / portfolio.totalValue) * 100;
 
   // aggregate risk
-  const wAvg = (key) => bots.reduce((s, b) => s + b[key] * b.capital, 0) / (PORTFOLIO.totalCapital || 1);
+  const wAvg = (key) => bots.reduce((s, b) => s + b[key] * b.capital, 0) / (portfolio.totalCapital || 1);
 
   return (
     <div>
@@ -35,7 +35,7 @@ function PortfolioPage({ bots, onOpen }) {
             <div>
               <div style={{ fontSize: 12.5, color: 'var(--text-3)', fontWeight: 500 }}>Valeur totale</div>
               <div className="num" style={{ fontSize: 34, fontWeight: 700, letterSpacing: '-.03em', margin: '3px 0 5px' }}>
-                {fmtUSD(PORTFOLIO.totalValue)}</div>
+                {fmtUSD(portfolio.totalValue)}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                 <Delta pct={periodPct} showArrow />
                 <span className="num" style={{ color: 'var(--text-3)', fontSize: 13 }}>
@@ -65,7 +65,7 @@ function PortfolioPage({ bots, onOpen }) {
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 13 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 3, background: a.color, flexShrink: 0 }} />
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-2)' }}>{a.label}</span>
-                  <span className="num" style={{ fontWeight: 600 }}>{Math.round(a.value / (PORTFOLIO.totalValue) * 100)}%</span>
+                  <span className="num" style={{ fontWeight: 600 }}>{Math.round(a.value / (portfolio.totalValue) * 100)}%</span>
                 </div>
               ))}
             </div>
@@ -75,8 +75,8 @@ function PortfolioPage({ bots, onOpen }) {
 
       {/* risk strip */}
       <Card style={{ margin: 'var(--gap) 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 18 }}>
-        <Stat label="Gain cumulé" value={fmtUSD(PORTFOLIO.totalPnlAbs)} accent="var(--green)" sub={fmtPct(PORTFOLIO.totalPnlAbs / (PORTFOLIO.totalValue - PORTFOLIO.totalPnlAbs) * 100)} />
-        <Stat label="Liquidités" value={fmtUSD(PORTFOLIO.cash)} sub={`${Math.round(PORTFOLIO.cash / PORTFOLIO.totalValue * 100)}% du total`} />
+        <Stat label="Gain cumulé" value={fmtUSD(portfolio.totalPnlAbs)} accent="var(--green)" sub={fmtPct(portfolio.totalPnlAbs / (portfolio.totalValue - portfolio.totalPnlAbs) * 100)} />
+        <Stat label="Liquidités" value={fmtUSD(portfolio.cash)} sub={`${Math.round(portfolio.cash / portfolio.totalValue * 100)}% du total`} />
         <Stat label="Sharpe moyen" value={wAvg('sharpe').toFixed(2)} />
         <Stat label="Win rate moyen" value={Math.round(wAvg('winRate')) + '%'} />
         <Stat label="Drawdown max" value={Math.min(...bots.map((b) => b.maxDD)).toFixed(1) + '%'} accent="var(--red)" />

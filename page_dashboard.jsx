@@ -1,8 +1,8 @@
 // ============================================================
 // page_dashboard.jsx — list of all bots + portfolio summary
 // ============================================================
-function DashboardPage({ bots, onToggle, onOpen, onNewBot }) {
-  const { PORTFOLIO, fmtUSD, sliceRange, Card, SectionTitle, BotGlyph, MarketChip,
+function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
+  const { fmtUSD, fmtSignedUSD, sliceRange, Card, SectionTitle, BotGlyph, MarketChip,
     StatusPill, Toggle, Sparkline, Delta, Stat, Button, Icon } = window;
   const [filter, setFilter] = React.useState('all');
 
@@ -22,21 +22,21 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot }) {
         <div>
           <div style={{ fontSize: 13, color: 'var(--text-3)', fontWeight: 500 }}>Valeur totale gérée</div>
           <div className="num" style={{ fontSize: 38, fontWeight: 700, letterSpacing: '-.03em', margin: '4px 0 6px' }}>
-            {fmtUSD(PORTFOLIO.totalValue)}
+            {fmtUSD(portfolio.totalValue)}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Delta pct={PORTFOLIO.dayPct} showArrow />
+            <Delta pct={portfolio.dayPct} showArrow />
             <span className="num" style={{ color: 'var(--text-3)', fontSize: 13.5 }}>
-              {window.fmtUSD(PORTFOLIO.dayAbs, 0).replace('$', PORTFOLIO.dayAbs >= 0 ? '+$' : '-$').replace('-$-', '-$')} aujourd'hui
+              {fmtSignedUSD(portfolio.dayAbs)} aujourd'hui
             </span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 26, alignItems: 'center' }}>
           <Stat label="Bots actifs" value={`${active}/${bots.length}`} />
           <div style={{ width: 1, height: 40, background: 'var(--separator)' }} />
-          <Stat label="Gain cumulé" value={fmtUSD(PORTFOLIO.totalPnlAbs)} accent="var(--green)" />
+          <Stat label="Gain cumulé" value={fmtUSD(portfolio.totalPnlAbs)} accent="var(--green)" />
           <div style={{ alignSelf: 'center' }}>
-            <Sparkline data={sliceRange(PORTFOLIO.series, '1M')} w={140} h={46} color="var(--accent)" />
+            <Sparkline data={sliceRange(portfolio.series, '1M')} w={140} h={46} color="var(--accent)" />
           </div>
         </div>
       </Card>

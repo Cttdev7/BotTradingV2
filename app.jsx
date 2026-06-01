@@ -1,7 +1,7 @@
 // ============================================================
 // app.jsx — shell, navigation, new-bot sheet, tweaks
 // ============================================================
-const { useState, useEffect } = React;
+const { useState, useEffect, useMemo } = React;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
@@ -101,7 +101,6 @@ function App() {
   const [nav, setNav] = useState({ page: 'dashboard', botId: null });
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState(null);
-  const [hoveredBotId, setHoveredBotId] = useState(null);
 
   // apply theme tokens
   useEffect(() => {
@@ -125,17 +124,18 @@ function App() {
       strategy: d.strategy, venue: 'À configurer', status: 'paused', capital: d.capital,
       allocPct: 0, pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
       winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
-      series: window.makeSeries(Date.now() % 1000, 90, 0.001, 0.01, d.capital),
+      series: window.makeSeries(Date.now(), 90, 0.001, 0.01, d.capital),
     };
     setBots((bs) => [...bs, nb]); setSheet(false); go('settings', nb.id);
   };
 
   const bot = bots.find((b) => b.id === nav.botId);
   const active = bots.filter((b) => b.status === 'running').length;
+  const portfolio = useMemo(() => window.computePortfolio(bots), [bots]);
 
   let content;
-  if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
-  else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} onOpen={(id) => go('bot', id)} />;
+  if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
+  else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} />;
   else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
@@ -167,9 +167,7 @@ function App() {
             const sel = nav.botId === b.id;
             const isRenaming = renaming?.id === b.id;
             return (
-              <div key={b.id}
-                onMouseEnter={() => setHoveredBotId(b.id)}
-                onMouseLeave={() => setHoveredBotId(null)}
+              <div key={b.id} className="bot-item"
                 style={{ borderRadius: 'var(--r-md)', background: sel ? 'var(--fill)' : 'transparent' }}>
                 {isRenaming ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 9px' }}>
@@ -197,13 +195,11 @@ function App() {
                       <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
                         background: b.status === 'running' ? 'var(--green)' : 'var(--text-3)' }} />
                     </button>
-                    {hoveredBotId === b.id && (
-                      <button onClick={(e) => { e.stopPropagation(); setRenaming({ id: b.id, name: b.name }); }}
-                        style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-                          padding: '0 6px 0 0', color: 'var(--text-3)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                        <window.Icon name="pencil" size={14} stroke={1.8} />
-                      </button>
-                    )}
+                    <button className="bot-edit-btn" onClick={(e) => { e.stopPropagation(); setRenaming({ id: b.id, name: b.name }); }}
+                      style={{ border: 'none', background: 'transparent', cursor: 'pointer',
+                        padding: '0 6px 0 0', color: 'var(--text-3)', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                      <window.Icon name="pencil" size={14} stroke={1.8} />
+                    </button>
                   </div>
                 )}
               </div>
