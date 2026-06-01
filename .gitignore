@@ -3,3 +3,8 @@ design-extract/
 bot/.env
 bot/__pycache__/
 bot/strategy.json
+bot/history.json
+bot/reflections.json
+bot/bot.log
+__pycache__/
+*.pyc
