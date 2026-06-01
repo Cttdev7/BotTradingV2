@@ -18,15 +18,24 @@ STRATEGY_FILE = os.path.join(os.path.dirname(__file__), "strategy.json")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _load_strategy() -> dict:
+def _load_all_strategies() -> dict:
     if os.path.exists(STRATEGY_FILE):
         with open(STRATEGY_FILE) as f:
-            return json.load(f)
-    return {"prompt": "", "name": "Polymarket Edge", "enabled": False}
+            data = json.load(f)
+            # Migration ancien format (objet plat) → nouveau format (par bot_id)
+            if "prompt" in data and not any(isinstance(v, dict) for v in data.values()):
+                return {"polyedge": data}
+            return data
+    return {}
 
-def _save_strategy(data: dict):
+def _load_strategy(bot_id: str) -> dict:
+    return _load_all_strategies().get(bot_id, {"prompt": "", "enabled": False})
+
+def _save_strategy(bot_id: str, data: dict):
+    all_strategies = _load_all_strategies()
+    all_strategies[bot_id] = data
     with open(STRATEGY_FILE, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump(all_strategies, f, indent=2, ensure_ascii=False)
 
 def _ok(data):
     return jsonify(data)
@@ -100,22 +109,22 @@ def activity():
     except Exception as e:
         return _err(e)
 
-# ── Stratégie ────────────────────────────────────────────────────────────────
+# ── Stratégie (par bot) ───────────────────────────────────────────────────────
 
-@app.route("/api/strategy", methods=["GET"])
-def get_strategy():
-    return _ok(_load_strategy())
+@app.route("/api/strategy/<bot_id>", methods=["GET"])
+def get_strategy(bot_id):
+    return _ok(_load_strategy(bot_id))
 
-@app.route("/api/strategy", methods=["POST"])
-def save_strategy():
+@app.route("/api/strategy/<bot_id>", methods=["POST"])
+def save_strategy(bot_id):
     data = request.get_json()
     if not data:
         return _err("Corps JSON manquant", 400)
-    strategy = _load_strategy()
-    for key in ("prompt", "name", "enabled"):
+    strategy = _load_strategy(bot_id)
+    for key in ("prompt", "enabled"):
         if key in data:
             strategy[key] = data[key]
-    _save_strategy(strategy)
+    _save_strategy(bot_id, strategy)
     return _ok({"ok": True, "strategy": strategy})
 
 # ─────────────────────────────────────────────────────────────────────────────

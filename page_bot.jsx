@@ -5,13 +5,43 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
   const { POSITIONS, TXNS, RANGES, MARKETS, fmtUSD, fmtPct, sliceRange,
     Card, BotGlyph, MarketChip, StatusPill, Toggle, Segmented, AreaChart,
     Stat, Delta, Button, Icon, Meter } = window;
+  const [tab, setTab] = React.useState('apercu');
   const [range, setRange] = React.useState('1M');
   const [editingName, setEditingName] = React.useState(false);
   const [draftName, setDraftName] = React.useState(bot.name);
+
+  // ── Stratégie par bot ──
+  const [stratPrompt, setStratPrompt] = React.useState('');
+  const [stratEnabled, setStratEnabled] = React.useState(false);
+  const [stratStatus, setStratStatus] = React.useState(null); // null | 'saving' | 'saved' | 'error'
+
   React.useEffect(() => { if (!editingName) setDraftName(bot.name); }, [bot.name]);
+
+  // Charge la stratégie de CE bot au montage
+  React.useEffect(() => {
+    fetch(`http://localhost:5000/api/strategy/${bot.id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.prompt !== undefined) setStratPrompt(d.prompt);
+        if (d.enabled !== undefined) setStratEnabled(d.enabled);
+      })
+      .catch(() => {});
+  }, [bot.id]);
+
+  const saveStrategy = () => {
+    setStratStatus('saving');
+    fetch(`http://localhost:5000/api/strategy/${bot.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: stratPrompt, enabled: stratEnabled }),
+    })
+      .then((r) => r.json())
+      .then(() => setStratStatus('saved'))
+      .catch(() => setStratStatus('error'));
+  };
+
   const series = sliceRange(bot.series, range);
   const periodPct = ((series[series.length - 1] - series[0]) / series[0]) * 100;
-  // Priorité aux positions réelles si disponibles, sinon mock
   const positions = livePositions ?? POSITIONS[bot.id] ?? [];
   const isPoly = bot.market === 'polymarket';
   const trades = React.useMemo(() => TXNS.filter((t) => t.bot === bot.id).slice(0, 8), [bot.id]);
@@ -23,6 +53,12 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
     { label: 'Sharpe', value: (bot.sharpe ?? 0).toFixed(2) },
     { label: 'Max drawdown', value: bot.maxDD.toFixed(1) + '%', accent: 'var(--red)' },
     { label: 'Trades', value: window.fmtNum(bot.trades) },
+  ];
+
+  const stratExamples = [
+    'Achète YES quand la probabilité est < 40% et que le volume dépasse 10 000 USDC.',
+    'Mise sur NO pour les marchés électoraux quand le favori dépasse 70%.',
+    'Arbitrage : achète le côté sous-évalué quand YES + NO ≠ 1.00 avec un écart > 3%.',
   ];
 
   return (
@@ -68,6 +104,72 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
           <Toggle on={bot.status === 'running'} onChange={() => onToggle(bot.id)} />
         </div>
       </div>
+
+      {/* onglets */}
+      <div style={{ marginBottom: 'var(--gap)', maxWidth: 280 }}>
+        <Segmented size="sm" value={tab} onChange={setTab}
+          options={[{ value: 'apercu', label: 'Aperçu' }, { value: 'strategie', label: 'Stratégie' }]} />
+      </div>
+
+      {/* ── onglet Stratégie ── */}
+      {tab === 'strategie' && (
+        <div style={{ maxWidth: 680 }}>
+          <Card style={{ marginBottom: 'var(--gap)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-3)' }}>PROMPT DE STRATÉGIE</div>
+              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{stratPrompt.length} caractères</span>
+            </div>
+            <textarea value={stratPrompt} onChange={(e) => setStratPrompt(e.target.value)}
+              placeholder="Décris en détail ce que ce bot doit faire : quand acheter, quand vendre, quel montant, quels types de marchés cibler..."
+              rows={7}
+              style={{ width: '100%', border: 'none', background: 'var(--fill)', borderRadius: 'var(--r-md)',
+                padding: '12px 14px', fontSize: 14.5, color: 'var(--text)', outline: 'none',
+                fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.6 }} />
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', fontWeight: 600, marginBottom: 7 }}>EXEMPLES</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {stratExamples.map((ex, i) => (
+                  <button key={i} onClick={() => setStratPrompt(ex)} className="tap"
+                    style={{ textAlign: 'left', border: 'none', background: 'var(--fill)', borderRadius: 'var(--r-sm)',
+                      padding: '8px 12px', fontSize: 13, color: 'var(--text-2)', cursor: 'pointer', lineHeight: 1.5 }}>
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          <Card style={{ marginBottom: 'var(--gap)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 500 }}>Activer ce bot</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>
+                Le bot utilisera ce prompt pour prendre ses décisions
+              </div>
+            </div>
+            <Toggle on={stratEnabled} onChange={setStratEnabled} />
+          </Card>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <Button variant="primary" icon="check" onClick={saveStrategy}>
+              {stratStatus === 'saving' ? 'Sauvegarde…' : 'Sauvegarder'}
+            </Button>
+            {stratStatus === 'saved' && (
+              <span style={{ fontSize: 13.5, color: 'var(--green)', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Icon name="check" size={16} stroke={2.4} />Sauvegardé
+              </span>
+            )}
+            {stratStatus === 'error' && (
+              <span style={{ fontSize: 13.5, color: 'var(--red)', fontWeight: 500 }}>
+                Erreur — le serveur bot est-il lancé ?
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── onglet Aperçu ── */}
+      {tab === 'apercu' && <>
 
       {/* performance */}
       <Card style={{ marginBottom: 'var(--gap)' }}>
@@ -176,6 +278,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
           </Card>
         </div>
       </div>
+
+      </>} {/* fin onglet apercu */}
     </div>
   );
 }
