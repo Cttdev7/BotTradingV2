@@ -7,9 +7,11 @@ Lance avec : python3 bot/server.py
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import polymarket
+import mistral
 import config
 import json
 import os
+import datetime
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:8080"])
@@ -126,6 +128,39 @@ def save_strategy(bot_id):
             strategy[key] = data[key]
     _save_strategy(bot_id, strategy)
     return _ok({"ok": True, "strategy": strategy})
+
+# ── Analyse Mistral ───────────────────────────────────────────────────────────
+
+ANALYSES_FILE = os.path.join(os.path.dirname(__file__), "analyses.json")
+
+def _load_analyses() -> list:
+    if os.path.exists(ANALYSES_FILE):
+        with open(ANALYSES_FILE) as f:
+            return json.load(f)
+    return []
+
+def _save_analysis(result: dict):
+    analyses = _load_analyses()
+    analyses.insert(0, {"time": datetime.datetime.now().isoformat(), **result})
+    with open(ANALYSES_FILE, "w") as f:
+        json.dump(analyses[:20], f, indent=2, ensure_ascii=False)  # garde les 20 dernières
+
+@app.route("/api/analyse", methods=["POST"])
+def analyse():
+    try:
+        data     = request.get_json() or {}
+        category   = data.get("category", "tout")
+        min_volume = float(data.get("min_volume", 5000))
+        markets    = polymarket.get_markets(limit=100)
+        result     = mistral.analyse(markets, category, min_volume)
+        _save_analysis(result)
+        return _ok(result)
+    except Exception as e:
+        return _err(e)
+
+@app.route("/api/analyse/history", methods=["GET"])
+def analyse_history():
+    return _ok(_load_analyses())
 
 # ─────────────────────────────────────────────────────────────────────────────
 

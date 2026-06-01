@@ -14,6 +14,10 @@ PRIVATE_KEY     = os.getenv("PRIVATE_KEY", "")
 HOST     = "https://clob.polymarket.com"
 CHAIN_ID = 137  # Polygon
 
+# IA externe
+MISTRAL_API_KEY   = os.getenv("MISTRAL_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
 def validate():
     """Vérifie que les clés minimales sont présentes."""
     missing = [k for k, v in {
