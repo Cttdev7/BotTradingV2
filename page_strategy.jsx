@@ -2,7 +2,7 @@
 // page_strategy.jsx — éditeur de stratégie (prompt) du bot
 // ============================================================
 function StrategyPage({ bot, onBack }) {
-  const { Card, SectionTitle, BotGlyph, Button, Icon } = window;
+  const { Card, SectionTitle, BotGlyph, Button, Icon, Toggle } = window;
   const [prompt, setPrompt] = React.useState('');
   const [name, setName] = React.useState(bot ? bot.name : 'Polymarket Edge');
   const [enabled, setEnabled] = React.useState(false);
@@ -114,7 +114,7 @@ function StrategyPage({ bot, onBack }) {
             Le bot utilisera ce prompt pour prendre ses décisions
           </div>
         </div>
-        <window.Toggle on={enabled} onChange={setEnabled} />
+        <Toggle on={enabled} onChange={setEnabled} />
       </Card>
 
       {/* Sauvegarder */}
