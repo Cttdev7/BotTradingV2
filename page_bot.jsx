@@ -1,7 +1,7 @@
 // ============================================================
 // page_bot.jsx — single bot data tracking
 // ============================================================
-function BotPage({ bot, onToggle, onBack, onSettings, onRename }) {
+function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions }) {
   const { POSITIONS, TXNS, RANGES, MARKETS, fmtUSD, fmtPct, sliceRange,
     Card, BotGlyph, MarketChip, StatusPill, Toggle, Segmented, AreaChart,
     Stat, Delta, Button, Icon, Meter } = window;
@@ -11,7 +11,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename }) {
   React.useEffect(() => { if (!editingName) setDraftName(bot.name); }, [bot.name]);
   const series = sliceRange(bot.series, range);
   const periodPct = ((series[series.length - 1] - series[0]) / series[0]) * 100;
-  const positions = POSITIONS[bot.id] || [];
+  // Priorité aux positions réelles si disponibles, sinon mock
+  const positions = livePositions ?? POSITIONS[bot.id] ?? [];
   const isPoly = bot.market === 'polymarket';
   const trades = React.useMemo(() => TXNS.filter((t) => t.bot === bot.id).slice(0, 8), [bot.id]);
   const m = MARKETS[bot.market];

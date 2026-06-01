@@ -98,6 +98,9 @@ function NewBotSheet({ onClose, onCreate }) {
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [bots, setBots] = useState(window.BOTS.map((b) => ({ ...b })));
+  const [livePositions, setLivePositions] = useState({});
+  const [liveActivity, setLiveActivity]   = useState([]);
+  const [apiConnected, setApiConnected]   = useState(false);
   const [nav, setNav] = useState({ page: 'dashboard', botId: null });
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState(null);
@@ -108,6 +111,30 @@ function App() {
     document.documentElement.setAttribute('data-density', t.density);
     document.documentElement.style.setProperty('--accent', t.accent);
   }, [t.theme, t.density, t.accent]);
+
+  // Sync données réelles depuis le serveur bot toutes les 30s
+  useEffect(() => {
+    const sync = async () => {
+      try {
+        const { connected, usdc, positions, activity } = await window.fetchBotData();
+        setApiConnected(connected);
+        setLivePositions({ polyedge: positions });
+        setLiveActivity(activity);
+        setBots((bs) => bs.map((b) => b.id === 'polyedge' ? {
+          ...b,
+          capital:  usdc,
+          openPos:  positions.length,
+          status:   connected ? 'running' : 'paused',
+          venue:    'Polymarket',
+        } : b));
+      } catch {
+        setApiConnected(false);
+      }
+    };
+    sync();
+    const id = setInterval(sync, 30000);
+    return () => clearInterval(id);
+  }, []);
 
   const go = (page, botId = null) => { setNav({ page, botId }); window.scrollTo?.(0, 0);
     document.querySelector('.main')?.scrollTo(0, 0); };
@@ -137,7 +164,7 @@ function App() {
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} />;
-  else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} />;
+  else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
   else if (nav.page === 'strategy') content = <window.StrategyPage bot={bot} onBack={nav.botId ? () => go('bot', bot.id) : null} />;
   else content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
@@ -156,8 +183,18 @@ function App() {
       <aside className="sidebar" style={{ background: 'var(--bg)', borderRight: '1px solid var(--separator)',
         display: 'flex', flexDirection: 'column', height: '100%' }}>
         <div style={{ padding: '22px 16px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Logo /><div><div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.02em' }}>TradingBot</div>
-            <div style={{ fontSize: 11.5, color: 'var(--green)', fontWeight: 600 }}>{active} actifs</div></div>
+          <Logo /><div>
+            <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-.02em' }}>TradingBot</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11.5, color: 'var(--green)', fontWeight: 600 }}>{active} actifs</span>
+              <span style={{ fontSize: 10.5, color: apiConnected ? 'var(--green)' : 'var(--text-3)', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span style={{ width: 5, height: 5, borderRadius: 999,
+                  background: apiConnected ? 'var(--green)' : 'var(--text-3)' }} />
+                {apiConnected ? 'Live' : 'Mock'}
+              </span>
+            </div>
+          </div>
         </div>
         <nav style={{ padding: '4px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
           {mainNav.map((n) => <NavItem key={n.page} {...n} active={navActive(n.page)} onClick={() => go(n.page)} />)}
