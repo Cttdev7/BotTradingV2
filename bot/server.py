@@ -92,10 +92,11 @@ def positions():
     except Exception as e:
         return _err(e)
 
-@app.route("/api/orders")
-def orders():
+@app.route("/api/activity")
+def activity():
     try:
-        return _ok(polymarket.get_open_orders())
+        limit = request.args.get("limit", 50, type=int)
+        return _ok(polymarket.get_activity(limit))
     except Exception as e:
         return _err(e)
 
