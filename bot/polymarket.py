@@ -5,38 +5,13 @@ Wrapper Polymarket API — appels HTTP directs.
 - Ordres (Phase 2)   : clob.polymarket.com avec auth L2 complète
 """
 
-import hmac
-import hashlib
-import base64
-import time
 import requests
 import config
+from auth import create_auth_headers
 
 CLOB     = "https://clob.polymarket.com"
 DATA_API = "https://data-api.polymarket.com"
 TIMEOUT  = 10
-
-# ── Auth (Phase 2 — ordres) ───────────────────────────────────────────────────
-
-def _signed_headers(method: str, path: str, body: str = "") -> dict:
-    """Headers HMAC-SHA256 complets — nécessaires pour passer des ordres."""
-    ts = str(int(time.time() * 1000))
-    message = ts + method + path + body
-    try:
-        raw_key = base64.b64decode(config.API_SECRET)
-    except Exception:
-        raw_key = config.API_SECRET.encode()
-    sig = base64.b64encode(
-        hmac.new(raw_key, message.encode(), hashlib.sha256).digest()
-    ).decode()
-    return {
-        "POLY_ADDRESS":    config.WALLET_ADDRESS,
-        "POLY_SIGNATURE":  sig,
-        "POLY_TIMESTAMP":  ts,
-        "POLY_API_KEY":    config.API_KEY,
-        "POLY_PASSPHRASE": config.API_PASSPHRASE,
-        "Content-Type":    "application/json",
-    }
 
 # ── Connexion ─────────────────────────────────────────────────────────────────
 

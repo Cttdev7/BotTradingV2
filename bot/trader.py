@@ -9,40 +9,14 @@ En mode simulation (DRY_RUN=true), les ordres sont loggés sans être envoyés.
 
 from __future__ import annotations
 import json
-import time
-import hmac
-import hashlib
-import base64
 import requests
 import os
 import config
+from auth import create_auth_headers
 
 CLOB    = "https://clob.polymarket.com"
 TIMEOUT = 15
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"  # sécurité par défaut
-
-# ── Auth L2 ───────────────────────────────────────────────────────────────────
-
-def _auth_headers(method: str, path: str, body: str = "") -> dict:
-    if not config.API_SECRET:
-        raise ValueError("API_SECRET manquant dans .env — impossible de signer les ordres")
-    ts = str(int(time.time() * 1000))
-    message = ts + method + path + body
-    try:
-        raw_key = base64.b64decode(config.API_SECRET)
-    except Exception:
-        raw_key = config.API_SECRET.encode()
-    sig = base64.b64encode(
-        hmac.new(raw_key, message.encode(), hashlib.sha256).digest()
-    ).decode()
-    return {
-        "POLY_ADDRESS":    config.WALLET_ADDRESS,
-        "POLY_SIGNATURE":  sig,
-        "POLY_TIMESTAMP":  ts,
-        "POLY_API_KEY":    config.API_KEY,
-        "POLY_PASSPHRASE": config.API_PASSPHRASE,
-        "Content-Type":    "application/json",
-    }
 
 # ── Infos marché ──────────────────────────────────────────────────────────────
 
@@ -123,7 +97,7 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
 
     r = requests.post(
         f"{CLOB}{path}",
-        headers=_auth_headers("POST", path, body),
+        headers=create_auth_headers("POST", path, body),
         data=body,
         timeout=TIMEOUT,
     )
@@ -139,7 +113,7 @@ def cancel_all_orders() -> dict:
     path = "/orders"
     r = requests.delete(
         f"{CLOB}{path}",
-        headers=_auth_headers("DELETE", path),
+        headers=create_auth_headers("DELETE", path),
         timeout=TIMEOUT,
     )
     r.raise_for_status()

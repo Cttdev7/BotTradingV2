@@ -1,8 +1,9 @@
 // ============================================================
 // page_history.jsx — transaction history across all bots
 // ============================================================
-function HistoryPage({ bots }) {
-  const { TXNS, MARKETS, fmtUSD, Card, SectionTitle, Segmented, Icon, MarketChip } = window;
+function HistoryPage({ bots, transactions }) {
+  const { MARKETS, fmtUSD, Card, SectionTitle, Segmented, Icon, MarketChip } = window;
+  const TXNS = transactions || [];
   const [q, setQ] = React.useState('');
   const [market, setMarket] = React.useState('all');
   const [side, setSide] = React.useState('all');
@@ -63,7 +64,13 @@ function HistoryPage({ bots }) {
           textTransform: 'uppercase', letterSpacing: '.03em', borderBottom: '1px solid var(--separator)' }} className="hist-head">
           <span>Actif</span><span>Bot</span><span>Sens</span><span>Quantité</span><span style={{ textAlign: 'right' }}>Montant</span><span style={{ textAlign: 'right' }}>P&L</span>
         </div>
-        {filled === 0 && <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-3)' }}>Aucune transaction ne correspond.</div>}
+        {filled === 0 && (
+          <div style={{ padding: '48px 40px', textAlign: 'center', color: 'var(--text-3)' }}>
+            {TXNS.length === 0
+              ? 'Aucun trade pour l\'instant — les transactions apparaîtront ici dès que le bot tradера.'
+              : 'Aucune transaction ne correspond aux filtres.'}
+          </div>
+        )}
         {Object.entries(groups).map(([day, items]) => (
           <div key={day}>
             <div style={{ padding: '9px var(--pad)', fontSize: 12, fontWeight: 600, color: 'var(--text-3)',

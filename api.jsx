@@ -70,10 +70,6 @@ async function fetchBotData() {
   const mappedPos  = Array.isArray(positions) ? positions.map(mapPosition) : [];
   const mappedAct  = Array.isArray(activity)  ? activity.map(mapActivity)  : [];
 
-  // Synchronise les transactions globales pour la page Historique
-  window.TXNS.length = 0;
-  mappedAct.forEach((t) => window.TXNS.push(t));
-
   return { connected, usdc, positions: mappedPos, activity: mappedAct };
 }
 

@@ -95,7 +95,7 @@ function NewBotSheet({ onClose, onCreate }) {
   );
 }
 
-const SERVER_CMD = 'python3 "/Users/clementctt/Documents/Claude code/Bottrading V2/bot/server.py"';
+const SERVER_CMD = 'python3 bot/server.py';
 
 function ServerBanner() {
   const [copied, setCopied] = useState(false);
@@ -115,10 +115,12 @@ function ServerBanner() {
         <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 5 }}>
           Serveur bot non lancé — données fictives affichées
         </div>
+        <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginBottom: 7 }}>
+          Double-clique sur <strong>« Lancer le bot.command »</strong> dans le dossier du projet, ou dans un terminal :
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <code style={{ fontSize: 12, background: 'var(--fill)', padding: '4px 9px',
-            borderRadius: 6, fontFamily: 'var(--mono)', color: 'var(--text)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460 }}>
+            borderRadius: 6, fontFamily: 'var(--mono)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
             {SERVER_CMD}
           </code>
           <button onClick={copy} className="tap" style={{ border: 'none', cursor: 'pointer',
@@ -205,7 +207,7 @@ function App() {
   let content;
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
-  else if (nav.page === 'history') content = <window.HistoryPage bots={bots} />;
+  else if (nav.page === 'history') content = <window.HistoryPage bots={bots} transactions={liveActivity} />;
   else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
   else if (nav.page === 'strategy') content = <window.StrategyPage bot={bot} onBack={nav.botId ? () => go('bot', bot.id) : null} />;
