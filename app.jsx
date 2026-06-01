@@ -95,6 +95,46 @@ function NewBotSheet({ onClose, onCreate }) {
   );
 }
 
+const SERVER_CMD = 'python3 "/Users/clementctt/Documents/Claude code/Bottrading V2/bot/server.py"';
+
+function ServerBanner() {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(SERVER_CMD).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <div style={{ marginBottom: 'var(--gap)', background: 'color-mix(in oklab, var(--orange) 12%, transparent)',
+      border: '1px solid color-mix(in oklab, var(--orange) 28%, transparent)',
+      borderRadius: 'var(--r-card)', padding: '13px 16px',
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <window.Icon name="bolt" size={18} style={{ color: 'var(--orange)', flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 5 }}>
+          Serveur bot non lancé — données fictives affichées
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <code style={{ fontSize: 12, background: 'var(--fill)', padding: '4px 9px',
+            borderRadius: 6, fontFamily: 'var(--mono)', color: 'var(--text)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 460 }}>
+            {SERVER_CMD}
+          </code>
+          <button onClick={copy} className="tap" style={{ border: 'none', cursor: 'pointer',
+            background: copied ? 'var(--green)' : 'var(--fill-2)',
+            color: copied ? '#fff' : 'var(--text-2)',
+            borderRadius: 7, padding: '4px 11px', fontSize: 12, fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, transition: 'background .2s' }}>
+            <window.Icon name={copied ? 'check' : 'link'} size={13} stroke={2.2} />
+            {copied ? 'Copié !' : 'Copier'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [bots, setBots] = useState(window.BOTS.map((b) => ({ ...b })));
@@ -259,6 +299,7 @@ function App() {
           <window.IconButton icon="plus" onClick={() => setSheet(true)} label="Nouveau bot" />
         </div>
         <div className="main-inner">
+          {!apiConnected && <ServerBanner />}
           <div key={nav.page + (nav.botId || '')} className="page-enter">{content}</div>
         </div>
       </div>
