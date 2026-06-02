@@ -151,7 +151,7 @@ def analyse():
         data     = request.get_json() or {}
         category   = data.get("category", "tout")
         min_volume = float(data.get("min_volume", 5000))
-        markets    = polymarket.get_markets(limit=100)
+        markets    = polymarket.get_active_markets(limit=100)
         result     = mistral.analyse(markets, category, min_volume)
         _save_analysis(result)
         return _ok(result)
