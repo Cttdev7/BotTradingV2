@@ -20,6 +20,9 @@ CHAIN_ID = 137  # Polygon
 MISTRAL_API_KEY   = os.getenv("MISTRAL_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+# Modèle Claude utilisé par le bot (haiku=pas cher, sonnet=équilibré, opus=premium)
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+
 def validate():
     """Vérifie que les clés minimales sont présentes."""
     missing = [k for k, v in {

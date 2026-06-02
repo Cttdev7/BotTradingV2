@@ -112,7 +112,7 @@ HISTORIQUE DES TRADES (apprends de tes erreurs) :
 Analyse ces marchés selon la stratégie et retourne tes décisions en JSON."""
 
     response = get_client().messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=config.CLAUDE_MODEL,
         max_tokens=1024,
         messages=[{"role": "user", "content": user_message}],
         system=system_prompt,
@@ -160,7 +160,7 @@ Analyse ces résultats et réponds en 3-5 phrases :
 Sois direct et concret."""
 
     response = get_client().messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=config.CLAUDE_MODEL,
         max_tokens=512,
         messages=[{"role": "user", "content": message}],
     )
