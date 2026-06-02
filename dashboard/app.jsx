@@ -95,7 +95,7 @@ function NewBotSheet({ onClose, onCreate }) {
   );
 }
 
-const SERVER_CMD = 'python3 bot/server.py';
+const SERVER_CMD = 'python3 bot/server.py  # depuis le dossier Bottrading V2';
 
 function ServerBanner() {
   const [copied, setCopied] = useState(false);
