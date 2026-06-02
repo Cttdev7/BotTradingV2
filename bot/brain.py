@@ -136,33 +136,132 @@ Analyse ces marchés selon la stratégie et retourne tes décisions en JSON."""
 
 
 def reflect(strategy: dict, recent_trades: list) -> str:
-    """
-    Demande à Claude d'analyser les derniers trades et de suggérer
-    comment améliorer la stratégie.
-    Retourne un texte de suggestions.
-    """
+    """Analyse les derniers trades et retourne un texte de suggestions."""
     if not recent_trades:
         return "Pas encore de trades à analyser."
-
     prompt_text = strategy.get("prompt", "").strip()
-
     message = f"""Voici la stratégie actuelle du bot :
 {prompt_text}
 
 Voici ses 20 derniers trades :
 {_format_history(recent_trades)}
 
-Analyse ces résultats et réponds en 3-5 phrases :
-1. Ce qui a bien fonctionné
-2. Ce qui a mal fonctionné et pourquoi
-3. Comment améliorer la stratégie
-
-Sois direct et concret."""
+Analyse ces résultats en 3-5 phrases : ce qui a marché, ce qui a raté, comment améliorer."""
 
     response = get_client().messages.create(
         model=config.CLAUDE_MODEL,
         max_tokens=512,
         messages=[{"role": "user", "content": message}],
     )
+    return response.content[0].text.strip() if response.content else ""
 
-    return response.content[0].text.strip()
+
+def improve_strategy(strategy: dict, history: list) -> dict:
+    """
+    Réécrit la stratégie en se basant sur l'historique des trades.
+    Retourne {"new_prompt": str, "reason": str, "version": int}
+
+    C'est la fonction d'auto-amélioration : le bot remet en question
+    sa stratégie actuelle pour devenir meilleur à chaque cycle.
+    """
+    current_prompt = strategy.get("prompt", "").strip()
+    version        = strategy.get("version", 1)
+
+    if not current_prompt:
+        return {"new_prompt": current_prompt, "reason": "Pas de stratégie initiale.", "version": version}
+
+    wins   = [t for t in history if (t.get("pnl") or 0) > 0]
+    losses = [t for t in history if (t.get("pnl") or 0) < 0]
+    open_  = [t for t in history if t.get("pnl") is None]
+
+    system = """Tu es un expert en marchés de prédiction Polymarket et en trading algorithmique.
+Tu dois améliorer la stratégie d'un bot de trading en te basant sur ses résultats passés.
+
+Ton objectif absolu : maximiser le taux de réussite et le P&L.
+Sois impitoyable dans ton analyse — si quelque chose ne marche pas, coupe-le.
+Si quelque chose marche, amplifie-le.
+
+Réponds en JSON :
+{
+  "new_prompt": "nouvelle stratégie en 3-5 phrases, précise et actionnable",
+  "reason": "explication courte de ce que tu as changé et pourquoi"
+}"""
+
+    user = f"""STRATÉGIE ACTUELLE (version {version}) :
+{current_prompt}
+
+BILAN DES TRADES :
+- Trades gagnants : {len(wins)}
+- Trades perdants : {len(losses)}
+- Trades ouverts  : {len(open_)}
+
+HISTORIQUE DÉTAILLÉ (30 derniers) :
+{_format_history(history[-30:])}
+
+Réécris la stratégie pour qu'elle soit plus performante. Sois précis sur :
+- Quels types de marchés cibler (ou éviter)
+- À quels prix/probabilités acheter
+- Taille des positions
+- Critères de sortie
+
+Si le bot a fait des erreurs, corrige-les explicitement dans la nouvelle stratégie."""
+
+    response = get_client().messages.create(
+        model=config.CLAUDE_MODEL,
+        max_tokens=600,
+        messages=[{"role": "user", "content": user}],
+        system=system,
+    )
+
+    if not response.content:
+        return {"new_prompt": current_prompt, "reason": "Erreur API.", "version": version}
+
+    raw = response.content[0].text.strip()
+    start = raw.find("{")
+    end   = raw.rfind("}") + 1
+    try:
+        result = json.loads(raw[start:end]) if start != -1 else {}
+    except json.JSONDecodeError:
+        result = {}
+
+    return {
+        "new_prompt": result.get("new_prompt", current_prompt),
+        "reason":     result.get("reason", "Amélioration automatique."),
+        "version":    version + 1,
+    }
+
+
+def check_market_outcomes(trades: list) -> list:
+    """
+    Vérifie si les marchés sur lesquels on a parié ont résolu,
+    et met à jour le P&L de chaque trade.
+    Retourne la liste avec P&L mis à jour.
+    """
+    import polymarket as _pm
+    updated = []
+    for t in trades:
+        if t.get("pnl") is not None:
+            updated.append(t)
+            continue
+        cid = t.get("condition_id")
+        if not cid:
+            updated.append(t)
+            continue
+        try:
+            market = _pm.get_market(cid)
+            tokens = market.get("tokens", [])
+            outcome = t.get("sym", "")
+            for tok in tokens:
+                if tok.get("outcome", "").lower() == outcome.lower():
+                    price = float(tok.get("price", -1))
+                    if price in (0.0, 1.0):  # marché résolu
+                        qty   = float(t.get("qty", t.get("amount_usdc", 0)))
+                        entry = float(t.get("price", 0.5))
+                        if t.get("side") == "buy":
+                            t["pnl"] = round((price - entry) * qty, 2)
+                        else:
+                            t["pnl"] = round((entry - price) * qty, 2)
+        except Exception:
+            pass
+        updated.append(t)
+    return updated

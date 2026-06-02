@@ -1,13 +1,17 @@
 """
-loop.py — Boucle principale du bot
+loop.py — Boucle principale du bot auto-apprenant
 
 Cycle toutes les INTERVAL_MINUTES minutes :
 1. Lit la stratégie depuis strategy.json
-2. Récupère les marchés Polymarket
-3. Appelle Claude (brain.py) pour décider
-4. Exécute les ordres (trader.py)
-5. Sauvegarde le résultat dans l'historique
-6. Toutes les 24h : demande à Claude de réfléchir et suggérer des améliorations
+2. Vérifie les outcomes des trades précédents (P&L réel)
+3. Récupère les marchés actifs Polymarket
+4. Appelle Claude (brain.py) pour décider
+5. Exécute les ordres (trader.py)
+6. Sauvegarde dans l'historique
+
+Toutes les IMPROVE_HOURS heures :
+→ Claude réécrit la stratégie en se basant sur les résultats
+→ Nouvelle version sauvegardée automatiquement
 
 Lance avec : python3 bot/loop.py
 """
@@ -21,9 +25,11 @@ import brain
 import trader
 import config
 
-INTERVAL_MINUTES = int(os.getenv("BOT_INTERVAL", "15"))  # fréquence en minutes
-REFLECT_INTERVAL = 24 * 60 * 60  # réflexion toutes les 24h (en secondes)
-HISTORY_FILE = os.path.join(os.path.dirname(__file__), "history.json")
+INTERVAL_MINUTES = int(os.getenv("BOT_INTERVAL", "15"))
+IMPROVE_HOURS    = int(os.getenv("BOT_IMPROVE_HOURS", "6"))   # amélioration toutes les 6h
+IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
+
+HISTORY_FILE  = os.path.join(os.path.dirname(__file__), "history.json")
 STRATEGY_FILE = os.path.join(os.path.dirname(__file__), "strategy.json")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -35,6 +41,15 @@ def load_strategy(bot_id: str = "polyedge") -> dict:
             return data.get(bot_id, {})
     return {}
 
+def save_strategy(bot_id: str, strategy: dict):
+    all_strategies = {}
+    if os.path.exists(STRATEGY_FILE):
+        with open(STRATEGY_FILE) as f:
+            all_strategies = json.load(f)
+    all_strategies[bot_id] = strategy
+    with open(STRATEGY_FILE, "w") as f:
+        json.dump(all_strategies, f, indent=2, ensure_ascii=False)
+
 def load_history() -> list:
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE) as f:
@@ -43,16 +58,21 @@ def load_history() -> list:
 
 def save_history(history: list):
     with open(HISTORY_FILE, "w") as f:
-        json.dump(history[-500:], f, indent=2, ensure_ascii=False)  # garde les 500 derniers
+        json.dump(history[-500:], f, indent=2, ensure_ascii=False)
 
 def log(msg: str):
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts   = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line)
-    # Append au fichier de log
     log_file = os.path.join(os.path.dirname(__file__), "bot.log")
     with open(log_file, "a") as f:
         f.write(line + "\n")
+
+def _stats(history: list) -> str:
+    wins   = len([t for t in history if (t.get("pnl") or 0) > 0])
+    losses = len([t for t in history if (t.get("pnl") or 0) < 0])
+    pnl    = sum(t.get("pnl") or 0 for t in history)
+    return f"{wins}W / {losses}L / P&L total ${pnl:.2f}"
 
 # ── Cycle principal ───────────────────────────────────────────────────────────
 
@@ -65,16 +85,27 @@ def run_cycle(bot_id: str = "polyedge"):
         log("Bot désactivé — active-le dans l'onglet Stratégie du dashboard")
         return
     if not strategy.get("prompt", "").strip():
-        log("Aucun prompt de stratégie — écris une stratégie dans le dashboard")
+        log("Aucun prompt — écris une stratégie dans le dashboard")
         return
 
-    # 2. Données Polymarket
+    # 2. Vérifie les outcomes des trades précédents
+    history = load_history()
+    open_trades = [t for t in history if t.get("pnl") is None and t.get("bot") == bot_id]
+    if open_trades:
+        log(f"Vérification outcomes de {len(open_trades)} trades ouverts…")
+        updated = brain.check_market_outcomes(history)
+        resolved = sum(1 for old, new in zip(history, updated) if old.get("pnl") is None and new.get("pnl") is not None)
+        if resolved:
+            log(f"  {resolved} trades résolus — P&L mis à jour")
+            history = updated
+            save_history(history)
+
+    # 3. Données Polymarket
     try:
-        markets = polymarket.get_markets(limit=50)
+        markets = polymarket.get_active_markets(limit=50)
         balance = polymarket.get_balance()
-        history = load_history()
-        usdc = balance.get("usdc", 0)
-        log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés | {len(history)} trades passés")
+        usdc    = balance.get("usdc", 0)
+        log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
     except Exception as e:
         log(f"Erreur récupération données : {e}")
         return
@@ -83,7 +114,7 @@ def run_cycle(bot_id: str = "polyedge"):
         log("Solde insuffisant (< 1 USDC) — alimente ton wallet")
         return
 
-    # 3. Décision Claude
+    # 4. Décision Claude
     try:
         decisions = brain.decide(strategy, markets, history, usdc)
         log(f"Claude a pris {len(decisions)} décision(s)")
@@ -95,7 +126,7 @@ def run_cycle(bot_id: str = "polyedge"):
         log("Aucune opportunité détectée pour cette stratégie")
         return
 
-    # 4. Exécution des ordres (charge l'historique une seule fois)
+    # 5. Exécution + sauvegarde
     for d in decisions:
         try:
             log(f"→ {d['action'].upper()} {d['outcome']} sur {d['condition_id'][:12]}… "
@@ -106,7 +137,7 @@ def run_cycle(bot_id: str = "polyedge"):
                 side=d["action"],
                 amount_usdc=d["amount_usdc"],
             )
-            record = {
+            history.append({
                 "time":         datetime.datetime.now().isoformat(),
                 "bot":          bot_id,
                 "market":       "polymarket",
@@ -114,63 +145,92 @@ def run_cycle(bot_id: str = "polyedge"):
                 "sym":          d["outcome"],
                 "side":         d["action"],
                 "amount_usdc":  d["amount_usdc"],
+                "price":        d.get("yes_price", 0),
                 "reason":       d["reason"],
                 "result":       result,
                 "pnl":          None,
-            }
-            history.append(record)
-            log(f"  ✅ Ordre exécuté")
+            })
+            log("  ✅ Ordre exécuté")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
 
-    # 5. Sauvegarde une seule fois après tous les ordres
     try:
         save_history(history)
     except Exception as e:
         log(f"  ⚠️  Impossible de sauvegarder l'historique : {e}")
 
-# ── Réflexion périodique ──────────────────────────────────────────────────────
+# ── Auto-amélioration de la stratégie ────────────────────────────────────────
 
-def run_reflection(bot_id: str = "polyedge"):
-    log("═══ Réflexion quotidienne ═══")
+def run_improvement(bot_id: str = "polyedge"):
+    """
+    Claude réécrit la stratégie en se basant sur tous les trades.
+    La nouvelle version est sauvegardée avec l'historique des versions.
+    """
+    log("═══ Auto-amélioration de la stratégie ═══")
+
     strategy = load_strategy(bot_id)
     history  = load_history()
-    recent   = [t for t in history if t.get("bot") == bot_id][-20:]
+    bot_history = [t for t in history if t.get("bot") == bot_id]
+
+    if not strategy.get("prompt", "").strip():
+        log("Pas de stratégie à améliorer")
+        return
+
     try:
-        analysis = brain.reflect(strategy, recent)
-        log(f"Analyse Claude :\n{analysis}")
-        # Sauvegarde l'analyse dans un fichier
-        reflect_file = os.path.join(os.path.dirname(__file__), "reflections.json")
-        reflections = []
-        if os.path.exists(reflect_file):
-            with open(reflect_file) as f:
-                reflections = json.load(f)
-        reflections.append({
-            "time":     datetime.datetime.now().isoformat(),
-            "analysis": analysis,
+        result = brain.improve_strategy(strategy, bot_history)
+        old_prompt = strategy.get("prompt", "")
+        new_prompt = result.get("new_prompt", old_prompt)
+        reason     = result.get("reason", "")
+        version    = result.get("version", 1)
+
+        if new_prompt == old_prompt:
+            log("Stratégie inchangée — déjà optimale selon Claude")
+            return
+
+        # Sauvegarde avec historique des versions
+        strategy_history = strategy.get("history", [])
+        strategy_history.append({
+            "version":   strategy.get("version", 1),
+            "prompt":    old_prompt,
+            "time":      datetime.datetime.now().isoformat(),
+            "reason":    "Remplacée par version améliorée",
         })
-        with open(reflect_file, "w") as f:
-            json.dump(reflections[-30:], f, indent=2, ensure_ascii=False)
+
+        strategy["prompt"]        = new_prompt
+        strategy["version"]       = version
+        strategy["last_improved"] = datetime.datetime.now().isoformat()
+        strategy["last_reason"]   = reason
+        strategy["history"]       = strategy_history[-10:]  # garde les 10 dernières versions
+
+        save_strategy(bot_id, strategy)
+        log(f"✅ Stratégie mise à jour → version {version}")
+        log(f"   Raison : {reason}")
+        log(f"   Nouvelle stratégie : {new_prompt[:100]}…")
+
     except Exception as e:
-        log(f"Erreur réflexion : {e}")
+        log(f"Erreur auto-amélioration : {e}")
 
 # ── Point d'entrée ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     config.validate()
     log(f"🤖 Bot démarré — cycle toutes les {INTERVAL_MINUTES} min")
+    log(f"   Auto-amélioration : toutes les {IMPROVE_HOURS}h")
     log(f"   Mode : {'SIMULATION (DRY_RUN)' if trader.DRY_RUN else '⚠️  TRADING RÉEL'}")
     log(f"   Wallet : {config.WALLET_ADDRESS[:10]}…")
+    log(f"   Modèle : {config.CLAUDE_MODEL}")
 
-    last_reflect = time.time()  # première réflexion après 24h, pas au démarrage
+    last_improve = time.time()  # première amélioration après IMPROVE_HOURS
 
     while True:
         try:
             run_cycle()
-            # Réflexion toutes les 24h
-            if time.time() - last_reflect > REFLECT_INTERVAL:
-                run_reflection()
-                last_reflect = time.time()
+
+            # Auto-amélioration toutes les IMPROVE_HOURS heures
+            if time.time() - last_improve > IMPROVE_INTERVAL:
+                run_improvement()
+                last_improve = time.time()
+
         except KeyboardInterrupt:
             log("Bot arrêté manuellement")
             break

@@ -124,6 +124,11 @@ def activity():
 def get_strategy(bot_id):
     return _ok(_load_strategy(bot_id))
 
+@app.route("/api/strategy/<bot_id>/history", methods=["GET"])
+def get_strategy_history(bot_id):
+    strategy = _load_strategy(bot_id)
+    return _ok(strategy.get("history", []))
+
 @app.route("/api/strategy/<bot_id>", methods=["POST"])
 def save_strategy(bot_id):
     data = request.get_json()

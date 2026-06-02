@@ -13,18 +13,30 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
   // ── Stratégie par bot ──
   const [stratPrompt, setStratPrompt] = React.useState('');
   const [stratEnabled, setStratEnabled] = React.useState(false);
-  const [stratStatus, setStratStatus] = React.useState(null); // null | 'saving' | 'saved' | 'error'
+  const [stratStatus,  setStratStatus]  = React.useState(null);
+  const [stratVersion, setStratVersion] = React.useState(1);
+  const [stratLastImproved, setStratLastImproved] = React.useState(null);
+  const [stratLastReason,   setStratLastReason]   = React.useState('');
+  const [stratHistory, setStratHistory] = React.useState([]);
+  const [showStratHist, setShowStratHist] = React.useState(false);
 
   React.useEffect(() => { if (!editingName) setDraftName(bot.name); }, [bot.name]);
 
-  // Charge la stratégie de CE bot au montage
+  // Charge la stratégie + historique au montage
   React.useEffect(() => {
     fetch(`http://localhost:5000/api/strategy/${bot.id}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.prompt !== undefined) setStratPrompt(d.prompt);
-        if (d.enabled !== undefined) setStratEnabled(d.enabled);
+        if (d.prompt   !== undefined) setStratPrompt(d.prompt);
+        if (d.enabled  !== undefined) setStratEnabled(d.enabled);
+        if (d.version  !== undefined) setStratVersion(d.version);
+        if (d.last_improved)         setStratLastImproved(d.last_improved);
+        if (d.last_reason)           setStratLastReason(d.last_reason);
       })
+      .catch(() => {});
+    fetch(`http://localhost:5000/api/strategy/${bot.id}/history`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setStratHistory(d); })
       .catch(() => {});
   }, [bot.id]);
 
@@ -149,7 +161,24 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
             <Toggle on={stratEnabled} onChange={setStratEnabled} />
           </Card>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {/* Infos auto-amélioration */}
+          {stratVersion > 1 && (
+            <div style={{ marginBottom: 'var(--gap)', padding: '10px 14px',
+              borderRadius: 'var(--r-md)', background: 'color-mix(in oklab, var(--green) 10%, transparent)',
+              border: '1px solid color-mix(in oklab, var(--green) 25%, transparent)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>
+                🧠 Stratégie v{stratVersion} — améliorée automatiquement par Claude
+              </div>
+              {stratLastReason && <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5 }}>{stratLastReason}</div>}
+              {stratLastImproved && (
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 4 }}>
+                  Dernière mise à jour : {new Date(stratLastImproved).toLocaleString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: stratHistory.length ? 'var(--gap)' : 0 }}>
             <Button variant="primary" icon="check" onClick={saveStrategy}>
               {stratStatus === 'saving' ? 'Sauvegarde…' : 'Sauvegarder'}
             </Button>
@@ -165,6 +194,38 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions })
               </span>
             )}
           </div>
+
+          {/* Historique des versions */}
+          {stratHistory.length > 0 && (
+            <div>
+              <button onClick={() => setShowStratHist(!showStratHist)} className="tap"
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5,
+                  fontWeight: 600, color: 'var(--text-2)', padding: '4px 0' }}>
+                <Icon name={showStratHist ? 'chevdown' : 'chevron'} size={15} stroke={2} />
+                Historique des versions ({stratHistory.length})
+              </button>
+              {showStratHist && (
+                <Card pad={false} style={{ marginTop: 10 }}>
+                  {[...stratHistory].reverse().map((v, i) => (
+                    <div key={i} style={{ padding: '12px var(--pad)',
+                      borderBottom: i < stratHistory.length - 1 ? '1px solid var(--separator)' : 'none' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)' }}>Version {v.version}</span>
+                        <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
+                          {new Date(v.time).toLocaleString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.5, marginBottom: 4 }}>
+                        {v.prompt?.slice(0, 120)}{v.prompt?.length > 120 ? '…' : ''}
+                      </div>
+                      {v.reason && <div style={{ fontSize: 12, color: 'var(--text-3)', fontStyle: 'italic' }}>→ {v.reason}</div>}
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
+          )}
         </div>
       )}
 
