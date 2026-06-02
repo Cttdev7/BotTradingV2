@@ -143,6 +143,7 @@ function App() {
   const [livePositions, setLivePositions] = useState({});
   const [liveActivity, setLiveActivity]   = useState([]);
   const [apiConnected, setApiConnected]   = useState(false);
+  const [walletBalance, setWalletBalance] = useState({ pol: 0, usdc: 0, usdce: 0 });
   const [nav, setNav] = useState({ page: 'dashboard', botId: null });
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState(null);
@@ -159,11 +160,12 @@ function App() {
     let cancelled = false;
     const sync = async () => {
       try {
-        const { connected, usdc, positions, activity } = await window.fetchBotData();
+        const { connected, usdc, positions, activity, wallet } = await window.fetchBotData();
         if (cancelled) return;
         setApiConnected(connected);
         setLivePositions({ polyedge: positions });
         setLiveActivity(activity);
+        if (wallet) setWalletBalance(wallet);
         setBots((bs) => bs.map((b) => b.id === 'polyedge' ? {
           ...b,
           capital:  usdc,
@@ -291,6 +293,25 @@ function App() {
             );
           })}
         </div>
+        {/* Solde wallet Polygon */}
+        <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 'var(--r-md)',
+          background: 'var(--fill)', fontSize: 12 }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-3)', marginBottom: 6,
+            textTransform: 'uppercase', letterSpacing: '.04em', fontSize: 10.5 }}>Wallet Polygon</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+            <span style={{ color: 'var(--text-2)' }}>USDC</span>
+            <span className="num" style={{ fontWeight: 600 }}>${(walletBalance.usdc + walletBalance.usdce).toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ color: 'var(--text-2)' }}>POL</span>
+            <span className="num" style={{ fontWeight: 600 }}>{walletBalance.pol.toFixed(4)}</span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text-3)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {walletBalance.wallet ? `${walletBalance.wallet.slice(0,6)}…${walletBalance.wallet.slice(-4)}` : '—'}
+          </div>
+        </div>
+
         <div style={{ padding: 12, borderTop: '1px solid var(--separator)' }}>
           <window.Button full icon="plus" onClick={() => setSheet(true)}>Nouveau bot</window.Button>
         </div>

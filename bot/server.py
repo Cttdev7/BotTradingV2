@@ -70,6 +70,13 @@ def balance():
     except Exception as e:
         return _err(e)
 
+@app.route("/api/wallet")
+def wallet():
+    try:
+        return _ok(polymarket.get_polygon_balance())
+    except Exception as e:
+        return _err(e)
+
 # ── Marchés ──────────────────────────────────────────────────────────────────
 
 @app.route("/api/markets")

@@ -82,6 +82,36 @@ def get_order_book(token_id: str) -> dict:
     r.raise_for_status()
     return r.json()
 
+# ── Wallet Polygon (RPC) ──────────────────────────────────────────────────────
+
+POLYGON_RPC   = "https://polygon-rpc.com"
+USDC_CONTRACT = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"   # USDC natif
+USDCE_CONTRACT= "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"   # USDC.e bridgé
+
+def _rpc_call(method: str, params: list, id: int = 1) -> str:
+    r = requests.post(POLYGON_RPC,
+        json={"jsonrpc": "2.0", "method": method, "params": params, "id": id},
+        timeout=TIMEOUT)
+    r.raise_for_status()
+    return r.json().get("result", "0x0")
+
+def get_polygon_balance() -> dict:
+    """Solde POL natif + USDC sur le wallet Polygon."""
+    wallet = config.WALLET_ADDRESS
+    data   = "0x70a08231" + wallet[2:].lower().zfill(64)
+    try:
+        pol_hex   = _rpc_call("eth_getBalance", [wallet, "latest"], 1)
+        usdc_hex  = _rpc_call("eth_call", [{"to": USDC_CONTRACT,  "data": data}, "latest"], 2)
+        usdce_hex = _rpc_call("eth_call", [{"to": USDCE_CONTRACT, "data": data}, "latest"], 3)
+        return {
+            "pol":   round(int(pol_hex,   16) / 1e18, 4),
+            "usdc":  round(int(usdc_hex,  16) / 1e6,  2),
+            "usdce": round(int(usdce_hex, 16) / 1e6,  2),
+            "wallet": wallet,
+        }
+    except Exception as e:
+        return {"pol": 0, "usdc": 0, "usdce": 0, "wallet": wallet, "error": str(e)}
+
 # ── Compte — data-api (lecture par adresse) ───────────────────────────────────
 
 def _addr() -> str:

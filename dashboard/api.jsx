@@ -59,10 +59,11 @@ function mapActivity(a) {
 // ── Fetch principal ───────────────────────────────────────────────────────────
 
 async function fetchBotData() {
-  const [status, positions, activity] = await Promise.all([
+  const [status, positions, activity, wallet] = await Promise.all([
     apiFetch('/api/status'),
     apiFetch('/api/positions').catch(() => []),
     apiFetch('/api/activity?limit=50').catch(() => []),
+    apiFetch('/api/wallet').catch(() => ({})),
   ]);
 
   const usdc       = parseFloat(status?.balance?.usdc || 0);
@@ -70,7 +71,7 @@ async function fetchBotData() {
   const mappedPos  = Array.isArray(positions) ? positions.map(mapPosition) : [];
   const mappedAct  = Array.isArray(activity)  ? activity.map(mapActivity)  : [];
 
-  return { connected, usdc, positions: mappedPos, activity: mappedAct };
+  return { connected, usdc, positions: mappedPos, activity: mappedAct, wallet };
 }
 
 // ── Hook React ────────────────────────────────────────────────────────────────
