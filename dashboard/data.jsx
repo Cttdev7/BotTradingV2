@@ -49,7 +49,7 @@ const BOTS = [
     status: 'paused', capital: 0, allocPct: 100,
     pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
-    series: makeSeries(44, 90, 0, 0.005, 100),
+    series: Array(90).fill(0),
   },
 ];
 
