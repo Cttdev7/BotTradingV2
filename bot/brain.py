@@ -9,6 +9,7 @@ La clé ANTHROPIC_API_KEY doit être dans .env.
 
 import json
 import os
+import requests
 import anthropic
 import config
 
@@ -22,6 +23,59 @@ def get_client():
             raise ValueError("ANTHROPIC_API_KEY manquante dans .env")
         _client = anthropic.Anthropic(api_key=api_key)
     return _client
+
+
+def _load_mistral_context() -> str:
+    """
+    Charge les 3 derniers rapports Mistral depuis Supabase ou le JSON local.
+    Retourne un texte formaté pour enrichir le contexte de Claude.
+    """
+    rapports = []
+
+    # Essaie Supabase d'abord
+    supabase_url = os.getenv("SUPABASE_URL", "")
+    supabase_key = os.getenv("SUPABASE_KEY", "")
+    if supabase_url and supabase_key:
+        try:
+            r = requests.get(
+                f"{supabase_url}/rest/v1/meteo_rapports?order=created_at.desc&limit=3",
+                headers={"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"},
+                timeout=5,
+            )
+            if r.status_code == 200:
+                rapports = r.json()
+        except Exception:
+            pass
+
+    # Fallback JSON local
+    if not rapports:
+        local = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
+        if os.path.exists(local):
+            try:
+                with open(local) as f:
+                    rapports = json.load(f)[:3]
+            except Exception:
+                pass
+
+    if not rapports:
+        return "Aucune donnée Mistral disponible."
+
+    lines = []
+    for r in rapports:
+        taux = r.get("taux_victoire")
+        taux_str = f"{taux}% de réussite" if taux is not None else "données insuffisantes"
+        actifs = r.get("actifs_85") or r.get("actifs_80") or []
+        opps   = "\n".join(
+            f"    · {m.get('question','?')[:70]} → YES {m.get('pct','?')}%"
+            for m in actifs[:5]
+        ) or "    · Aucun marché à 80%+"
+        lines.append(
+            f"[{r.get('heure','?')}] {taux_str}\n"
+            f"  Marchés actifs identifiés par Mistral :\n{opps}\n"
+            f"  Analyse : {(r.get('analyse_mistral') or '')[:200]}\n"
+            f"  Stratégie suggérée : {(r.get('strategie_proposee') or 'aucune')[:150]}"
+        )
+    return "\n\n".join(lines)
 
 
 def _format_markets(markets: list) -> str:
@@ -80,28 +134,38 @@ def decide(strategy: dict, markets: list, history: list, balance_usdc: float) ->
     system_prompt = """Tu es un assistant de trading sur Polymarket (marchés de prédiction).
 Tu analyses des marchés et prends des décisions d'achat/vente basées sur la stratégie fournie.
 
+Tu as accès aux rapports d'un agent Mistral indépendant qui analyse les marchés météo en continu.
+Utilise ses analyses pour valider ou affiner tes décisions — si Mistral identifie une opportunité
+sur un marché que tu vois aussi, c'est un signal fort. Si Mistral est pessimiste sur un marché,
+sois plus prudent.
+
 Règles absolues :
 - Ne jamais miser plus de 20% du solde disponible sur un seul marché
 - Ne jamais miser sur un marché avec un volume < 1000 USDC (trop peu liquide)
+- Privilégier les marchés validés à la fois par ta stratégie ET par Mistral
 - Toujours justifier chaque décision en une phrase
-- Si aucun marché ne correspond à la stratégie, retourner une liste vide
+- Si aucun marché ne correspond, retourner une liste vide []
 
-Tu réponds UNIQUEMENT en JSON valide, sans texte avant ou après :
+Tu réponds UNIQUEMENT en JSON valide :
 [
   {
     "action": "buy",
     "condition_id": "identifiant_du_marche",
     "outcome": "Yes",
     "amount_usdc": 25.0,
-    "reason": "raison courte"
+    "reason": "raison courte incluant si Mistral confirme"
   }
-]
-Ou [] si aucune opportunité."""
+]"""
+
+    mistral_ctx = _load_mistral_context()
 
     user_message = f"""STRATÉGIE :
 {prompt_text}
 
 SOLDE DISPONIBLE : ${balance_usdc:.2f} USDC
+
+RAPPORTS DE L'AGENT MISTRAL (analyse indépendante des marchés météo — utilise ces données pour affiner tes décisions) :
+{mistral_ctx}
 
 MARCHÉS DISPONIBLES :
 {_format_markets(markets)}
@@ -109,7 +173,7 @@ MARCHÉS DISPONIBLES :
 HISTORIQUE DES TRADES (apprends de tes erreurs) :
 {_format_history(history)}
 
-Analyse ces marchés selon la stratégie et retourne tes décisions en JSON."""
+En tenant compte de l'analyse Mistral et de ton historique, retourne tes décisions en JSON."""
 
     response = get_client().messages.create(
         model=config.CLAUDE_MODEL,
@@ -187,6 +251,8 @@ Réponds en JSON :
   "reason": "explication courte de ce que tu as changé et pourquoi"
 }"""
 
+    mistral_ctx = _load_mistral_context()
+
     user = f"""STRATÉGIE ACTUELLE (version {version}) :
 {current_prompt}
 
@@ -198,13 +264,15 @@ BILAN DES TRADES :
 HISTORIQUE DÉTAILLÉ (30 derniers) :
 {_format_history(history[-30:])}
 
-Réécris la stratégie pour qu'elle soit plus performante. Sois précis sur :
-- Quels types de marchés cibler (ou éviter)
-- À quels prix/probabilités acheter
-- Taille des positions
-- Critères de sortie
+RAPPORTS DE L'AGENT MISTRAL (analyse indépendante — intègre ces enseignements dans la nouvelle stratégie) :
+{mistral_ctx}
 
-Si le bot a fait des erreurs, corrige-les explicitement dans la nouvelle stratégie."""
+Réécris la stratégie en combinant :
+1. Ce qui a marché/raté dans l'historique des trades
+2. Les opportunités et patterns identifiés par Mistral
+3. Les stratégies suggérées par Mistral
+
+Sois précis sur : marchés à cibler, probabilités d'entrée, taille des positions, critères de sortie."""
 
     response = get_client().messages.create(
         model=config.CLAUDE_MODEL,
