@@ -14,7 +14,7 @@ import os
 import datetime
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:8080"])
+CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080"])
 
 STRATEGY_FILE = os.path.join(os.path.dirname(__file__), "strategy.json")
 
@@ -177,8 +177,8 @@ def analyse_history():
 
 # ── Agent Météo (Supabase + fallback JSON local) ──────────────────────────────
 
-SUPABASE_URL     = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
-SUPABASE_KEY     = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728")
+SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY     = os.getenv("SUPABASE_KEY", "")
 METEO_RAPPORTS   = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
 METEO_TRACKING   = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
 METEO_RESUMES    = os.path.join(os.path.dirname(__file__), "meteo_resumes.json")

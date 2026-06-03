@@ -145,7 +145,7 @@ def get_balance() -> dict:
             return {"usdc": 0.0}
         r.raise_for_status()
         data = r.json()
-        value = float(data[0]["value"]) if data else 0.0
+        value = float(data[0]["value"]) if data and isinstance(data, list) and len(data) > 0 else 0.0
         return {"usdc": value}
     except requests.exceptions.Timeout:
         return {"usdc": 0.0}

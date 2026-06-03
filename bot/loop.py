@@ -94,7 +94,8 @@ def run_cycle(bot_id: str = "polyedge"):
     if open_trades:
         log(f"Vérification outcomes de {len(open_trades)} trades ouverts…")
         updated = brain.check_market_outcomes(history)
-        resolved = sum(1 for old, new in zip(history, updated) if old.get("pnl") is None and new.get("pnl") is not None)
+        id_to_old = {t.get("id"): t for t in history if t.get("id")}
+        resolved = sum(1 for t in updated if id_to_old.get(t.get("id"), {}).get("pnl") is None and t.get("pnl") is not None)
         if resolved:
             log(f"  {resolved} trades résolus — P&L mis à jour")
             history = updated

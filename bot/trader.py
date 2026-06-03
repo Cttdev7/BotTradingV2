@@ -83,6 +83,8 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
 
     # Calcule la quantité de shares
     size = round(amount_usdc / price, 2)
+    if size < 1:
+        raise ValueError(f"Montant trop faible : {size} shares (minimum 1). Augmente amount_usdc.")
 
     order = {
         "token_id":   token_id,

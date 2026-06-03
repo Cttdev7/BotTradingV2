@@ -254,7 +254,7 @@ def check_market_outcomes(trades: list) -> list:
             for tok in tokens:
                 if tok.get("outcome", "").lower() == outcome.lower():
                     price = float(tok.get("price", -1))
-                    if price in (0.0, 1.0):  # marché résolu
+                    if price <= 0.01 or price >= 0.99:  # marché résolu
                         qty   = float(t.get("qty", t.get("amount_usdc", 0)))
                         entry = float(t.get("price", 0.5))
                         if t.get("side") == "buy":

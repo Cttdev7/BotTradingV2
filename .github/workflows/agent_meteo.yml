@@ -15,6 +15,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-supabase-mistralai
+
       - name: Installer les dépendances
         run: pip install requests supabase python-dotenv mistralai
 

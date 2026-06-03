@@ -50,8 +50,8 @@ def _filter_markets(markets: list, category: str, min_volume: float) -> list:
             continue
 
         tokens   = m.get("tokens", [])
-        yes_price = next((float(t.get("price", 0)) for t in tokens if t.get("outcome") == "Yes"), None)
-        no_price  = next((float(t.get("price", 0)) for t in tokens if t.get("outcome") == "No"),  None)
+        yes_price = next((float(t.get("price", 0)) for t in tokens if t.get("outcome", "").lower() == "yes"), None)
+        no_price  = next((float(t.get("price", 0)) for t in tokens if t.get("outcome", "").lower() == "no"),  None)
 
         if yes_price is None:
             continue

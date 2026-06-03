@@ -88,7 +88,9 @@ def update_resolved(db, condition_id, resultat):
     }).eq("condition_id", condition_id).execute()
 
 def reset_tracking(db):
-    db.table("meteo_tracking").delete().neq("id", "00000000-0000-0000-0000-000000000000").execute()
+    ids = [t["id"] for t in load_tracking(db) if t.get("id")]
+    if ids:
+        db.table("meteo_tracking").delete().in_("id", ids).execute()
     print("🔄 Tracking remis à zéro")
 
 # ── Vérification des résultats ────────────────────────────────────────────────

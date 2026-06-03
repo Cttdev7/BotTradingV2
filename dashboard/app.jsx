@@ -158,28 +158,33 @@ function App() {
   // Sync données réelles depuis le serveur bot toutes les 30s
   useEffect(() => {
     let cancelled = false;
+    let failCount = 0;
+    let timeoutId = null;
+
     const sync = async () => {
       try {
         const { connected, usdc, positions, activity, wallet } = await window.fetchBotData();
         if (cancelled) return;
+        failCount = 0;
         setApiConnected(connected);
         setLivePositions({ polyedge: positions });
         setLiveActivity(activity);
         if (wallet) setWalletBalance(wallet);
         setBots((bs) => bs.map((b) => b.id === 'polyedge' ? {
-          ...b,
-          capital:  usdc,
-          openPos:  positions.length,
-          status:   connected ? 'running' : 'paused',
-          venue:    'Polymarket',
+          ...b, capital: usdc, openPos: positions.length,
+          status: connected ? 'running' : 'paused', venue: 'Polymarket',
         } : b));
       } catch {
-        if (!cancelled) setApiConnected(false);
+        if (!cancelled) { failCount++; setApiConnected(false); }
+      }
+      if (!cancelled) {
+        // Backoff : 30s → 60s → 120s → 300s max si déconnecté
+        const delay = failCount === 0 ? 30000 : Math.min(30000 * Math.pow(2, failCount - 1), 300000);
+        timeoutId = setTimeout(sync, delay);
       }
     };
     sync();
-    const id = setInterval(sync, 30000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
   }, []);
 
   const go = (page, botId = null) => { setNav({ page, botId }); window.scrollTo?.(0, 0);

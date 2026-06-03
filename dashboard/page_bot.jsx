@@ -343,7 +343,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </span>
             </div>
             <div style={{ fontSize:13.5, color:'rgba(255,255,255,.65)', lineHeight:1.7, maxWidth:560 }}>
-              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>30 min</strong> et tracke
+              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>2 heures</strong> et tracke
               tous les paris météo dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
               Chaque jour à <strong style={{ color:'rgba(255,255,255,.9)' }}>17h</strong>, Mistral analyse les résultats
               et propose une stratégie améliorée basée sur l'historique.
@@ -408,9 +408,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   </span>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  {meteoLastSync && (
+                  {meteoRapport?.heure && (
                     <span style={{ fontSize:11, color:'var(--text-3)' }}>
-                      {meteoLastSync.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}
+                      Dernier agent : {meteoRapport.heure}
                     </span>
                   )}
                   <button onClick={refreshMeteo} className="tap"
