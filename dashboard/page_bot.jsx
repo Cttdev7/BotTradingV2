@@ -329,192 +329,49 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       {tab === 'analyse' && (
         <div style={{ maxWidth: 760 }}>
 
-          {/* ── Config card ── */}
-          <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
-            {/* Header dégradé */}
-            <div style={{ background:'linear-gradient(135deg, var(--accent), color-mix(in oklab,var(--accent) 60%,#5E5CE6))',
-              padding:'16px 20px 14px' }}>
-              <div style={{ fontSize:13, fontWeight:700, color:'rgba(255,255,255,.9)', letterSpacing:'.02em', marginBottom:2 }}>
-                🤖 Configuration de l'analyse Mistral
-              </div>
-              <div style={{ fontSize:12, color:'rgba(255,255,255,.6)' }}>
-                Choisis les filtres et lance l'analyse des pools Polymarket
-              </div>
-            </div>
-
-            <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:16 }}>
-              {/* Catégories */}
-              <div>
-                <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:8 }}>CATÉGORIE</div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-                  {[
-                    { value:'tout',     label:'Tout',      emoji:'🌐' },
-                    { value:'météo',    label:'Météo',     emoji:'🌦' },
-                    { value:'politique',label:'Politique', emoji:'🗳' },
-                    { value:'crypto',   label:'Crypto',    emoji:'₿' },
-                    { value:'finance',  label:'Finance',   emoji:'📈' },
-                    { value:'sport',    label:'Sport',     emoji:'⚽' },
-                  ].map(c => (
-                    <button key={c.value} onClick={() => setAnalyseCategory(c.value)} className="tap"
-                      style={{ border: analyseCategory === c.value ? '2px solid var(--accent)' : '2px solid var(--separator)',
-                        background: analyseCategory === c.value ? 'color-mix(in oklab,var(--accent) 12%,transparent)' : 'var(--fill)',
-                        color: analyseCategory === c.value ? 'var(--accent)' : 'var(--text-2)',
-                        borderRadius:999, padding:'5px 14px', fontSize:13, fontWeight:600,
-                        cursor:'pointer', display:'flex', alignItems:'center', gap:5, transition:'all .15s' }}>
-                      <span>{c.emoji}</span>{c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Volume + bouton */}
-              <div style={{ display:'flex', alignItems:'flex-end', gap:14, flexWrap:'wrap' }}>
-                <div style={{ flex:1, minWidth:200 }}>
-                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:8 }}>VOLUME MINIMUM</div>
-                  <div style={{ display:'flex', gap:6 }}>
-                    {[{v:0,l:'$0+'},{v:1000,l:'$1k+'},{v:5000,l:'$5k+'},{v:10000,l:'$10k+'},{v:50000,l:'$50k+'}].map(o => (
-                      <button key={o.v} onClick={() => setAnalyseVolume(o.v)} className="tap"
-                        style={{ border: analyseVolume === o.v ? '2px solid var(--accent)' : '2px solid var(--separator)',
-                          background: analyseVolume === o.v ? 'color-mix(in oklab,var(--accent) 12%,transparent)' : 'var(--fill)',
-                          color: analyseVolume === o.v ? 'var(--accent)' : 'var(--text-2)',
-                          borderRadius:999, padding:'5px 12px', fontSize:12.5, fontWeight:600,
-                          cursor:'pointer', transition:'all .15s' }}>
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button onClick={runBotAnalysis} disabled={analyseLoading} className="tap"
-                  style={{ border:'none', borderRadius:'var(--r-md)', padding:'11px 22px',
-                    background: analyseLoading ? 'var(--text-3)' : 'var(--accent)',
-                    color:'#fff', fontSize:14, fontWeight:700, cursor: analyseLoading ? 'default' : 'pointer',
-                    display:'flex', alignItems:'center', gap:9, flexShrink:0, transition:'background .2s' }}>
-                  {analyseLoading
-                    ? <><span style={{ width:14, height:14, border:'2px solid rgba(255,255,255,.3)',
-                        borderTopColor:'#fff', borderRadius:'50%', animation:'spin .7s linear infinite', display:'inline-block' }} />Analyse en cours…</>
-                    : <><Icon name="search" size={16} stroke={2.2} />Analyser les pools</>}
-                </button>
+          {/* ── Description stratégie ── */}
+          <Card style={{ marginBottom:'var(--gap)', display:'flex', gap:16, alignItems:'flex-start' }}>
+            <div style={{ fontSize:28, flexShrink:0 }}>🌦</div>
+            <div>
+              <div style={{ fontSize:15, fontWeight:700, marginBottom:4 }}>Stratégie météo à 80%+</div>
+              <div style={{ fontSize:13.5, color:'var(--text-2)', lineHeight:1.6 }}>
+                L'agent scrute Polymarket toutes les 30 min et tracke tous les paris météo dont la probabilité YES dépasse <strong>80%</strong>.
+                Il vérifie chaque jour si ces paris ont été gagnants ou perdants, et génère un rapport à <strong>17h</strong>.
+                Mistral analyse les résultats et propose une stratégie améliorée chaque jour.
               </div>
             </div>
           </Card>
 
-          {/* ── Instructions Mistral ── */}
-          <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
-            <div style={{ padding:'12px 20px 10px', display:'flex', justifyContent:'space-between', alignItems:'center',
-              borderBottom:'1px solid var(--separator)' }}>
-              <div>
-                <div style={{ fontSize:13.5, fontWeight:650 }}>Instructions personnalisées</div>
-                <div style={{ fontSize:12, color:'var(--text-3)', marginTop:1 }}>Dis à Mistral ce qu'il doit prioriser</div>
-              </div>
-              <button onClick={saveAnalyseInstructions} className="tap"
-                style={{ border:'none', background:'color-mix(in oklab,var(--accent) 15%,transparent)',
-                  color:'var(--accent)', borderRadius:'var(--r-sm)', padding:'6px 14px',
-                  fontSize:12.5, fontWeight:700, cursor:'pointer' }}>
-                Sauvegarder
-              </button>
-            </div>
-            <textarea
-              value={analyseInstructions}
-              onChange={e => setAnalyseInstructions(e.target.value)}
-              onBlur={saveAnalyseInstructions}
-              placeholder="Ex : Analyse les paris météo. Donne le % de victoire si je mise à 85%. Est-ce rentable ?"
-              rows={4}
-              style={{ width:'100%', border:'none', background:'transparent', padding:'14px 20px',
-                fontSize:13.5, color:'var(--text)', outline:'none', fontFamily:'inherit',
-                resize:'vertical', lineHeight:1.7, display:'block' }} />
-          </Card>
-
-          {/* ── Erreur ── */}
-          {analyseError && (
-            <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)',
-              background:'color-mix(in oklab,var(--red) 8%,transparent)',
-              border:'1.5px solid color-mix(in oklab,var(--red) 22%,transparent)',
-              padding:'14px 18px', display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:32, height:32, borderRadius:999, background:'color-mix(in oklab,var(--red) 15%,transparent)',
-                display:'grid', placeItems:'center', flexShrink:0 }}>
-                <Icon name="x" size={16} stroke={2.5} style={{ color:'var(--red)' }} />
-              </div>
-              <div>
-                <div style={{ fontSize:13.5, fontWeight:650, color:'var(--red)', marginBottom:2 }}>Erreur d'analyse</div>
-                <div style={{ fontSize:13, color:'var(--red)', opacity:.8 }}>{analyseError}</div>
-                {analyseError.includes('fetch') && (
-                  <div style={{ fontSize:12, marginTop:4, color:'var(--text-3)' }}>
-                    → Le serveur bot n'est pas lancé (port 5000)
+          {/* ── Taux de réussite global ── */}
+          {(() => {
+            const totalGagnes = meteoResumes.reduce((s, r) => s + (r.gagnes || 0), 0);
+            const totalResolus = meteoResumes.reduce((s, r) => s + (r.resolus || 0), 0);
+            const tauxGlobal = totalResolus > 0 ? Math.round(totalGagnes / totalResolus * 100) : null;
+            return tauxGlobal !== null ? (
+              <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)',
+                background: tauxGlobal >= 60 ? 'color-mix(in oklab,var(--green) 10%,transparent)'
+                  : tauxGlobal >= 50 ? 'color-mix(in oklab,var(--orange) 10%,transparent)'
+                  : 'color-mix(in oklab,var(--red) 10%,transparent)',
+                border: `1.5px solid color-mix(in oklab,${tauxGlobal >= 60 ? 'var(--green)' : tauxGlobal >= 50 ? 'var(--orange)' : 'var(--red)'} 25%,transparent)`,
+                padding:'18px 22px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <div style={{ fontSize:12, fontWeight:700, color:'var(--text-3)', letterSpacing:'.05em', marginBottom:4 }}>TAUX DE RÉUSSITE GLOBAL</div>
+                  <div style={{ fontSize:38, fontWeight:900, lineHeight:1,
+                    color: tauxGlobal >= 60 ? 'var(--green)' : tauxGlobal >= 50 ? 'var(--orange)' : 'var(--red)' }}>
+                    {tauxGlobal}%
                   </div>
-                )}
+                </div>
+                <div style={{ textAlign:'right', fontSize:13, color:'var(--text-3)' }}>
+                  <div>{totalGagnes} gagnés</div>
+                  <div>{totalResolus - totalGagnes} perdus</div>
+                  <div>{totalResolus} résolus</div>
+                </div>
               </div>
-            </div>
-          )}
+            ) : null;
+          })()}
 
-          {/* Résultats */}
-          {analyseResult && (
-            <div style={{ animation:'slideIn .3s cubic-bezier(.22,.7,.3,1)' }}>
-              {/* Résumé */}
-              <Card style={{ marginBottom:'var(--gap)' }}>
-                <div style={{ fontSize:12.5, fontWeight:600, color:'var(--text-3)', marginBottom:8 }}>RÉSUMÉ MISTRAL</div>
-                <p style={{ margin:0, fontSize:14.5, lineHeight:1.6 }}>{analyseResult.summary}</p>
-                <div style={{ marginTop:10, fontSize:12, color:'var(--text-3)' }}>
-                  {analyseResult.markets_analysed} pools analysés · {analyseResult.opportunities?.length || 0} opportunités
-                </div>
-              </Card>
+          {/* ── Pools trackés en live ── */}
 
-              {/* Opportunités */}
-              {analyseResult.opportunities?.length > 0 && (
-                <div style={{ marginBottom:'var(--gap)', display:'flex', flexDirection:'column', gap:8 }}>
-                  {analyseResult.opportunities.map((opp, i) => (
-                    <Card key={i} style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-                      <div style={{ flexShrink:0, textAlign:'center', paddingTop:2 }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:'#fff', padding:'3px 10px',
-                          borderRadius:'var(--r-pill)', display:'inline-block',
-                          background: opp.recommendation === 'YES' ? 'var(--green)' : 'var(--red)' }}>
-                          {opp.recommendation}
-                        </div>
-                        <div style={{ fontSize:18, fontWeight:700, marginTop:5,
-                          color: opp.recommendation === 'YES' ? 'var(--green)' : 'var(--red)' }}>
-                          {(opp.yes_price * 100).toFixed(0)}¢
-                        </div>
-                      </div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:14, fontWeight:650, marginBottom:3,
-                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{opp.title}</div>
-                        <p style={{ margin:'0 0 6px', fontSize:13, color:'var(--text-2)', lineHeight:1.5 }}>{opp.reasoning}</p>
-                        <span style={{ fontSize:11.5, fontWeight:600,
-                          color: opp.confidence === 'Élevée' ? 'var(--green)' : opp.confidence === 'Moyenne' ? 'var(--orange)' : 'var(--text-3)' }}>
-                          Confiance {opp.confidence}
-                        </span>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-
-              {/* Stratégie suggérée → copie directe dans la stratégie du bot */}
-              {analyseResult.strategy_suggestion && (
-                <Card style={{ background:'color-mix(in oklab, var(--accent) 8%, var(--bg-elev))',
-                  border:'1px solid color-mix(in oklab, var(--accent) 20%, transparent)' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12 }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:12.5, fontWeight:600, color:'var(--accent)', marginBottom:8 }}>
-                        💡 STRATÉGIE SUGGÉRÉE PAR MISTRAL
-                      </div>
-                      <p style={{ margin:0, fontSize:14, lineHeight:1.6, fontStyle:'italic' }}>
-                        "{analyseResult.strategy_suggestion}"
-                      </p>
-                    </div>
-                    <button onClick={() => copyAnalyseStrategy(analyseResult.strategy_suggestion)} className="tap"
-                      style={{ border:'none', cursor:'pointer', flexShrink:0,
-                        background: analyseCopied ? 'var(--green)' : 'var(--accent)',
-                        color:'#fff', borderRadius:'var(--r-md)', padding:'8px 14px',
-                        fontSize:13, fontWeight:600, display:'flex', alignItems:'center',
-                        gap:6, transition:'background .2s' }}>
-                      <Icon name={analyseCopied ? 'check' : 'arrowupright'} size={15} stroke={2.2} />
-                      {analyseCopied ? 'Copié !' : '→ Ma stratégie'}
-                    </button>
-                  </div>
-                </Card>
-              )}
-            </div>
-          )}
 
           {/* ── Rapport en cours (dernière heure) ── */}
           {meteoRapport && (
@@ -649,39 +506,79 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
             </Card>
           )}
 
-          {/* ── Résumés quotidiens 17h ── */}
+          {/* ── Historique des rapports ── */}
           {meteoResumes.length > 0 && (
-            <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
-              <div style={{ padding:'12px 20px', borderBottom:'1px solid var(--separator)',
+            <Card style={{ padding:0, overflow:'hidden' }}>
+              <div style={{ padding:'14px 20px', borderBottom:'1px solid var(--separator)',
                 display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <div style={{ fontSize:13.5, fontWeight:650 }}>📋 Résumés quotidiens — 17h00</div>
+                <div style={{ fontSize:14, fontWeight:700 }}>📋 Rapports quotidiens</div>
                 <div style={{ fontSize:12, color:'var(--text-3)' }}>{meteoResumes.length} jour{meteoResumes.length > 1 ? 's' : ''}</div>
               </div>
-              {meteoResumes.map((r, i) => (
-                <div key={i} style={{ padding:'14px 20px',
-                  borderBottom: i < meteoResumes.length-1 ? '1px solid var(--separator)' : 'none' }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:8 }}>
-                    <div style={{ fontSize:13.5, fontWeight:700 }}>📅 {r.date} à {r.heure}</div>
-                    <div style={{ fontSize:14, fontWeight:800,
-                      color: r.taux_victoire >= 60 ? 'var(--green)' : r.taux_victoire >= 50 ? 'var(--orange)' : 'var(--red)' }}>
-                      {r.taux_victoire !== null ? `${r.taux_victoire}%` : '—'}
+              {meteoResumes.map((r, i) => {
+                const taux = r.taux_victoire;
+                const couleur = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
+                return (
+                  <div key={i} style={{ padding:'16px 20px',
+                    borderBottom: i < meteoResumes.length-1 ? '1px solid var(--separator)' : 'none' }}>
+                    {/* Header */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontSize:13.5, fontWeight:700 }}>📅 {r.date} — 17h00</div>
+                      <div style={{ fontSize:20, fontWeight:900, color:couleur }}>
+                        {taux !== null ? `${taux}%` : '—'}
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display:'flex', gap:16, fontSize:12, color:'var(--text-3)', marginBottom:r.analyse ? 10 : 0 }}>
-                    <span>📌 {r.trackes} trackés</span>
-                    <span>✅ {r.gagnes} gagnés</span>
-                    <span>❌ {r.perdus} perdus</span>
-                    <span>⏳ {r.resolus} résolus</span>
-                  </div>
-                  {r.analyse && (
-                    <div style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.6,
-                      background:'var(--fill)', borderRadius:'var(--r-md)',
-                      padding:'10px 12px', whiteSpace:'pre-wrap' }}>
-                      {r.analyse}
+                    {/* Stats */}
+                    <div style={{ display:'flex', gap:10, marginBottom:12 }}>
+                      {[
+                        { label:'Trackés',  value: r.trackes, color:'var(--text-3)' },
+                        { label:'Résolus',  value: r.resolus, color:'var(--text-3)' },
+                        { label:'✅ Gagnés', value: r.gagnes,  color:'var(--green)' },
+                        { label:'❌ Perdus', value: r.perdus,  color:'var(--red)' },
+                      ].map((s,j) => (
+                        <div key={j} style={{ textAlign:'center', padding:'7px 10px',
+                          background:'var(--fill)', borderRadius:'var(--r-md)', flex:1 }}>
+                          <div style={{ fontSize:17, fontWeight:700, color:s.color }}>{s.value}</div>
+                          <div style={{ fontSize:10.5, color:'var(--text-3)', marginTop:1 }}>{s.label}</div>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
-              ))}
+                    {/* Analyse Mistral */}
+                    {r.analyse_mistral && (
+                      <div style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.6,
+                        background:'var(--fill)', borderRadius:'var(--r-md)',
+                        padding:'10px 14px', marginBottom: r.strategie_proposee ? 10 : 0, whiteSpace:'pre-wrap' }}>
+                        {r.analyse_mistral}
+                      </div>
+                    )}
+                    {/* Stratégie proposée */}
+                    {r.strategie_proposee && (
+                      <div style={{ padding:'10px 14px', borderRadius:'var(--r-md)',
+                        background:'color-mix(in oklab,var(--accent) 8%,transparent)',
+                        border:'1px solid color-mix(in oklab,var(--accent) 20%,transparent)' }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:'var(--accent)',
+                          letterSpacing:'.05em', marginBottom:5 }}>💡 STRATÉGIE POUR DEMAIN</div>
+                        <div style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.6, fontStyle:'italic' }}>
+                          {r.strategie_proposee}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
+          {/* Empty state */}
+          {meteoResumes.length === 0 && !meteoRapport && (
+            <Card style={{ textAlign:'center', padding:'48px 24px', color:'var(--text-3)' }}>
+              <div style={{ fontSize:36, marginBottom:12 }}>🌦</div>
+              <div style={{ fontSize:15, fontWeight:600, color:'var(--text-2)', marginBottom:6 }}>
+                Premier rapport à 17h00
+              </div>
+              <div style={{ fontSize:13.5, lineHeight:1.6 }}>
+                L'agent tourne en arrière-plan sur GitHub.<br/>
+                Le premier rapport apparaîtra ici ce soir à 17h.
+              </div>
             </Card>
           )}
 

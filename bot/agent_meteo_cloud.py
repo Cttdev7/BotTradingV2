@@ -140,48 +140,83 @@ def save_rapport(db, tracking, active):
 
 # ── Résumé quotidien 17h ──────────────────────────────────────────────────────
 
-def generate_resume(tracking, taux):
+def load_historique(db, limit=7):
+    """Charge les 7 derniers résumés pour que Mistral apprenne."""
+    res = db.table("meteo_resumes").select("date,taux_victoire,analyse_mistral,strategie_proposee").order("created_at", desc=True).limit(limit).execute()
+    return res.data or []
+
+def generate_resume(tracking, taux, historique):
     key = os.getenv("MISTRAL_API_KEY", "")
     if not key:
-        return "MISTRAL_API_KEY manquante."
+        return "MISTRAL_API_KEY manquante.", ""
     resolus = [t for t in tracking if t["resultat"] is not None]
     gagnes  = [t for t in resolus  if t["resultat"] == "GAGNE"]
     lignes  = "\n".join(
         f"- {t['question'][:70]} | {t['yes_price_au_track']}% | {t['resultat']}"
         for t in resolus[-15:]
-    ) or "Aucun marché résolu."
-    prompt = f"""Résume en 5 lignes max ces stats de paris météo Polymarket à +80% :
-Trackés: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(resolus)-len(gagnes)} | Taux: {taux}%
+    ) or "Aucun marché résolu aujourd'hui."
+
+    hist_txt = "\n".join(
+        f"- {h['date']} : {h['taux_victoire']}% réussite | Stratégie appliquée : {(h.get('strategie_proposee') or 'aucune')[:80]}"
+        for h in historique
+    ) or "Aucun historique disponible."
+
+    prompt = f"""Tu es un agent d'analyse de marchés de prédiction Polymarket spécialisé en météo.
+Tu analyses les paris météo trackés à partir de 80% de probabilité YES.
+
+AUJOURD'HUI ({datetime.datetime.now().strftime('%d/%m/%Y')}) :
+- Trackés : {len(tracking)} | Résolus : {len(resolus)} | Gagnés : {len(gagnes)} | Perdus : {len(resolus)-len(gagnes)} | Taux : {taux if taux else 'N/A'}%
+
+Détail des marchés résolus :
 {lignes}
-Réponds en français, très court. Donne : taux de réussite, si la stratégie vaut le coup (oui/non, 1 phrase), conseil pour demain."""
+
+HISTORIQUE DES 7 DERNIERS JOURS :
+{hist_txt}
+
+Réponds en JSON avec exactement cette structure :
+{{
+  "bilan": "2-3 phrases sur les résultats du jour et la tendance",
+  "apprentissage": "Ce que tu as appris par rapport aux jours précédents (1-2 phrases)",
+  "strategie": "Stratégie concrète à appliquer demain basée sur l'historique (1-2 phrases)",
+  "verdict": "RENTABLE" | "RISQUE" | "NON_RENTABLE" | "INSUFFISANT"
+}}"""
+
     try:
         r = requests.post(
             "https://api.mistral.ai/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={"model": "mistral-small-latest",
                   "messages": [{"role": "user", "content": prompt}],
-                  "max_tokens": 200, "temperature": 0.2},
+                  "max_tokens": 400, "temperature": 0.2,
+                  "response_format": {"type": "json_object"}},
             timeout=30,
         )
         r.raise_for_status()
-        return r.json()["choices"][0]["message"]["content"].strip()
+        data = r.json()["choices"][0]["message"]["content"]
+        import json as _j
+        parsed = _j.loads(data)
+        analyse  = f"{parsed.get('bilan','')}\n\n🧠 {parsed.get('apprentissage','')}"
+        strategie = parsed.get("strategie", "")
+        return analyse, strategie
     except Exception as e:
-        return f"Erreur Mistral : {e}"
+        return f"Erreur Mistral : {e}", ""
 
 def save_resume(db, tracking, taux):
-    analyse = generate_resume(tracking, taux)
+    historique = load_historique(db)
+    analyse, strategie = generate_resume(tracking, taux, historique)
     resolus = [t for t in tracking if t["resultat"] is not None]
     db.table("meteo_resumes").insert({
-        "date":          datetime.datetime.now().strftime("%d/%m/%Y"),
-        "heure":         "17:00",
-        "trackes":       len(tracking),
-        "resolus":       len(resolus),
-        "gagnes":        len([t for t in resolus if t["resultat"] == "GAGNE"]),
-        "perdus":        len([t for t in resolus if t["resultat"] == "PERDU"]),
-        "taux_victoire": taux,
-        "analyse_mistral":       analyse,
+        "date":               datetime.datetime.now().strftime("%d/%m/%Y"),
+        "heure":              "17:00",
+        "trackes":            len(tracking),
+        "resolus":            len(resolus),
+        "gagnes":             len([t for t in resolus if t["resultat"] == "GAGNE"]),
+        "perdus":             len([t for t in resolus if t["resultat"] == "PERDU"]),
+        "taux_victoire":      taux,
+        "analyse_mistral":    analyse,
+        "strategie_proposee": strategie,
     }).execute()
-    print(f"📋 Résumé quotidien sauvegardé")
+    print(f"📋 Résumé quotidien sauvegardé | Stratégie : {strategie[:60]}")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
