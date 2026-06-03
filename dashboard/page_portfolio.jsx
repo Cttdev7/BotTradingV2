@@ -75,7 +75,7 @@ function PortfolioPage({ bots, onOpen, portfolio }) {
 
       {/* risk strip */}
       <Card style={{ margin: 'var(--gap) 0', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 18 }}>
-        <Stat label="Gain cumulé" value={fmtUSD(portfolio.totalPnlAbs)} accent="var(--green)" sub={fmtPct(portfolio.totalPnlAbs / (portfolio.totalValue - portfolio.totalPnlAbs) * 100)} />
+        <Stat label="Gain cumulé" value={fmtUSD(portfolio.totalPnlAbs)} accent="var(--green)" sub={(() => { const base = portfolio.totalValue - portfolio.totalPnlAbs; return base > 0 ? fmtPct(portfolio.totalPnlAbs / base * 100) : '—'; })()} />
         <Stat label="Liquidités" value={fmtUSD(portfolio.cash)} sub={`${Math.round(portfolio.cash / portfolio.totalValue * 100)}% du total`} />
         <Stat label="Sharpe moyen" value={wAvg('sharpe').toFixed(2)} />
         <Stat label="Win rate moyen" value={Math.round(wAvg('winRate')) + '%'} />

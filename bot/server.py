@@ -135,7 +135,7 @@ def save_strategy(bot_id):
     if not data:
         return _err("Corps JSON manquant", 400)
     strategy = _load_strategy(bot_id)
-    for key in ("prompt", "enabled"):
+    for key in ("prompt", "enabled", "analyse_instructions", "analyse_category"):
         if key in data:
             strategy[key] = data[key]
     _save_strategy(bot_id, strategy)
@@ -160,11 +160,12 @@ def _save_analysis(result: dict):
 @app.route("/api/analyse", methods=["POST"])
 def analyse():
     try:
-        data     = request.get_json() or {}
-        category   = data.get("category", "tout")
-        min_volume = float(data.get("min_volume", 5000))
-        markets    = polymarket.get_active_markets(limit=100)
-        result     = mistral.analyse(markets, category, min_volume)
+        data         = request.get_json() or {}
+        category     = data.get("category", "tout")
+        min_volume   = float(data.get("min_volume", 5000))
+        instructions = data.get("instructions", "").strip()
+        markets      = polymarket.get_active_markets(limit=100)
+        result       = mistral.analyse(markets, category, min_volume, instructions)
         _save_analysis(result)
         return _ok(result)
     except Exception as e:
@@ -173,6 +174,35 @@ def analyse():
 @app.route("/api/analyse/history", methods=["GET"])
 def analyse_history():
     return _ok(_load_analyses())
+
+# ── Agent Météo ───────────────────────────────────────────────────────────────
+
+METEO_RAPPORTS  = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
+METEO_TRACKING  = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
+
+@app.route("/api/meteo/rapport")
+def meteo_rapport():
+    if os.path.exists(METEO_RAPPORTS):
+        with open(METEO_RAPPORTS) as f:
+            rapports = json.load(f)
+        return _ok(rapports[0] if rapports else {})
+    return _ok({})
+
+@app.route("/api/meteo/tracking")
+def meteo_tracking():
+    if os.path.exists(METEO_TRACKING):
+        with open(METEO_TRACKING) as f:
+            return _ok(json.load(f))
+    return _ok([])
+
+METEO_RESUMES = os.path.join(os.path.dirname(__file__), "meteo_resumes.json")
+
+@app.route("/api/meteo/resumes")
+def meteo_resumes():
+    if os.path.exists(METEO_RESUMES):
+        with open(METEO_RESUMES) as f:
+            return _ok(json.load(f))
+    return _ok([])
 
 # ─────────────────────────────────────────────────────────────────────────────
 

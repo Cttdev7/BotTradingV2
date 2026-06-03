@@ -79,7 +79,7 @@ function HistoryPage({ bots, transactions }) {
               <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.3fr .7fr .8fr 1fr 1fr', gap: 10,
                 alignItems: 'center', padding: '11px var(--pad)', borderBottom: '1px solid var(--separator)' }} className="hist-row">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                  <span style={{ width: 9, height: 9, borderRadius: 3, background: MARKETS[t.market].color, flexShrink: 0 }} />
+                  <span style={{ width: 9, height: 9, borderRadius: 3, background: (MARKETS[t.market] || MARKETS.polymarket).color, flexShrink: 0 }} />
                   <span style={{ fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.sym}</span>
                 </div>
                 <span style={{ fontSize: 13.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{botName(t.bot)}</span>

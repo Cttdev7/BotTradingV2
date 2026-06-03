@@ -145,7 +145,7 @@ def run_cycle(bot_id: str = "polyedge"):
                 "sym":          d["outcome"],
                 "side":         d["action"],
                 "amount_usdc":  d["amount_usdc"],
-                "price":        d.get("yes_price", 0),
+                "price":        float(result.get("price", 0) or d.get("yes_price", 0)),
                 "reason":       d["reason"],
                 "result":       result,
                 "pnl":          None,

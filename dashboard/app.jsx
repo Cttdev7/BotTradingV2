@@ -210,18 +210,14 @@ function App() {
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} transactions={liveActivity} />;
-  else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} />;
+  else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} liveActivity={liveActivity} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
-  else if (nav.page === 'strategy') content = <window.StrategyPage bot={bot} onBack={nav.botId ? () => go('bot', bot.id) : null} />;
-  else if (nav.page === 'analyse') content = <window.AnalysePage />;
   else content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
 
   const mainNav = [
     { page: 'dashboard', icon: 'grid',    label: 'Bots',       badge: bots.length },
     { page: 'portfolio', icon: 'wallet',  label: 'Portefeuille' },
     { page: 'history',   icon: 'clock',   label: 'Historique' },
-    { page: 'analyse',   icon: 'search',  label: 'Analyse' },
-    { page: 'strategy',  icon: 'bolt',    label: 'Stratégie' },
   ];
   const navActive = (p) => nav.page === p || (p === 'dashboard' && (nav.page === 'bot' || nav.page === 'settings'));
 

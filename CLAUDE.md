@@ -19,12 +19,10 @@ Bottrading V2/
 │   ├── ui.jsx          ← Composants partagés (Card, Toggle, Button…)
 │   ├── tweaks-panel.jsx← Panneau thème/densité
 │   ├── page_dashboard.jsx
-│   ├── page_bot.jsx    ← Onglets Aperçu / Stratégie par bot
+│   ├── page_bot.jsx    ← Onglets Aperçu / Stratégie / Analyse Mistral par bot
 │   ├── page_portfolio.jsx
 │   ├── page_settings.jsx
-│   ├── page_history.jsx← Prop transactions depuis app.jsx
-│   ├── page_strategy.jsx
-│   └── page_analyse.jsx← Agent Mistral — analyse indépendante
+│   └── page_history.jsx← Prop transactions depuis app.jsx
 ├── bot/                ← Backend Python
 │   ├── config.py       ← Charge .env (MISTRAL_API_KEY, ANTHROPIC_API_KEY…)
 │   ├── auth.py         ← Signature HMAC-SHA256 partagée

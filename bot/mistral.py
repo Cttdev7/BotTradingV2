@@ -22,6 +22,9 @@ CATEGORIES = {
     "crypto":    ["bitcoin", "btc", "ethereum", "eth", "crypto", "token", "blockchain", "solana", "binance"],
     "finance":   ["fed", "taux", "inflation", "recession", "marché", "bourse", "dow", "nasdaq", "s&p"],
     "sport":     ["nba", "nfl", "football", "tennis", "champion", "coupe", "ligue", "match", "tournoi"],
+    "météo":     ["weather", "temperature", "rain", "snow", "hurricane", "storm", "celsius", "fahrenheit",
+                  "precipitation", "wind", "forecast", "climate", "heat", "cold", "flood", "drought",
+                  "météo", "pluie", "neige", "tempête", "chaleur", "froid", "cyclone"],
 }
 
 
@@ -77,7 +80,7 @@ def _format_for_prompt(markets: list) -> str:
     return "\n".join(lines)
 
 
-def analyse(markets: list, category: str = "tout", min_volume: float = 5000) -> dict:
+def analyse(markets: list, category: str = "tout", min_volume: float = 5000, instructions: str = "") -> dict:
     """
     Analyse les marchés avec Mistral et retourne opportunités + stratégie.
 
@@ -123,11 +126,16 @@ Réponds UNIQUEMENT en JSON valide avec cette structure exacte :
 Identifie 3 à 5 opportunités maximum. Priorise les marchés où le prix semble mal calibré.
 Ne retourne QUE du JSON, sans texte avant ou après."""
 
+    extra = f"\n\nInstructions spécifiques de l'utilisateur : {instructions}" if instructions else ""
     user = f"""Marchés Polymarket disponibles (catégorie: {category}, volume min: ${min_volume:,.0f}) :
 
 {_format_for_prompt(filtered)}
 
-Analyse ces marchés et identifie les meilleures opportunités."""
+Analyse ces marchés et identifie les meilleures opportunités.
+
+Pour chaque opportunité identifiée, indique également :
+- Le pourcentage estimé de victoire si on mise quand le prix YES est supérieur à 85¢ (85%)
+- Si miser à ce niveau est rentable ou non (en tenant compte de la faible marge restante){extra}"""
 
     resp = requests.post(
         MISTRAL_API,
