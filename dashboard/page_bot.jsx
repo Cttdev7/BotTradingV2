@@ -25,20 +25,25 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [meteoTracking,   setMeteoTracking]   = React.useState([]);
   const [meteoLastSync,   setMeteoLastSync]   = React.useState(null);
 
+  const agentPrefix = bot.id === 'polycrypto' ? 'crypto' : 'meteo';
+  const agentLabel  = bot.id === 'polycrypto' ? 'Gemini' : 'Mistral';
+  const agentEmoji  = bot.id === 'polycrypto' ? '₿' : '🌦';
+  const agentAnalyseKey = bot.id === 'polycrypto' ? 'analyse_gemini' : 'analyse_mistral';
+
   const refreshMeteo = React.useCallback(() => {
-    fetch('http://localhost:5000/api/meteo/rapport')
+    fetch(`http://localhost:5000/api/${agentPrefix}/rapport`)
       .then(r => r.json())
       .then(d => { if (d && d.heure) setMeteoRapport(d); })
       .catch(() => {});
-    fetch('http://localhost:5000/api/meteo/rapports')
+    fetch(`http://localhost:5000/api/${agentPrefix}/rapports`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setMeteoRapports(d); })
       .catch(() => {});
-    fetch('http://localhost:5000/api/meteo/tracking')
+    fetch(`http://localhost:5000/api/${agentPrefix}/tracking`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) { setMeteoTracking(d); setMeteoLastSync(new Date()); } })
       .catch(() => {});
-  }, []);
+  }, [agentPrefix]);
 
   // Charge l'historique + instructions + données météo au montage
   React.useEffect(() => {
@@ -342,22 +347,30 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
           {/* ── Hero stratégie ── */}
           <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
-            background:'linear-gradient(135deg,#0f2027,#203a43,#2c5364)', padding:'20px 24px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
-              <span style={{ fontSize:24 }}>🌦</span>
+            background: bot.id === 'polycrypto'
+              ? 'linear-gradient(135deg,#0f0c29,#302b63,#24243e)'
+              : 'linear-gradient(135deg,#0f2027,#203a43,#2c5364)',
+            padding:'20px 24px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap' }}>
+              <span style={{ fontSize:24 }}>{agentEmoji}</span>
               <div style={{ fontSize:17, fontWeight:800, color:'#fff', letterSpacing:'-.01em' }}>
-                Stratégie météo à 80%+
+                Stratégie {bot.id === 'polycrypto' ? 'crypto' : 'météo'} à 80%+
               </div>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
                 AUTO · GitHub Actions
               </span>
+              <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
+                background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
+                🤖 {agentLabel}
+              </span>
             </div>
             <div style={{ fontSize:13.5, color:'rgba(255,255,255,.65)', lineHeight:1.7, maxWidth:560 }}>
               L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>2 heures</strong> et tracke
-              tous les paris météo dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
-              Chaque jour à <strong style={{ color:'rgba(255,255,255,.9)' }}>17h</strong>, Mistral analyse les résultats
-              et propose une stratégie améliorée basée sur l'historique.
+              tous les paris <strong style={{ color:'rgba(255,255,255,.9)' }}>
+                {bot.id === 'polycrypto' ? 'crypto' : 'météo'}
+              </strong> dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
+              Analysé par <strong style={{ color:'rgba(255,255,255,.9)' }}>{agentLabel}</strong> à chaque rapport.
             </div>
           </div>
 
@@ -522,12 +535,12 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         </div>
                       ))}
                     </div>
-                    {/* Analyse Mistral */}
-                    {r.analyse_mistral && (
+                    {/* Analyse IA */}
+                    {r[agentAnalyseKey] && (
                       <div style={{ margin:'0 20px 10px', padding:'11px 14px',
                         borderRadius:'var(--r-md)', background:'var(--fill)',
                         fontSize:13, color:'var(--text-2)', lineHeight:1.65, whiteSpace:'pre-wrap' }}>
-                        {r.analyse_mistral}
+                        {r[agentAnalyseKey]}
                       </div>
                     )}
                     {/* Stratégie */}

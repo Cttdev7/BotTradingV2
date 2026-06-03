@@ -279,6 +279,23 @@ def meteo_resumes():
             return _ok(json.load(f))
     return _ok([])
 
+# ── Agent Crypto ──────────────────────────────────────────────────────────────
+
+@app.route("/api/crypto/rapport")
+def crypto_rapport():
+    data = _supabase_get("crypto_rapports", limit=1)
+    return _ok(data[0] if data else {})
+
+@app.route("/api/crypto/rapports")
+def crypto_rapports_history():
+    data = _supabase_get("crypto_rapports", order="created_at", limit=48)
+    return _ok(data if data is not None else [])
+
+@app.route("/api/crypto/tracking")
+def crypto_tracking():
+    data = _supabase_get("crypto_tracking", order="created_at", limit=100)
+    return _ok(data if data is not None else [])
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

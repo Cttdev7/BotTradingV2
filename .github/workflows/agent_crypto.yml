@@ -1,0 +1,32 @@
+name: Agent Crypto Polymarket
+
+on:
+  schedule:
+    - cron: '0 1-23/2 * * *'  # toutes les 2h (décalé d'1h par rapport au météo)
+  workflow_dispatch:
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-supabase-gemini
+
+      - name: Installer les dépendances
+        run: pip install requests supabase python-dotenv
+
+      - name: Lancer l'agent crypto
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: python bot/agent_crypto_cloud.py

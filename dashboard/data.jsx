@@ -44,9 +44,17 @@ const MARKETS = {
 // TODO: API — capital, status et openPos sont mis à jour en temps réel par api.jsx
 const BOTS = [
   {
-    id: 'polyedge', name: 'Polymarket Weather', market: 'polymarket', glyph: '◑',
-    strategy: 'Arbitrage de probabilités', venue: 'Polymarket',
-    status: 'paused', capital: 0, allocPct: 100,
+    id: 'polyedge', name: 'Polymarket Weather', market: 'polymarket', glyph: '🌦',
+    strategy: 'Arbitrage météo 80%+', venue: 'Polymarket',
+    status: 'paused', capital: 0, allocPct: 50,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
+    id: 'polycrypto', name: 'Polymarket Crypto', market: 'polymarket', glyph: '₿',
+    strategy: 'Arbitrage crypto 80%+', venue: 'Polymarket',
+    status: 'paused', capital: 0, allocPct: 50,
     pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
     series: Array(90).fill(0),
@@ -55,7 +63,8 @@ const BOTS = [
 
 // TODO: API — positions mises à jour en temps réel par api.jsx
 const POSITIONS = {
-  polyedge: [],
+  polyedge:   [],
+  polycrypto: [],
 };
 
 // TODO: API — transactions chargées depuis api.jsx (get_activity)
