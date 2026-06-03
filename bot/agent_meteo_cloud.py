@@ -117,7 +117,7 @@ def save_rapport(db, tracking, active):
     perdus   = [t for t in resolus  if t["resultat"] == "PERDU"]
     taux     = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
     actifs85 = [{"question": m["question"][:70], "pct": round(m["yes_price"]*100,1)}
-                for m in active if m["yes_price"] >= 0.85]
+                for m in active if m["yes_price"] >= 0.80]
     verdict  = (
         "✅ Stratégie rentable"    if taux and taux >= 60 else
         "⚠️ Stratégie à surveiller" if taux and taux >= 50 else
@@ -150,7 +150,7 @@ def generate_resume(tracking, taux):
         f"- {t['question'][:70]} | {t['yes_price_au_track']}% | {t['resultat']}"
         for t in resolus[-15:]
     ) or "Aucun marché résolu."
-    prompt = f"""Résume en 5 lignes max ces stats de paris météo Polymarket à +85% :
+    prompt = f"""Résume en 5 lignes max ces stats de paris météo Polymarket à +80% :
 Trackés: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(resolus)-len(gagnes)} | Taux: {taux}%
 {lignes}
 Réponds en français, très court. Donne : taux de réussite, si la stratégie vaut le coup (oui/non, 1 phrase), conseil pour demain."""
@@ -200,13 +200,13 @@ def run():
     # 2. Fetch marchés météo actifs
     print("2. Fetch marchés météo actifs…")
     active = fetch_markets(active=True, closed=False)
-    print(f"   {len(active)} marchés | {len([m for m in active if m['yes_price']>=0.85])} à 85%+")
+    print(f"   {len(active)} marchés | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
 
-    # 3. Tracking des nouveaux marchés à 85%+
+    # 3. Tracking des nouveaux marchés à 80%+
     print("3. Mise à jour tracking…")
     tracked_ids = {t["condition_id"] for t in tracking}
     for m in active:
-        if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.85:
+        if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.80:
             add_tracking(db, m)
     tracking = load_tracking(db)
 

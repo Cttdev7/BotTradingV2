@@ -2,7 +2,7 @@
 agent_meteo.py — Agent météo Polymarket
 Tourne en continu. Toutes les heures :
 - Scrute les marchés météo Polymarket
-- Tracke les paris à YES > 85%
+- Tracke les paris à YES > 80%
 - Vérifie les résultats des marchés terminés
 - Génère un résumé quotidien à 17h00 chaque jour
 """
@@ -86,7 +86,7 @@ def update_tracking(tracking, active_markets):
     ids = {t["condition_id"] for t in tracking}
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     for m in active_markets:
-        if m["condition_id"] in ids or m["yes_price"] < 0.85:
+        if m["condition_id"] in ids or m["yes_price"] < 0.80:
             continue
         tracking.append({
             "condition_id":       m["condition_id"],
@@ -126,7 +126,7 @@ def build_rapport(tracking, active):
     gagnes   = [t for t in resolus  if t["resultat"] == "GAGNE"]
     perdus   = [t for t in resolus  if t["resultat"] == "PERDU"]
     taux     = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
-    actifs85 = [m for m in active if m["yes_price"] >= 0.85]
+    actifs85 = [m for m in active if m["yes_price"] >= 0.80]
     return {
         "heure":          datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
         "trackes":        len(tracking),
@@ -160,7 +160,7 @@ def generate_resume_quotidien(tracking):
         for t in resolus[-15:]
     ) or "Aucun marché résolu."
 
-    prompt = f"""Résume en 5 lignes max ces stats de paris météo Polymarket à +85% :
+    prompt = f"""Résume en 5 lignes max ces stats de paris météo Polymarket à +80% :
 
 Trackés: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(resolus)-len(gagnes)} | Taux: {taux}%
 
@@ -230,7 +230,7 @@ def run():
 
         log("Fetch marchés météo actifs…")
         active = fetch_markets(active=True, closed=False)
-        log(f"   {len(active)} marchés météo | {len([m for m in active if m['yes_price']>=0.85])} à 85%+")
+        log(f"   {len(active)} marchés météo | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
 
         log("Mise à jour tracking…")
         tracking = update_tracking(tracking, active)
