@@ -175,13 +175,32 @@ def analyse():
 def analyse_history():
     return _ok(_load_analyses())
 
-# ── Agent Météo ───────────────────────────────────────────────────────────────
+# ── Agent Météo (Supabase + fallback JSON local) ──────────────────────────────
 
-METEO_RAPPORTS  = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
-METEO_TRACKING  = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
+SUPABASE_URL     = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
+SUPABASE_KEY     = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728")
+METEO_RAPPORTS   = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
+METEO_TRACKING   = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
+METEO_RESUMES    = os.path.join(os.path.dirname(__file__), "meteo_resumes.json")
+
+def _supabase_get(table, order="created_at", limit=1):
+    try:
+        import urllib.request
+        url = f"{SUPABASE_URL}/rest/v1/{table}?order={order}.desc&limit={limit}"
+        req = urllib.request.Request(url, headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        })
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read())
+    except Exception:
+        return None
 
 @app.route("/api/meteo/rapport")
 def meteo_rapport():
+    data = _supabase_get("meteo_rapports", limit=1)
+    if data:
+        return _ok(data[0] if data else {})
     if os.path.exists(METEO_RAPPORTS):
         with open(METEO_RAPPORTS) as f:
             rapports = json.load(f)
@@ -190,15 +209,19 @@ def meteo_rapport():
 
 @app.route("/api/meteo/tracking")
 def meteo_tracking():
+    data = _supabase_get("meteo_tracking", order="created_at", limit=100)
+    if data is not None:
+        return _ok(data)
     if os.path.exists(METEO_TRACKING):
         with open(METEO_TRACKING) as f:
             return _ok(json.load(f))
     return _ok([])
 
-METEO_RESUMES = os.path.join(os.path.dirname(__file__), "meteo_resumes.json")
-
 @app.route("/api/meteo/resumes")
 def meteo_resumes():
+    data = _supabase_get("meteo_resumes", order="created_at", limit=90)
+    if data is not None:
+        return _ok(data)
     if os.path.exists(METEO_RESUMES):
         with open(METEO_RESUMES) as f:
             return _ok(json.load(f))

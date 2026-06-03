@@ -1,0 +1,26 @@
+name: Agent Météo Polymarket
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # toutes les 30 min
+  workflow_dispatch:          # lancement manuel possible
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances
+        run: pip install requests supabase python-dotenv mistralai
+
+      - name: Lancer l'agent météo
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: python bot/agent_meteo_cloud.py
