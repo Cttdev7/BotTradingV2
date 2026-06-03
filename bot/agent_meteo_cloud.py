@@ -111,39 +111,41 @@ def check_resolved(db, tracking):
 
 # ── Rapport ───────────────────────────────────────────────────────────────────
 
+def load_historique(db, limit=6):
+    """Charge les 6 derniers rapports pour que Mistral apprenne."""
+    res = db.table("meteo_rapports").select("heure,taux_victoire,analyse_mistral,strategie_proposee").order("created_at", desc=True).limit(limit).execute()
+    return res.data or []
+
 def save_rapport(db, tracking, active):
     resolus  = [t for t in tracking if t["resultat"] is not None]
     gagnes   = [t for t in resolus  if t["resultat"] == "GAGNE"]
     perdus   = [t for t in resolus  if t["resultat"] == "PERDU"]
     taux     = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
-    actifs85 = [{"question": m["question"][:70], "pct": round(m["yes_price"]*100,1)}
+    actifs80 = [{"question": m["question"][:70], "pct": round(m["yes_price"]*100,1)}
                 for m in active if m["yes_price"] >= 0.80]
     verdict  = (
-        "✅ Stratégie rentable"    if taux and taux >= 60 else
+        "✅ Stratégie rentable"     if taux and taux >= 60 else
         "⚠️ Stratégie à surveiller" if taux and taux >= 50 else
         "❌ Stratégie non rentable" if taux else
         "⏳ En attente de données"
     )
+    historique = load_historique(db)
+    analyse, strategie = generate_resume(tracking, taux, historique)
     db.table("meteo_rapports").insert({
-        "heure":          datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "trackes":        len(tracking),
-        "en_attente":     len(tracking) - len(resolus),
-        "resolus":        len(resolus),
-        "gagnes":         len(gagnes),
-        "perdus":         len(perdus),
-        "taux_victoire":  taux,
-        "actifs_85":      actifs85,
-        "verdict":        verdict,
+        "heure":             datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "trackes":           len(tracking),
+        "en_attente":        len(tracking) - len(resolus),
+        "resolus":           len(resolus),
+        "gagnes":            len(gagnes),
+        "perdus":            len(perdus),
+        "taux_victoire":     taux,
+        "actifs_85":         actifs80,
+        "verdict":           verdict,
+        "analyse_mistral":   analyse,
+        "strategie_proposee": strategie,
     }).execute()
     print(f"📊 Trackés:{len(tracking)} | ✅{len(gagnes)} ❌{len(perdus)} | {verdict}")
     return taux
-
-# ── Résumé quotidien 17h ──────────────────────────────────────────────────────
-
-def load_historique(db, limit=7):
-    """Charge les 7 derniers résumés pour que Mistral apprenne."""
-    res = db.table("meteo_resumes").select("date,taux_victoire,analyse_mistral,strategie_proposee").order("created_at", desc=True).limit(limit).execute()
-    return res.data or []
 
 def generate_resume(tracking, taux, historique):
     key = os.getenv("MISTRAL_API_KEY", "")
@@ -245,15 +247,9 @@ def run():
             add_tracking(db, m)
     tracking = load_tracking(db)
 
-    # 4. Sauvegarde rapport
-    print("4. Sauvegarde rapport…")
-    taux = save_rapport(db, tracking, active)
-
-    # 5. Résumé quotidien à 17h + reset
-    if now.hour == 17:
-        print("⏰ 17h00 — Résumé quotidien + reset tracking…")
-        save_resume(db, tracking, taux)
-        reset_tracking(db)
+    # 4. Rapport toutes les 2h avec analyse Mistral
+    print("4. Sauvegarde rapport + analyse Mistral…")
+    save_rapport(db, tracking, active)
 
     print("✅ Cycle terminé")
 

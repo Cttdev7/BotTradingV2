@@ -207,6 +207,16 @@ def meteo_rapport():
         return _ok(rapports[0] if rapports else {})
     return _ok({})
 
+@app.route("/api/meteo/rapports")
+def meteo_rapports_history():
+    data = _supabase_get("meteo_rapports", order="created_at", limit=48)
+    if data is not None:
+        return _ok(data)
+    if os.path.exists(METEO_RAPPORTS):
+        with open(METEO_RAPPORTS) as f:
+            return _ok(json.load(f))
+    return _ok([])
+
 @app.route("/api/meteo/tracking")
 def meteo_tracking():
     data = _supabase_get("meteo_tracking", order="created_at", limit=100)

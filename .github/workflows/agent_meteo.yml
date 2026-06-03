@@ -2,7 +2,7 @@ name: Agent Météo Polymarket
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # toutes les 30 min
+    - cron: '0 */2 * * *'   # toutes les 2 heures
   workflow_dispatch:          # lancement manuel possible
 
 jobs:
