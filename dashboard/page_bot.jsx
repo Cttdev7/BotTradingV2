@@ -59,6 +59,17 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     return () => clearInterval(id);
   }, [bot.id, refreshMeteo]);
 
+  // ── P&L horaire ──
+  const [pnlHoraire, setPnlHoraire] = React.useState([]);
+  React.useEffect(() => {
+    if (tab !== 'apercu') return;
+    const load = () => fetch('http://localhost:5000/api/pnl/hourly')
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setPnlHoraire(d); }).catch(() => {});
+    load();
+    const id = setInterval(load, 60 * 60 * 1000); // refresh toutes les heures
+    return () => clearInterval(id);
+  }, [tab, bot.id]);
+
   const saveAnalyseInstructions = () => {
     fetch(`http://localhost:5000/api/strategy/${bot.id}`, {
       method: 'POST',
@@ -580,6 +591,74 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
         gridTemplateColumns: 'repeat(auto-fit, minmax(110px,1fr))', gap: 18 }}>
         {stats.map((s, i) => <Stat key={i} {...s} />)}
       </Card>
+
+      {/* ── Gains horaires ── */}
+      {pnlHoraire.length > 0 ? (
+        <Card style={{ marginBottom: 'var(--gap)', padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '13px 20px', background: 'var(--fill)',
+            borderBottom: '1px solid var(--separator)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>📈 Gains horaires</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                {pnlHoraire.length}h de données
+              </span>
+              <span style={{ fontSize: 14, fontWeight: 800,
+                color: pnlHoraire[pnlHoraire.length-1]?.pnl_cumul >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {pnlHoraire[pnlHoraire.length-1]?.pnl_cumul >= 0 ? '+' : ''}
+                {fmtUSD(pnlHoraire[pnlHoraire.length-1]?.pnl_cumul || 0, 2)} cumulé
+              </span>
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ display: 'grid',
+              gridTemplateColumns: `repeat(${pnlHoraire.length}, minmax(72px, 1fr))`,
+              gap: 0, minWidth: Math.max(pnlHoraire.length * 72, 300) }}>
+              {pnlHoraire.map((h, i) => {
+                const pos = h.pnl >= 0;
+                const maxAbs = Math.max(...pnlHoraire.map(x => Math.abs(x.pnl)), 0.01);
+                const barH = Math.max(Math.round((Math.abs(h.pnl) / maxAbs) * 60), 4);
+                return (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', padding: '12px 4px 10px',
+                    borderRight: i < pnlHoraire.length-1 ? '1px solid var(--separator)' : 'none',
+                    background: i === pnlHoraire.length-1 ? 'color-mix(in oklab,var(--accent) 5%,transparent)' : 'transparent' }}>
+                    {/* Barre */}
+                    <div style={{ height: 60, display: 'flex', alignItems: 'flex-end', marginBottom: 6 }}>
+                      <div style={{ width: 28, height: barH,
+                        borderRadius: 4,
+                        background: pos ? 'var(--green)' : 'var(--red)',
+                        opacity: i === pnlHoraire.length-1 ? 1 : 0.6 }} />
+                    </div>
+                    {/* Valeur */}
+                    <div className="num" style={{ fontSize: 11.5, fontWeight: 700,
+                      color: pos ? 'var(--green)' : 'var(--red)' }}>
+                      {pos ? '+' : ''}{h.pnl.toFixed(2)}
+                    </div>
+                    {/* Heure */}
+                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{h.heure}</div>
+                    {/* Trades */}
+                    <div style={{ fontSize: 10, color: 'var(--text-3)' }}>
+                      {h.trades} trade{h.trades > 1 ? 's' : ''}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </Card>
+      ) : bot.status === 'running' ? (
+        <Card style={{ marginBottom: 'var(--gap)', padding: '18px 20px',
+          display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ fontSize: 22 }}>⏳</div>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 3 }}>En attente du premier trade</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-3)' }}>
+              Les gains horaires s'afficheront ici dès que le bot passera son premier ordre.
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', gap: 'var(--gap)' }}
         className="bot-cols">

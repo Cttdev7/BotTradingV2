@@ -118,6 +118,48 @@ def activity():
     except Exception as e:
         return _err(e)
 
+# ── P&L horaire ──────────────────────────────────────────────────────────────
+
+HISTORY_FILE = os.path.join(os.path.dirname(__file__), "history.json")
+
+@app.route("/api/pnl/hourly")
+def pnl_hourly():
+    try:
+        if not os.path.exists(HISTORY_FILE):
+            return _ok([])
+        with open(HISTORY_FILE) as f:
+            history = json.load(f)
+
+        # Regroupe les trades résolus par heure
+        buckets = {}
+        for t in history:
+            if t.get("pnl") is None:
+                continue
+            ts = t.get("time", "")
+            if not ts:
+                continue
+            try:
+                dt = datetime.datetime.fromisoformat(ts)
+                key = dt.strftime("%d/%m %Hh")
+                if key not in buckets:
+                    buckets[key] = {"heure": key, "pnl": 0.0, "trades": 0, "gagnes": 0}
+                buckets[key]["pnl"]    = round(buckets[key]["pnl"] + float(t["pnl"]), 2)
+                buckets[key]["trades"] += 1
+                if float(t["pnl"]) > 0:
+                    buckets[key]["gagnes"] += 1
+            except Exception:
+                continue
+
+        result = sorted(buckets.values(), key=lambda x: x["heure"])
+        # P&L cumulé
+        cumul = 0.0
+        for b in result:
+            cumul += b["pnl"]
+            b["pnl_cumul"] = round(cumul, 2)
+        return _ok(result[-48:])  # 48h max
+    except Exception as e:
+        return _err(e)
+
 # ── Stratégie (par bot) ───────────────────────────────────────────────────────
 
 @app.route("/api/strategy/<bot_id>", methods=["GET"])
