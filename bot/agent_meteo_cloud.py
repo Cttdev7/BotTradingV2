@@ -179,7 +179,7 @@ def save_resume(db, tracking, taux):
         "gagnes":        len([t for t in resolus if t["resultat"] == "GAGNE"]),
         "perdus":        len([t for t in resolus if t["resultat"] == "PERDU"]),
         "taux_victoire": taux,
-        "analyse":       analyse,
+        "analyse_mistral":       analyse,
     }).execute()
     print(f"📋 Résumé quotidien sauvegardé")
 
