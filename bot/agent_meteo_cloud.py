@@ -159,7 +159,7 @@ def generate_resume(tracking, taux, historique):
     ) or "Aucun marché résolu aujourd'hui."
 
     hist_txt = "\n".join(
-        f"- {h['date']} : {h['taux_victoire']}% réussite | Stratégie appliquée : {(h.get('strategie_proposee') or 'aucune')[:80]}"
+        f"- {h.get('heure','?')} : {h['taux_victoire']}% réussite | Stratégie : {(h.get('strategie_proposee') or 'aucune')[:80]}"
         for h in historique
     ) or "Aucun historique disponible."
 
