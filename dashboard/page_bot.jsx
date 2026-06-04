@@ -23,6 +23,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [meteoRapport,    setMeteoRapport]    = React.useState(null);
   const [meteoRapports,   setMeteoRapports]   = React.useState([]);
   const [meteoTracking,   setMeteoTracking]   = React.useState([]);
+  const [meteoResumes,    setMeteoResumes]    = React.useState([]);
   const [meteoLastSync,   setMeteoLastSync]   = React.useState(null);
 
   const agentPrefix = bot.id === 'polycrypto' ? 'crypto' : 'meteo';
@@ -31,27 +32,31 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const agentAnalyseKey = bot.id === 'polycrypto' ? 'analyse_gemini' : 'analyse_mistral';
 
   const refreshMeteo = React.useCallback(() => {
-    fetch(`http://localhost:5000/api/${agentPrefix}/rapport`)
+    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapport`)
       .then(r => r.json())
       .then(d => { if (d && d.heure) setMeteoRapport(d); })
       .catch(() => {});
-    fetch(`http://localhost:5000/api/${agentPrefix}/rapports`)
+    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapports`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setMeteoRapports(d); })
       .catch(() => {});
-    fetch(`http://localhost:5000/api/${agentPrefix}/tracking`)
+    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/tracking`)
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) { setMeteoTracking(d); setMeteoLastSync(new Date()); } })
+      .catch(() => {});
+    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/resumes`)
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setMeteoResumes(d); })
       .catch(() => {});
   }, [agentPrefix]);
 
   // Charge l'historique + instructions + données météo au montage
   React.useEffect(() => {
-    fetch('http://localhost:5000/api/analyse/history')
+    fetch('http://127.0.0.1:5000/api/analyse/history')
       .then(r => r.json())
       .then(data => { if (Array.isArray(data)) setAnalyseHistory(data); })
       .catch(() => {});
-    fetch(`http://localhost:5000/api/strategy/${bot.id}`)
+    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`)
       .then(r => r.json())
       .then(d => {
         if (d.analyse_instructions !== undefined) setAnalyseInstructions(d.analyse_instructions);
@@ -68,7 +73,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [pnlHoraire, setPnlHoraire] = React.useState([]);
   React.useEffect(() => {
     if (tab !== 'apercu') return;
-    const load = () => fetch('http://localhost:5000/api/pnl/hourly')
+    const load = () => fetch('http://127.0.0.1:5000/api/pnl/hourly')
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setPnlHoraire(d); }).catch(() => {});
     load();
     const id = setInterval(load, 60 * 60 * 1000); // refresh toutes les heures
@@ -76,7 +81,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   }, [tab, bot.id]);
 
   const saveAnalyseInstructions = () => {
-    fetch(`http://localhost:5000/api/strategy/${bot.id}`, {
+    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ analyse_instructions: analyseInstructions, analyse_category: analyseCategory }),
@@ -88,7 +93,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     setAnalyseError(null);
     setAnalyseResult(null);
     try {
-      const r = await fetch('http://localhost:5000/api/analyse', {
+      const r = await fetch('http://127.0.0.1:5000/api/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: analyseCategory, min_volume: analyseVolume, instructions: analyseInstructions }),
@@ -128,7 +133,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
   // Charge la stratégie + historique au montage
   React.useEffect(() => {
-    fetch(`http://localhost:5000/api/strategy/${bot.id}`)
+    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.prompt   !== undefined) setStratPrompt(d.prompt);
@@ -138,7 +143,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
         if (d.last_reason)           setStratLastReason(d.last_reason);
       })
       .catch(() => {});
-    fetch(`http://localhost:5000/api/strategy/${bot.id}/history`)
+    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}/history`)
       .then((r) => r.json())
       .then((d) => { if (Array.isArray(d)) setStratHistory(d); })
       .catch(() => {});
@@ -146,7 +151,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
   const saveStrategy = () => {
     setStratStatus('saving');
-    fetch(`http://localhost:5000/api/strategy/${bot.id}`, {
+    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: stratPrompt, enabled: stratEnabled }),
@@ -562,8 +567,76 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
             </Card>
           )}
 
+          {/* ── Résumés quotidiens à 17h ── */}
+          {meteoResumes.length > 0 && (
+            <Card style={{ marginTop:'var(--gap)', padding:0, overflow:'hidden' }}>
+              <div style={{ padding:'13px 20px', background:'var(--fill)',
+                borderBottom:'1px solid var(--separator)',
+                display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:18 }}>📋</span>
+                  <span style={{ fontSize:14, fontWeight:700 }}>Résumés quotidiens à 17h</span>
+                </div>
+                <span style={{ fontSize:12, color:'var(--text-3)', fontWeight:500 }}>
+                  {meteoResumes.length} jour{meteoResumes.length>1?'s':''}
+                </span>
+              </div>
+              {meteoResumes.map((r,i) => {
+                const taux = r.taux_victoire;
+                const col = taux>=60?'var(--green)':taux>=50?'var(--orange)':taux!==null?'var(--red)':'var(--text-3)';
+                return (
+                  <div key={i} style={{ borderBottom: i<meteoResumes.length-1?'1px solid var(--separator)':'none',
+                    padding:'16px 20px' }}>
+                    {/* En-tête date + taux */}
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <span style={{ fontSize:14, fontWeight:800, color:'var(--text)' }}>
+                          📅 {r.date}
+                        </span>
+                        <span style={{ fontSize:11.5, color:'var(--text-3)',
+                          background:'var(--fill)', padding:'2px 8px', borderRadius:999,
+                          border:'1px solid var(--separator)' }}>
+                          17h00
+                        </span>
+                      </div>
+                      <div style={{ fontSize:28, fontWeight:900, color:col }}>
+                        {taux!==null ? `${taux}%` : '—'}
+                      </div>
+                    </div>
+                    {/* Stats du jour */}
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12 }}>
+                      {[
+                        {l:'Trackés', v:r.trackes, c:'var(--text-3)'},
+                        {l:'Résolus', v:r.resolus, c:'var(--text-2)'},
+                        {l:'✅ Gagnés', v:r.gagnes, c:'var(--green)'},
+                        {l:'❌ Perdus', v:r.perdus, c:'var(--red)'},
+                      ].map((s,j) => (
+                        <div key={j} style={{ textAlign:'center', padding:'8px 6px',
+                          background:'var(--fill)', borderRadius:'var(--r-md)' }}>
+                          <div style={{ fontSize:20, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
+                          <div style={{ fontSize:10.5, color:'var(--text-3)', marginTop:4 }}>{s.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Analyse Mistral */}
+                    {r.analyse && (
+                      <div style={{ padding:'12px 14px', borderRadius:'var(--r-md)',
+                        background:'color-mix(in oklab,var(--accent) 6%,var(--bg-elev))',
+                        border:'1px solid color-mix(in oklab,var(--accent) 20%,transparent)' }}>
+                        <div style={{ fontSize:10.5, fontWeight:800, color:'var(--accent)',
+                          letterSpacing:'.07em', marginBottom:7 }}>🤖 ANALYSE MISTRAL</div>
+                        <div style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.7,
+                          whiteSpace:'pre-wrap' }}>{r.analyse}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </Card>
+          )}
+
           {/* Empty state */}
-          {meteoRapports.length === 0 && meteoTracking.length === 0 && (
+          {meteoRapports.length === 0 && meteoTracking.length === 0 && meteoResumes.length === 0 && (
             <div style={{ textAlign:'center', padding:'56px 24px', color:'var(--text-3)',
               borderRadius:'var(--r-card)', border:'1.5px dashed var(--separator)' }}>
               <div style={{ fontSize:40, marginBottom:14 }}>🌦</div>
