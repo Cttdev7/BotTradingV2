@@ -31,24 +31,41 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const agentEmoji  = bot.id === 'polycrypto' ? '₿' : '🌦';
   const agentAnalyseKey = bot.id === 'polycrypto' ? 'analyse_gemini' : 'analyse_mistral';
 
+  const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
+  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+  const sbFetch = (table, limit = 100) =>
+    fetch(`${SB_URL}/rest/v1/${table}?order=created_at.desc&limit=${limit}`, {
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+    }).then(r => r.json());
+
   const refreshMeteo = React.useCallback(() => {
-    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapport`)
-      .then(r => r.json())
-      .then(d => { if (d && d.heure) setMeteoRapport(d); })
-      .catch(() => {});
-    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapports`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setMeteoRapports(d); })
-      .catch(() => {});
-    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/tracking`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) { setMeteoTracking(d); setMeteoLastSync(new Date()); } })
-      .catch(() => {});
-    fetch(`http://127.0.0.1:5000/api/${agentPrefix}/resumes`)
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setMeteoResumes(d); })
-      .catch(() => {});
-  }, [agentPrefix]);
+    const tableRapports = bot.id === 'polycrypto' ? 'crypto_rapports' : 'meteo_rapports';
+    const tableTracking = bot.id === 'polycrypto' ? 'crypto_tracking' : 'meteo_tracking';
+    const tableResumes  = bot.id === 'polycrypto' ? 'crypto_resumes'  : 'meteo_resumes';
+
+    if (isLocal) {
+      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapport`)
+        .then(r => r.json()).then(d => { if (d && d.heure) setMeteoRapport(d); }).catch(() => {});
+      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapports`)
+        .then(r => r.json()).then(d => { if (Array.isArray(d)) setMeteoRapports(d); }).catch(() => {});
+      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/tracking`)
+        .then(r => r.json()).then(d => { if (Array.isArray(d)) { setMeteoTracking(d); setMeteoLastSync(new Date()); } }).catch(() => {});
+      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/resumes`)
+        .then(r => r.json()).then(d => { if (Array.isArray(d)) setMeteoResumes(d); }).catch(() => {});
+    } else {
+      sbFetch(tableRapports, 48).then(d => {
+        if (Array.isArray(d) && d.length) { setMeteoRapports(d); setMeteoRapport(d[0]); setMeteoLastSync(new Date()); }
+      }).catch(() => {});
+      sbFetch(tableTracking, 100).then(d => {
+        if (Array.isArray(d)) setMeteoTracking(d);
+      }).catch(() => {});
+      sbFetch(tableResumes, 90).then(d => {
+        if (Array.isArray(d)) setMeteoResumes(d);
+      }).catch(() => {});
+    }
+  }, [agentPrefix, isLocal]);
 
   // Charge l'historique + instructions + données météo au montage
   React.useEffect(() => {
