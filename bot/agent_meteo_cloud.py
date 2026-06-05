@@ -12,12 +12,7 @@ USDC_CONTRACT  = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
 USDCE_CONTRACT = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
 TIMEOUT        = 15
 
-METEO_KEYWORDS = [
-    "weather", "temperature", "rain", "snow", "hurricane", "storm",
-    "celsius", "fahrenheit", "precipitation", "wind", "heat", "cold",
-    "flood", "drought", "cyclone", "tornado", "blizzard", "frost",
-    "hail", "thunder", "météo", "pluie", "neige", "tempête",
-]
+GAMMA_EVENTS_API = "https://gamma-api.polymarket.com/events"
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
 
@@ -85,18 +80,31 @@ def _parse_market(m):
         "closed":       m.get("closed", False),
     }
 
-def fetch_markets(active=True, closed=False, limit=300):
+def fetch_high_temp_markets():
+    """Fetch tous les marchés 'highest temperature' via tag_slug=weather sur l'API events."""
     try:
-        params = {"limit": limit, "order": "volume", "ascending": "false"}
-        if active is not None:  params["active"] = str(active).lower()
-        if closed is not None:  params["closed"] = str(closed).lower()
-        r = requests.get(f"{GAMMA_API}/markets", params=params, timeout=TIMEOUT)
-        r.raise_for_status()
-        raw = r.json()
-        if not isinstance(raw, list):
-            return []
-        return [p for m in raw if (p := _parse_market(m)) and
-                any(kw in p["question"].lower() for kw in METEO_KEYWORDS)]
+        result = []
+        offset = 0
+        while True:
+            r = requests.get(GAMMA_EVENTS_API,
+                params={"tag_slug": "weather", "limit": 100, "active": "true", "offset": offset},
+                timeout=TIMEOUT)
+            r.raise_for_status()
+            events = r.json()
+            if not events:
+                break
+            for event in events:
+                title = event.get("title", "").lower()
+                if "highest temperature" not in title and "high temperature" not in title:
+                    continue
+                for m in event.get("markets", []):
+                    parsed = _parse_market(m)
+                    if parsed:
+                        result.append(parsed)
+            if len(events) < 100:
+                break
+            offset += 100
+        return result
     except Exception as e:
         print(f"⚠️  Fetch erreur: {e}")
         return []
@@ -330,10 +338,10 @@ def run():
     new_resolved = check_and_update(db, tracking)
     tracking = load_tracking(db)
 
-    # 3. Fetch marchés météo actifs
-    print("3. Fetch marchés météo actifs…")
-    active = fetch_markets(active=True, closed=False)
-    print(f"   {len(active)} marchés | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
+    # 3. Fetch marchés high temperature (polymarket.com/weather/high-temperature)
+    print("3. Fetch marchés highest temperature…")
+    active = fetch_high_temp_markets()
+    print(f"   {len(active)} marchés high temp | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
 
     # 4. Tracking des nouveaux marchés à 80%+
     print("4. Mise à jour tracking…")
