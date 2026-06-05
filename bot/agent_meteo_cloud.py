@@ -317,13 +317,9 @@ def run():
             new_tracked += 1
     tracking = load_tracking(db)
 
-    # 5. Rapport Mistral uniquement si des changements ont eu lieu
-    taux = None
-    if new_resolved > 0 or new_tracked > 0:
-        print(f"5. Rapport Mistral ({new_resolved} résolus, {new_tracked} nouveaux)…")
-        taux = save_rapport(db, tracking, active)
-    else:
-        print("5. Aucun changement — rapport Mistral ignoré")
+    # 5. Rapport Mistral à chaque cycle
+    print(f"5. Rapport Mistral ({new_resolved} résolus, {new_tracked} nouveaux)…")
+    taux = save_rapport(db, tracking, active)
 
     # 6. Résumé quotidien à 17h
     if now.hour == 17 and now.minute < 30:
