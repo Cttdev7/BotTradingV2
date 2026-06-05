@@ -103,13 +103,14 @@ def fetch_markets(active=True, closed=False, limit=300):
 
 # ── Stats globales (jamais supprimées) ───────────────────────────────────────
 
-def increment_global_stats(db, resultat):
-    """Met à jour le compteur cumulé all-time à chaque résolution."""
+def increment_global_stats(db, last_price_pct):
+    """Met à jour le compteur cumulé. Un marché terminé à >50% = prédiction tenue."""
     res = db.table("meteo_stats").select("*").eq("id", "meteo").execute()
     current = res.data[0] if res.data else {"total_resolus": 0, "total_gagnes": 0, "total_perdus": 0}
     total_resolus = (current.get("total_resolus") or 0) + 1
-    total_gagnes  = (current.get("total_gagnes")  or 0) + (1 if resultat == "GAGNE" else 0)
-    total_perdus  = (current.get("total_perdus")  or 0) + (1 if resultat == "PERDU" else 0)
+    tenu          = last_price_pct >= 50  # la prédiction a tenu si terminé à 50%+
+    total_gagnes  = (current.get("total_gagnes")  or 0) + (1 if tenu else 0)
+    total_perdus  = (current.get("total_perdus")  or 0) + (0 if tenu else 1)
     taux = round(total_gagnes / total_resolus * 100, 1) if total_resolus > 0 else None
     db.table("meteo_stats").upsert({
         "id":                   "meteo",
@@ -128,27 +129,39 @@ def load_tracking(db):
 
 def add_tracking(db, market):
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    pct = round(market["yes_price"] * 100, 1)
     db.table("meteo_tracking").insert({
         "condition_id":       market["condition_id"],
         "question":           market["question"],
-        "yes_price_au_track": round(market["yes_price"] * 100, 1),
+        "yes_price_au_track": pct,
+        "yes_price_actuel":   pct,
         "volume":             round(market["volume"], 0),
         "tracke_le":          now,
+        "derniere_lecture":   now,
         "resultat":           None,
         "resolu_le":          None,
     }).execute()
-    print(f"  📌 {market['question'][:65]} ({market['yes_price']*100:.0f}%)")
+    print(f"  📌 {market['question'][:65]} ({pct}%)")
 
-def update_resolved(db, condition_id, resultat):
+def update_price(db, condition_id, yes_price_actuel):
+    """Met à jour le % actuel du marché tracké."""
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     db.table("meteo_tracking").update({
-        "resultat":  resultat,
+        "yes_price_actuel":  yes_price_actuel,
+        "derniere_lecture":  now,
+    }).eq("condition_id", condition_id).execute()
+
+def update_terminated(db, condition_id, last_price_pct):
+    """Marque le marché comme terminé avec le dernier % connu."""
+    now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    db.table("meteo_tracking").update({
+        "resultat":  f"TERMINÉ: {last_price_pct}%",
         "resolu_le": now,
     }).eq("condition_id", condition_id).execute()
-    increment_global_stats(db, resultat)
+    increment_global_stats(db, last_price_pct)
 
 def fetch_market_by_id(condition_id):
-    """Fetch un marché directement par condition_id — fiable quelle que soit sa popularité."""
+    """Fetch un marché directement par condition_id."""
     try:
         r = requests.get(f"{GAMMA_API}/markets",
                         params={"conditionId": condition_id},
@@ -161,24 +174,26 @@ def fetch_market_by_id(condition_id):
         print(f"⚠️  Fetch {condition_id[:16]}: {e}")
     return None
 
-def check_resolved(db, tracking):
-    """Vérifie chaque marché tracké directement par son ID."""
+def check_and_update(db, tracking):
+    """Relit chaque marché tracké, met à jour le % actuel.
+    Si le marché a disparu ou fermé → enregistre le dernier % comme résultat final."""
     pending = [t for t in tracking if t["resultat"] is None]
     if not pending:
         return 0
     count = 0
     for t in pending:
         m = fetch_market_by_id(t["condition_id"])
-        if not m:
-            continue
-        if m["yes_price"] >= 0.99:
-            update_resolved(db, t["condition_id"], "GAGNE")
-            print(f"  ✅ GAGNÉ : {t['question'][:55]}")
+        last_pct = t.get("yes_price_actuel") or t.get("yes_price_au_track") or 0
+        if m is None or m.get("closed"):
+            # Marché disparu ou fermé → TERMINÉ avec dernier % connu
+            update_terminated(db, t["condition_id"], last_pct)
+            print(f"  🔚 TERMINÉ à {last_pct}% : {t['question'][:50]}")
             count += 1
-        elif m["yes_price"] <= 0.01:
-            update_resolved(db, t["condition_id"], "PERDU")
-            print(f"  ❌ PERDU : {t['question'][:55]}")
-            count += 1
+        else:
+            # Mise à jour du % actuel
+            new_pct = round(m["yes_price"] * 100, 1)
+            update_price(db, t["condition_id"], new_pct)
+            print(f"  🔄 {new_pct}% : {t['question'][:50]}")
     return count
 
 # ── Nettoyage des données > 4 jours ──────────────────────────────────────────
@@ -309,10 +324,10 @@ def run():
     print("1. Nettoyage des données >4 jours…")
     cleanup_old_data(db)
 
-    # 2. Vérifie les marchés résolus
-    print("2. Vérification des marchés résolus…")
+    # 2. Relit et met à jour tous les marchés trackés
+    print("2. Mise à jour des marchés trackés…")
     tracking = load_tracking(db)
-    new_resolved = check_resolved(db, tracking)
+    new_resolved = check_and_update(db, tracking)
     tracking = load_tracking(db)
 
     # 3. Fetch marchés météo actifs

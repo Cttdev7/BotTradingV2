@@ -469,41 +469,43 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   </button>
                 </div>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 90px 110px 100px',
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 120px 110px 130px',
                 padding:'8px 20px', fontSize:10.5, fontWeight:700, color:'var(--text-3)',
                 letterSpacing:'.07em', borderBottom:'1px solid var(--separator)', background:'var(--fill)' }}>
                 <span>PARI MÉTÉO</span>
-                <span style={{textAlign:'center'}}>CONFIANCE</span>
+                <span style={{textAlign:'center'}}>INITIAL → ACTUEL</span>
                 <span style={{textAlign:'center'}}>TRACKÉ LE</span>
                 <span style={{textAlign:'center'}}>RÉSULTAT</span>
               </div>
               {meteoTracking.map((t,i) => {
-                const g = t.resultat==='GAGNE', p = t.resultat==='PERDU';
+                const termine = t.resultat && t.resultat.startsWith('TERMINÉ');
+                const actuel  = t.yes_price_actuel ?? t.yes_price_au_track;
+                const delta   = actuel - t.yes_price_au_track;
+                const col     = actuel >= 90 ? 'var(--green)' : actuel >= 70 ? 'var(--orange)' : 'var(--text-2)';
                 return (
-                  <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 90px 110px 100px',
+                  <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 120px 110px 130px',
                     padding:'12px 20px', alignItems:'center',
                     borderBottom: i<meteoTracking.length-1 ? '1px solid var(--separator)':'none',
-                    background: g ? 'color-mix(in oklab,var(--green) 4%,transparent)'
-                      : p ? 'color-mix(in oklab,var(--red) 4%,transparent)' : 'transparent' }}>
-                    <div style={{ fontSize:13.5, color:'var(--text)', lineHeight:1.4, paddingRight:16,
-                      fontWeight: g||p ? 500 : 400 }}>{t.question}</div>
+                    background: termine ? 'color-mix(in oklab,var(--accent) 4%,transparent)' : 'transparent' }}>
+                    <div style={{ fontSize:13.5, color:'var(--text)', lineHeight:1.4, paddingRight:16 }}>{t.question}</div>
                     <div style={{ textAlign:'center' }}>
-                      <span style={{ fontSize:15, fontWeight:900,
-                        color: t.yes_price_au_track>=99?'var(--green)':t.yes_price_au_track>=90?'var(--orange)':'var(--text-2)' }}>
-                        {t.yes_price_au_track}%
-                      </span>
+                      <span style={{ fontSize:11, color:'var(--text-3)' }}>{t.yes_price_au_track}%</span>
+                      <span style={{ fontSize:11, color:'var(--text-3)', margin:'0 4px' }}>→</span>
+                      <span style={{ fontSize:15, fontWeight:900, color:col }}>{actuel}%</span>
+                      {delta !== 0 && (
+                        <span style={{ fontSize:10, color: delta>0?'var(--green)':'var(--red)', marginLeft:4 }}>
+                          {delta>0?'+':''}{delta.toFixed(1)}
+                        </span>
+                      )}
                     </div>
                     <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text-3)' }}>{t.tracke_le}</div>
                     <div style={{ textAlign:'center' }}>
-                      {g && <span style={{ fontSize:12, fontWeight:700, color:'var(--green)',
-                        background:'color-mix(in oklab,var(--green) 15%,transparent)',
-                        padding:'4px 12px', borderRadius:999 }}>✅ Gagné</span>}
-                      {p && <span style={{ fontSize:12, fontWeight:700, color:'var(--red)',
-                        background:'color-mix(in oklab,var(--red) 15%,transparent)',
-                        padding:'4px 12px', borderRadius:999 }}>❌ Perdu</span>}
+                      {termine && <span style={{ fontSize:11.5, fontWeight:700, color:'var(--accent)',
+                        background:'color-mix(in oklab,var(--accent) 12%,transparent)',
+                        padding:'4px 10px', borderRadius:999 }}>{t.resultat}</span>}
                       {!t.resultat && <span style={{ fontSize:12, color:'var(--text-3)',
                         background:'var(--fill)', padding:'4px 12px', borderRadius:999,
-                        border:'1px solid var(--separator)' }}>⏳ Attente</span>}
+                        border:'1px solid var(--separator)' }}>⏳ En cours</span>}
                     </div>
                   </div>
                 );
