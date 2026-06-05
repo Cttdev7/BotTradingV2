@@ -1,0 +1,32 @@
+name: Agent Crypto 4H Polymarket
+
+on:
+  schedule:
+    - cron: '30 * * * *'   # toutes les heures (décalé de 30min par rapport au crypto horaire)
+  workflow_dispatch:
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-supabase-gemini-4h
+
+      - name: Installer les dépendances
+        run: pip install requests supabase python-dotenv
+
+      - name: Lancer l'agent crypto 4H
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: python bot/agent_crypto_4h_cloud.py
