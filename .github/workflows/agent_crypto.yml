@@ -2,7 +2,7 @@ name: Agent Crypto Polymarket
 
 on:
   schedule:
-    - cron: '0 1-23/2 * * *'  # toutes les 2h (décalé d'1h par rapport au météo)
+    - cron: '0 * * * *'  # toutes les heures
   workflow_dispatch:
 
 jobs:
