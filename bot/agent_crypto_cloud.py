@@ -79,20 +79,19 @@ def fetch_hourly_markets(limit=500):
         print(f"⚠️  Fetch erreur: {e}")
         return []
 
-def fetch_closed_markets(limit=300):
-    """Fetch les marchés fermés récemment pour vérifier les résolutions."""
+def fetch_market_by_id(condition_id):
+    """Fetch un marché directement par condition_id."""
     try:
-        params = {"limit": limit, "order": "volume", "ascending": "false",
-                  "active": "false", "closed": "true"}
-        r = requests.get(f"{GAMMA_API}/markets", params=params, timeout=TIMEOUT)
+        r = requests.get(f"{GAMMA_API}/markets",
+                        params={"conditionId": condition_id},
+                        timeout=TIMEOUT)
         r.raise_for_status()
-        raw = r.json()
-        if not isinstance(raw, list):
-            return []
-        return [p for m in raw if (p := _parse_market(m))]
+        data = r.json()
+        if isinstance(data, list) and data:
+            return _parse_market(data[0])
     except Exception as e:
-        print(f"⚠️  Fetch fermés erreur: {e}")
-        return []
+        print(f"⚠️  Fetch {condition_id[:16]}: {e}")
+    return None
 
 # ── Stats globales (jamais supprimées) ───────────────────────────────────────
 
@@ -139,14 +138,13 @@ def update_resolved(db, condition_id, resultat):
     increment_global_stats(db, resultat)
 
 def check_resolved(db, tracking):
-    """Vérifie les marchés résolus. Retourne le nombre de nouvelles résolutions."""
-    closed = fetch_closed_markets()
-    ids = {m["condition_id"]: m for m in closed}
+    """Vérifie chaque marché tracké directement par son ID."""
+    pending = [t for t in tracking if t["resultat"] is None]
+    if not pending:
+        return 0
     count = 0
-    for t in tracking:
-        if t["resultat"] is not None:
-            continue
-        m = ids.get(t["condition_id"])
+    for t in pending:
+        m = fetch_market_by_id(t["condition_id"])
         if not m:
             continue
         if m["yes_price"] >= 0.99:

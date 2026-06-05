@@ -147,15 +147,28 @@ def update_resolved(db, condition_id, resultat):
     }).eq("condition_id", condition_id).execute()
     increment_global_stats(db, resultat)
 
+def fetch_market_by_id(condition_id):
+    """Fetch un marché directement par condition_id — fiable quelle que soit sa popularité."""
+    try:
+        r = requests.get(f"{GAMMA_API}/markets",
+                        params={"conditionId": condition_id},
+                        timeout=TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+        if isinstance(data, list) and data:
+            return _parse_market(data[0])
+    except Exception as e:
+        print(f"⚠️  Fetch {condition_id[:16]}: {e}")
+    return None
+
 def check_resolved(db, tracking):
-    """Vérifie les marchés résolus. Retourne le nombre de nouvelles résolutions."""
-    closed = fetch_markets(active=False, closed=True)
-    ids = {m["condition_id"]: m for m in closed}
+    """Vérifie chaque marché tracké directement par son ID."""
+    pending = [t for t in tracking if t["resultat"] is None]
+    if not pending:
+        return 0
     count = 0
-    for t in tracking:
-        if t["resultat"] is not None:
-            continue
-        m = ids.get(t["condition_id"])
+    for t in pending:
+        m = fetch_market_by_id(t["condition_id"])
         if not m:
             continue
         if m["yes_price"] >= 0.99:
