@@ -66,11 +66,10 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     sbFetch(tableResumes, 90).then(d => {
       if (Array.isArray(d)) setMeteoResumes(d);
     }).catch(() => {});
-    if (agentPrefix === 'meteo') {
-      sbFetch('meteo_stats?id=eq.meteo', 1).then(d => {
-        if (Array.isArray(d) && d[0]) setMeteoStats(d[0]);
-      }).catch(() => {});
-    }
+    const statsTable = agentPrefix === 'meteo' ? 'meteo_stats?id=eq.meteo' : 'crypto_stats?id=eq.crypto';
+    sbFetch(statsTable, 1).then(d => {
+      if (Array.isArray(d) && d[0]) setMeteoStats(d[0]);
+    }).catch(() => {});
   }, [agentPrefix, isLocal]);
 
   // Charge instructions + données météo au montage
