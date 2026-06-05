@@ -138,7 +138,7 @@ def load_tracking(db):
 def add_tracking(db, market):
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     pct = round(market["yes_price"] * 100, 1)
-    db.table("meteo_tracking").insert({
+    db.table("meteo_tracking").upsert({
         "condition_id":       market["condition_id"],
         "question":           market["question"],
         "yes_price_au_track": pct,
@@ -148,7 +148,7 @@ def add_tracking(db, market):
         "derniere_lecture":   now,
         "resultat":           None,
         "resolu_le":          None,
-    }).execute()
+    }, on_conflict="condition_id", ignore_duplicates=True).execute()
     print(f"  📌 {market['question'][:65]} ({pct}%)")
 
 def update_price(db, condition_id, yes_price_actuel):
