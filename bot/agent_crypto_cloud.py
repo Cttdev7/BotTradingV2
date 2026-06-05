@@ -1,6 +1,7 @@
 """
-agent_crypto_cloud.py — Agent crypto Polymarket (GitHub Actions + Supabase + Google Gemini)
-S'exécute toutes les 2h via GitHub Actions.
+agent_crypto_cloud.py — Agent crypto HORAIRE Polymarket (GitHub Actions + Supabase + Google Gemini)
+Tracke les paris crypto de polymarket.com/crypto/hourly (YES ≥ 80%, résolution dans 2h).
+S'exécute toutes les heures via GitHub Actions.
 """
 
 import os, datetime, requests, json as _json
@@ -9,12 +10,9 @@ GAMMA_API = "https://gamma-api.polymarket.com"
 TIMEOUT   = 15
 
 CRYPTO_KEYWORDS = [
-    "bitcoin", "btc", "ethereum", "eth", "crypto", "token", "blockchain",
-    "solana", "sol", "binance", "bnb", "xrp", "ripple", "cardano", "ada",
-    "dogecoin", "doge", "polygon", "matic", "avalanche", "avax", "chainlink",
-    "link", "uniswap", "uni", "litecoin", "ltc", "polkadot", "dot",
-    "defi", "nft", "web3", "stablecoin", "usdt", "usdc", "altcoin",
-    "halving", "mining", "wallet", "exchange", "coinbase", "kraken",
+    "bitcoin", "btc", "ethereum", "eth", "solana", "sol", "xrp", "ripple",
+    "cardano", "ada", "dogecoin", "doge", "bnb", "binance", "avalanche", "avax",
+    "chainlink", "link", "polkadot", "dot", "litecoin", "ltc", "crypto",
 ]
 
 # ── Supabase ──────────────────────────────────────────────────────────────────
@@ -41,22 +39,59 @@ def _parse_market(m):
         "yes_price":    yes_price,
         "volume":       float(m.get("volume24hr") or m.get("volume") or 0),
         "closed":       m.get("closed", False),
+        "end_date":     m.get("endDate", ""),
     }
 
-def fetch_markets(active=True, closed=False, limit=300):
+def _is_hourly(market):
+    """Vrai si le marché se résout dans les 2 prochaines heures."""
+    end_str = market.get("end_date", "")
+    if not end_str:
+        return False
     try:
-        params = {"limit": limit, "order": "volume", "ascending": "false"}
-        if active is not None:  params["active"] = str(active).lower()
-        if closed is not None:  params["closed"] = str(closed).lower()
+        end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return now < end <= now + datetime.timedelta(hours=2)
+    except:
+        return False
+
+def fetch_hourly_markets(limit=500):
+    """Fetch les marchés crypto actifs qui se résolvent dans les 2h."""
+    try:
+        params = {"limit": limit, "order": "volume", "ascending": "false",
+                  "active": "true", "closed": "false"}
         r = requests.get(f"{GAMMA_API}/markets", params=params, timeout=TIMEOUT)
         r.raise_for_status()
         raw = r.json()
         if not isinstance(raw, list):
             return []
-        return [p for m in raw if (p := _parse_market(m)) and
-                any(kw in p["question"].lower() for kw in CRYPTO_KEYWORDS)]
+        result = []
+        for m in raw:
+            p = _parse_market(m)
+            if not p:
+                continue
+            if not any(kw in p["question"].lower() for kw in CRYPTO_KEYWORDS):
+                continue
+            if not _is_hourly(p):
+                continue
+            result.append(p)
+        return result
     except Exception as e:
         print(f"⚠️  Fetch erreur: {e}")
+        return []
+
+def fetch_closed_markets(limit=300):
+    """Fetch les marchés fermés récemment pour vérifier les résolutions."""
+    try:
+        params = {"limit": limit, "order": "volume", "ascending": "false",
+                  "active": "false", "closed": "true"}
+        r = requests.get(f"{GAMMA_API}/markets", params=params, timeout=TIMEOUT)
+        r.raise_for_status()
+        raw = r.json()
+        if not isinstance(raw, list):
+            return []
+        return [p for m in raw if (p := _parse_market(m))]
+    except Exception as e:
+        print(f"⚠️  Fetch fermés erreur: {e}")
         return []
 
 # ── Stats globales (jamais supprimées) ───────────────────────────────────────
@@ -105,7 +140,7 @@ def update_resolved(db, condition_id, resultat):
 
 def check_resolved(db, tracking):
     """Vérifie les marchés résolus. Retourne le nombre de nouvelles résolutions."""
-    closed = fetch_markets(active=False, closed=True)
+    closed = fetch_closed_markets()
     ids = {m["condition_id"]: m for m in closed}
     count = 0
     for t in tracking:
@@ -124,14 +159,15 @@ def check_resolved(db, tracking):
             count += 1
     return count
 
-# ── Nettoyage des données > 4 jours ──────────────────────────────────────────
+# ── Nettoyage ─────────────────────────────────────────────────────────────────
 
 def cleanup_old_data(db):
-    """Supprime tracking et rapports de plus de 4 jours. Les stats globales sont préservées."""
-    cutoff = (datetime.datetime.now() - datetime.timedelta(days=4)).isoformat()
-    db.table("crypto_tracking").delete().lt("created_at", cutoff).execute()
-    db.table("crypto_rapports").delete().lt("created_at", cutoff).execute()
-    print("🗑️  Données >4 jours supprimées")
+    """Supprime le tracking >2 jours et les rapports >4 jours. Stats préservées."""
+    cutoff_tracking = (datetime.datetime.now() - datetime.timedelta(days=2)).isoformat()
+    cutoff_rapports = (datetime.datetime.now() - datetime.timedelta(days=4)).isoformat()
+    db.table("crypto_tracking").delete().lt("created_at", cutoff_tracking).execute()
+    db.table("crypto_rapports").delete().lt("created_at", cutoff_rapports).execute()
+    print("🗑️  Données anciennes supprimées")
 
 # ── Analyse Google Gemini ─────────────────────────────────────────────────────
 
@@ -153,13 +189,14 @@ def generate_analyse(tracking, taux, historique):
         f"- {h.get('heure','?')} : {h['taux_victoire']}% | Stratégie : {(h.get('strategie_proposee') or 'aucune')[:80]}"
         for h in historique
     ) or "Aucun historique."
-    prompt = f"""Tu es un expert en marchés de prédiction Polymarket spécialisé en crypto.
-Tu analyses les paris crypto trackés à partir de 80% de probabilité YES.
+    prompt = f"""Tu es un expert en marchés de prédiction Polymarket spécialisé en crypto HORAIRE.
+Tu analyses les paris crypto à résolution horaire trackés à partir de 80% de probabilité YES.
+Ces marchés se resolvent toutes les heures (ex: "Will BTC be above $X at 3:00 PM?").
 
 RAPPORT ({datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}) :
 Trackés: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(resolus)-len(gagnes)} | Taux: {taux if taux else 'N/A'}%
 
-Marchés résolus :
+Marchés résolus cette heure :
 {lignes}
 
 Historique des 6 derniers rapports :
@@ -167,9 +204,9 @@ Historique des 6 derniers rapports :
 
 Réponds en JSON :
 {{
-  "bilan": "2-3 phrases sur les résultats et la tendance crypto",
-  "apprentissage": "Ce que tu retiens par rapport aux rapports précédents (1-2 phrases)",
-  "strategie": "Stratégie concrète pour le prochain cycle basée sur l'historique (1-2 phrases)",
+  "bilan": "2-3 phrases sur les résultats de l'heure et la tendance des prix crypto",
+  "apprentissage": "Ce que tu retiens pour mieux sélectionner les paris (1-2 phrases)",
+  "strategie": "Stratégie adaptative pour la prochaine heure basée sur l'historique (1-2 phrases)",
   "verdict": "RENTABLE" | "RISQUE" | "NON_RENTABLE" | "INSUFFISANT"
 }}"""
     try:
@@ -235,18 +272,18 @@ def save_resume(db, tracking, taux):
         "analyse_gemini":     analyse,
         "strategie_proposee": strategie,
     }).execute()
-    print(f"📋 Résumé quotidien sauvegardé | Stratégie : {strategie[:60]}")
+    print(f"📋 Résumé quotidien sauvegardé")
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run():
     now = datetime.datetime.now()
-    print(f"₿  Agent Crypto Cloud — {now.strftime('%d/%m/%Y %H:%M')}")
+    print(f"₿  Agent Crypto Horaire — {now.strftime('%d/%m/%Y %H:%M')}")
 
     db = get_db()
 
-    # 1. Nettoyage des données > 4 jours
-    print("1. Nettoyage des données >4 jours…")
+    # 1. Nettoyage
+    print("1. Nettoyage des données anciennes…")
     cleanup_old_data(db)
 
     # 2. Vérifie les marchés résolus
@@ -255,10 +292,10 @@ def run():
     new_resolved = check_resolved(db, tracking)
     tracking = load_tracking(db)
 
-    # 3. Fetch marchés crypto actifs
-    print("3. Fetch marchés crypto actifs…")
-    active = fetch_markets(active=True, closed=False)
-    print(f"   {len(active)} marchés | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
+    # 3. Fetch marchés crypto horaires actifs (résolution dans 2h)
+    print("3. Fetch marchés crypto horaires (YES ≥ 80%, résolution dans 2h)…")
+    active = fetch_hourly_markets()
+    print(f"   {len(active)} marchés horaires | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
 
     # 4. Tracking des nouveaux marchés à 80%+
     print("4. Mise à jour tracking…")
@@ -270,16 +307,12 @@ def run():
             new_tracked += 1
     tracking = load_tracking(db)
 
-    # 5. Rapport Gemini uniquement si des changements ont eu lieu
-    taux = None
-    if new_resolved > 0 or new_tracked > 0:
-        print(f"5. Rapport Gemini ({new_resolved} résolus, {new_tracked} nouveaux)…")
-        taux = save_rapport(db, tracking, active)
-    else:
-        print("5. Aucun changement — rapport Gemini ignoré")
+    # 5. Rapport Gemini (toujours généré pour marchés horaires — résolutions chaque heure)
+    print(f"5. Rapport Gemini ({new_resolved} résolus, {new_tracked} nouveaux)…")
+    taux = save_rapport(db, tracking, active)
 
     # 6. Résumé quotidien à 17h
-    if now.hour == 17 and now.minute < 30:
+    if now.hour == 17 and now.minute < 60:
         print("6. Résumé quotidien 17h…")
         save_resume(db, tracking, taux)
 
