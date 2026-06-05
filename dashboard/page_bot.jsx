@@ -25,6 +25,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [meteoTracking,   setMeteoTracking]   = React.useState([]);
   const [meteoResumes,    setMeteoResumes]    = React.useState([]);
   const [meteoLastSync,   setMeteoLastSync]   = React.useState(null);
+  const [meteoStats,      setMeteoStats]      = React.useState(null);
 
   const agentPrefix = bot.id === 'polycrypto' ? 'crypto' : 'meteo';
   const agentLabel  = bot.id === 'polycrypto' ? 'Gemini' : 'Mistral';
@@ -56,24 +57,18 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     const tableTracking = bot.id === 'polycrypto' ? 'crypto_tracking' : 'meteo_tracking';
     const tableResumes  = bot.id === 'polycrypto' ? 'crypto_resumes'  : 'meteo_resumes';
 
-    if (isLocal) {
-      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapport`)
-        .then(r => r.json()).then(d => { if (d && d.heure) setMeteoRapport(d); }).catch(() => {});
-      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/rapports`)
-        .then(r => r.json()).then(d => { if (Array.isArray(d)) setMeteoRapports(d); }).catch(() => {});
-      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/tracking`)
-        .then(r => r.json()).then(d => { if (Array.isArray(d)) { setMeteoTracking(d); setMeteoLastSync(new Date()); } }).catch(() => {});
-      fetch(`http://127.0.0.1:5000/api/${agentPrefix}/resumes`)
-        .then(r => r.json()).then(d => { if (Array.isArray(d)) setMeteoResumes(d); }).catch(() => {});
-    } else {
-      sbFetch(tableRapports, 48).then(d => {
-        if (Array.isArray(d) && d.length) { setMeteoRapports(d); setMeteoRapport(d[0]); setMeteoLastSync(new Date()); }
-      }).catch(() => {});
-      sbFetch(tableTracking, 100).then(d => {
-        if (Array.isArray(d)) setMeteoTracking(d);
-      }).catch(() => {});
-      sbFetch(tableResumes, 90).then(d => {
-        if (Array.isArray(d)) setMeteoResumes(d);
+    sbFetch(tableRapports, 48).then(d => {
+      if (Array.isArray(d) && d.length) { setMeteoRapports(d); setMeteoRapport(d[0]); setMeteoLastSync(new Date()); }
+    }).catch(() => {});
+    sbFetch(tableTracking, 100).then(d => {
+      if (Array.isArray(d)) setMeteoTracking(d);
+    }).catch(() => {});
+    sbFetch(tableResumes, 90).then(d => {
+      if (Array.isArray(d)) setMeteoResumes(d);
+    }).catch(() => {});
+    if (agentPrefix === 'meteo') {
+      sbFetch('meteo_stats?id=eq.meteo', 1).then(d => {
+        if (Array.isArray(d) && d[0]) setMeteoStats(d[0]);
       }).catch(() => {});
     }
   }, [agentPrefix, isLocal]);
@@ -404,33 +399,33 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
           {/* ── Taux global + stats ── */}
           {(() => {
-            const tG = meteoRapports.reduce((s,r) => s+(r.gagnes||0), 0);
-            const tR = meteoRapports.reduce((s,r) => s+(r.resolus||0), 0);
-            const taux = tR > 0 ? Math.round(tG/tR*100) : null;
-            const col = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : 'var(--red)';
-            if (!taux && !meteoRapport && meteoRapports.length === 0) return null;
+            const stats = meteoStats;
+            const taux  = stats?.taux_victoire_global ?? null;
+            const col   = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
+            if (!stats && !meteoRapport) return null;
             return (
-              <div style={{ display:'grid', gridTemplateColumns: taux ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr 1fr',
-                gap:10, marginBottom:'var(--gap)' }}>
-                {taux !== null && (
-                  <div style={{ gridColumn:'1/-1', borderRadius:'var(--r-card)',
-                    background: `color-mix(in oklab,${col} 12%,var(--bg-elev))`,
-                    border:`1.5px solid color-mix(in oklab,${col} 30%,transparent)`,
-                    padding:'16px 22px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <div>
-                      <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:6 }}>
-                        TAUX DE RÉUSSITE GLOBAL — STRATÉGIE 80%+
-                      </div>
-                      <div style={{ fontSize:46, fontWeight:900, lineHeight:1, color:col }}>{taux}%</div>
-                      <div style={{ fontSize:12.5, color:'var(--text-3)', marginTop:6 }}>
-                        {tG} gagnés · {tR-tG} perdus · {tR} résolus au total
-                      </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10, marginBottom:'var(--gap)' }}>
+                {/* Taux all-time depuis meteo_stats */}
+                <div style={{ gridColumn:'1/-1', borderRadius:'var(--r-card)',
+                  background: taux !== null ? `color-mix(in oklab,${col} 12%,var(--bg-elev))` : 'var(--bg-elev)',
+                  border:`1.5px solid color-mix(in oklab,${col} 30%,transparent)`,
+                  padding:'16px 22px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:6 }}>
+                      TAUX DE RÉUSSITE — TOUTES DONNÉES (SINCE DÉBUT)
                     </div>
-                    <div style={{ fontSize:48, opacity:.15 }}>{taux >= 60 ? '✅' : taux >= 50 ? '⚠️' : '❌'}</div>
+                    <div style={{ fontSize:46, fontWeight:900, lineHeight:1, color: taux !== null ? col : 'var(--text-3)' }}>
+                      {taux !== null ? `${taux}%` : '—'}
+                    </div>
+                    <div style={{ fontSize:12.5, color:'var(--text-3)', marginTop:6 }}>
+                      {stats ? `${stats.total_gagnes} gagnés · ${stats.total_perdus} perdus · ${stats.total_resolus} résolus depuis le début` : 'En attente de données…'}
+                    </div>
                   </div>
-                )}
+                  <div style={{ fontSize:48, opacity:.15 }}>{taux >= 60 ? '✅' : taux >= 50 ? '⚠️' : taux !== null ? '❌' : '⏳'}</div>
+                </div>
+                {/* Stats du dernier rapport */}
                 {meteoRapport && [
-                  { label:'Trackés aujourd\'hui', value: meteoRapport.trackes ?? 0, color:'var(--text)' },
+                  { label:'Trackés (actuel)', value: meteoRapport.trackes ?? 0, color:'var(--text)' },
                   { label:'En attente', value: meteoRapport.en_attente ?? 0, color:'var(--text-3)' },
                   { label:'✅ Gagnés', value: meteoRapport.gagnes ?? 0, color:'var(--green)' },
                   { label:'❌ Perdus', value: meteoRapport.perdus ?? 0, color:'var(--red)' },

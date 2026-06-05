@@ -1,7 +1,6 @@
 """
 agent_meteo_cloud.py — Agent météo Polymarket (version GitHub Actions + Supabase)
 S'exécute toutes les 30 min via GitHub Actions.
-Stocke les données dans Supabase au lieu de fichiers JSON.
 """
 
 import os, datetime, requests
@@ -20,9 +19,7 @@ METEO_KEYWORDS = [
 # ── Supabase ──────────────────────────────────────────────────────────────────
 
 def get_db():
-    url = os.environ["SUPABASE_URL"]
-    key = os.environ["SUPABASE_KEY"]
-    return create_client(url, key)
+    return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 # ── Fetch Polymarket ──────────────────────────────────────────────────────────
 
@@ -61,6 +58,25 @@ def fetch_markets(active=True, closed=False, limit=300):
         print(f"⚠️  Fetch erreur: {e}")
         return []
 
+# ── Stats globales (jamais supprimées) ───────────────────────────────────────
+
+def increment_global_stats(db, resultat):
+    """Met à jour le compteur cumulé all-time à chaque résolution."""
+    res = db.table("meteo_stats").select("*").eq("id", "meteo").execute()
+    current = res.data[0] if res.data else {"total_resolus": 0, "total_gagnes": 0, "total_perdus": 0}
+    total_resolus = (current.get("total_resolus") or 0) + 1
+    total_gagnes  = (current.get("total_gagnes")  or 0) + (1 if resultat == "GAGNE" else 0)
+    total_perdus  = (current.get("total_perdus")  or 0) + (1 if resultat == "PERDU" else 0)
+    taux = round(total_gagnes / total_resolus * 100, 1) if total_resolus > 0 else None
+    db.table("meteo_stats").upsert({
+        "id":                   "meteo",
+        "total_resolus":        total_resolus,
+        "total_gagnes":         total_gagnes,
+        "total_perdus":         total_perdus,
+        "taux_victoire_global": taux,
+        "updated_at":           datetime.datetime.now().isoformat(),
+    }).execute()
+
 # ── Tracking Supabase ─────────────────────────────────────────────────────────
 
 def load_tracking(db):
@@ -83,21 +99,16 @@ def add_tracking(db, market):
 def update_resolved(db, condition_id, resultat):
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     db.table("meteo_tracking").update({
-        "resultat":   resultat,
-        "resolu_le":  now,
+        "resultat":  resultat,
+        "resolu_le": now,
     }).eq("condition_id", condition_id).execute()
-
-def reset_tracking(db):
-    ids = [t["id"] for t in load_tracking(db) if t.get("id")]
-    if ids:
-        db.table("meteo_tracking").delete().in_("id", ids).execute()
-    print("🔄 Tracking remis à zéro")
-
-# ── Vérification des résultats ────────────────────────────────────────────────
+    increment_global_stats(db, resultat)
 
 def check_resolved(db, tracking):
+    """Vérifie les marchés résolus. Retourne le nombre de nouvelles résolutions."""
     closed = fetch_markets(active=False, closed=True)
     ids = {m["condition_id"]: m for m in closed}
+    count = 0
     for t in tracking:
         if t["resultat"] is not None:
             continue
@@ -107,14 +118,25 @@ def check_resolved(db, tracking):
         if m["yes_price"] >= 0.99:
             update_resolved(db, t["condition_id"], "GAGNE")
             print(f"  ✅ GAGNÉ : {t['question'][:55]}")
+            count += 1
         elif m["yes_price"] <= 0.01:
             update_resolved(db, t["condition_id"], "PERDU")
             print(f"  ❌ PERDU : {t['question'][:55]}")
+            count += 1
+    return count
+
+# ── Nettoyage des données > 4 jours ──────────────────────────────────────────
+
+def cleanup_old_data(db):
+    """Supprime tracking et rapports de plus de 4 jours. Les stats globales sont préservées."""
+    cutoff = (datetime.datetime.now() - datetime.timedelta(days=4)).isoformat()
+    db.table("meteo_tracking").delete().lt("created_at", cutoff).execute()
+    db.table("meteo_rapports").delete().lt("created_at", cutoff).execute()
+    print("🗑️  Données >4 jours supprimées")
 
 # ── Rapport ───────────────────────────────────────────────────────────────────
 
 def load_historique(db, limit=6):
-    """Charge les 6 derniers rapports pour que Mistral apprenne."""
     res = db.table("meteo_rapports").select("heure,taux_victoire,analyse_mistral,strategie_proposee").order("created_at", desc=True).limit(limit).execute()
     return res.data or []
 
@@ -134,16 +156,16 @@ def save_rapport(db, tracking, active):
     historique = load_historique(db)
     analyse, strategie = generate_resume(tracking, taux, historique)
     db.table("meteo_rapports").insert({
-        "heure":             datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "trackes":           len(tracking),
-        "en_attente":        len(tracking) - len(resolus),
-        "resolus":           len(resolus),
-        "gagnes":            len(gagnes),
-        "perdus":            len(perdus),
-        "taux_victoire":     taux,
-        "actifs_85":         actifs80,
-        "verdict":           verdict,
-        "analyse_mistral":   analyse,
+        "heure":              datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "trackes":            len(tracking),
+        "en_attente":         len(tracking) - len(resolus),
+        "resolus":            len(resolus),
+        "gagnes":             len(gagnes),
+        "perdus":             len(perdus),
+        "taux_victoire":      taux,
+        "actifs_85":          actifs80,
+        "verdict":            verdict,
+        "analyse_mistral":    analyse,
         "strategie_proposee": strategie,
     }).execute()
     print(f"📊 Trackés:{len(tracking)} | ✅{len(gagnes)} ❌{len(perdus)} | {verdict}")
@@ -158,13 +180,11 @@ def generate_resume(tracking, taux, historique):
     lignes  = "\n".join(
         f"- {t['question'][:70]} | {t['yes_price_au_track']}% | {t['resultat']}"
         for t in resolus[-15:]
-    ) or "Aucun marché résolu aujourd'hui."
-
+    ) or "Aucun marché résolu."
     hist_txt = "\n".join(
         f"- {h.get('heure','?')} : {h['taux_victoire']}% réussite | Stratégie : {(h.get('strategie_proposee') or 'aucune')[:80]}"
         for h in historique
     ) or "Aucun historique disponible."
-
     prompt = f"""Tu es un agent d'analyse de marchés de prédiction Polymarket spécialisé en météo.
 Tu analyses les paris météo trackés à partir de 80% de probabilité YES.
 
@@ -174,17 +194,16 @@ AUJOURD'HUI ({datetime.datetime.now().strftime('%d/%m/%Y')}) :
 Détail des marchés résolus :
 {lignes}
 
-HISTORIQUE DES 7 DERNIERS JOURS :
+HISTORIQUE DES 6 DERNIERS RAPPORTS :
 {hist_txt}
 
 Réponds en JSON avec exactement cette structure :
 {{
-  "bilan": "2-3 phrases sur les résultats du jour et la tendance",
-  "apprentissage": "Ce que tu as appris par rapport aux jours précédents (1-2 phrases)",
-  "strategie": "Stratégie concrète à appliquer demain basée sur l'historique (1-2 phrases)",
+  "bilan": "2-3 phrases sur les résultats et la tendance",
+  "apprentissage": "Ce que tu as appris par rapport aux rapports précédents (1-2 phrases)",
+  "strategie": "Stratégie concrète à appliquer basée sur l'historique (1-2 phrases)",
   "verdict": "RENTABLE" | "RISQUE" | "NON_RENTABLE" | "INSUFFISANT"
 }}"""
-
     try:
         r = requests.post(
             "https://api.mistral.ai/v1/chat/completions",
@@ -199,7 +218,7 @@ Réponds en JSON avec exactement cette structure :
         data = r.json()["choices"][0]["message"]["content"]
         import json as _j
         parsed = _j.loads(data)
-        analyse  = f"{parsed.get('bilan','')}\n\n🧠 {parsed.get('apprentissage','')}"
+        analyse   = f"{parsed.get('bilan','')}\n\n🧠 {parsed.get('apprentissage','')}"
         strategie = parsed.get("strategie", "")
         return analyse, strategie
     except Exception as e:
@@ -230,28 +249,43 @@ def run():
 
     db = get_db()
 
-    # 1. Vérifie les marchés résolus
-    print("1. Vérification des marchés résolus…")
-    tracking = load_tracking(db)
-    check_resolved(db, tracking)
-    tracking = load_tracking(db)  # recharge après updates
+    # 1. Nettoyage des données > 4 jours
+    print("1. Nettoyage des données >4 jours…")
+    cleanup_old_data(db)
 
-    # 2. Fetch marchés météo actifs
-    print("2. Fetch marchés météo actifs…")
+    # 2. Vérifie les marchés résolus
+    print("2. Vérification des marchés résolus…")
+    tracking = load_tracking(db)
+    new_resolved = check_resolved(db, tracking)
+    tracking = load_tracking(db)
+
+    # 3. Fetch marchés météo actifs
+    print("3. Fetch marchés météo actifs…")
     active = fetch_markets(active=True, closed=False)
     print(f"   {len(active)} marchés | {len([m for m in active if m['yes_price']>=0.80])} à 80%+")
 
-    # 3. Tracking des nouveaux marchés à 80%+
-    print("3. Mise à jour tracking…")
+    # 4. Tracking des nouveaux marchés à 80%+
+    print("4. Mise à jour tracking…")
     tracked_ids = {t["condition_id"] for t in tracking}
+    new_tracked = 0
     for m in active:
         if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.80:
             add_tracking(db, m)
+            new_tracked += 1
     tracking = load_tracking(db)
 
-    # 4. Rapport toutes les 2h avec analyse Mistral
-    print("4. Sauvegarde rapport + analyse Mistral…")
-    save_rapport(db, tracking, active)
+    # 5. Rapport Mistral uniquement si des changements ont eu lieu
+    taux = None
+    if new_resolved > 0 or new_tracked > 0:
+        print(f"5. Rapport Mistral ({new_resolved} résolus, {new_tracked} nouveaux)…")
+        taux = save_rapport(db, tracking, active)
+    else:
+        print("5. Aucun changement — rapport Mistral ignoré")
+
+    # 6. Résumé quotidien à 17h
+    if now.hour == 17 and now.minute < 30:
+        print("6. Résumé quotidien 17h…")
+        save_resume(db, tracking, taux)
 
     print("✅ Cycle terminé")
 
