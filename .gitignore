@@ -12,3 +12,4 @@ bot/meteo_tracking.json
 bot/meteo_rapports.json
 bot/meteo_resumes.json
 bot/analyses.json
+.vercel

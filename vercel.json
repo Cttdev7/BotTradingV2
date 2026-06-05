@@ -1,7 +1,6 @@
 {
-  "rootDirectory": "dashboard",
-  "outputDirectory": ".",
   "framework": null,
   "buildCommand": null,
-  "installCommand": null
+  "installCommand": null,
+  "outputDirectory": "dashboard"
 }

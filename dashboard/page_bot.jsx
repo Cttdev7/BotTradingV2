@@ -40,6 +40,17 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
     }).then(r => r.json());
 
+  const sbUpsert = (table, data) =>
+    fetch(`${SB_URL}/rest/v1/${table}`, {
+      method: 'POST',
+      headers: {
+        'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(data)
+    });
+
   const refreshMeteo = React.useCallback(() => {
     const tableRapports = bot.id === 'polycrypto' ? 'crypto_rapports' : 'meteo_rapports';
     const tableTracking = bot.id === 'polycrypto' ? 'crypto_tracking' : 'meteo_tracking';
@@ -67,21 +78,17 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     }
   }, [agentPrefix, isLocal]);
 
-  // Charge l'historique + instructions + données météo au montage
+  // Charge instructions + données météo au montage
   React.useEffect(() => {
-    fetch('http://127.0.0.1:5000/api/analyse/history')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setAnalyseHistory(data); })
-      .catch(() => {});
-    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`)
-      .then(r => r.json())
+    sbFetch(`bot_strategies?bot_id=eq.${bot.id}`, 1)
       .then(d => {
-        if (d.analyse_instructions !== undefined) setAnalyseInstructions(d.analyse_instructions);
-        if (d.analyse_category     !== undefined) setAnalyseCategory(d.analyse_category);
+        const s = d[0];
+        if (!s) return;
+        if (s.analyse_instructions !== undefined) setAnalyseInstructions(s.analyse_instructions);
+        if (s.analyse_category     !== undefined) setAnalyseCategory(s.analyse_category);
       })
       .catch(() => {});
     refreshMeteo();
-    // Auto-refresh toutes les 30 min
     const id = setInterval(refreshMeteo, 30 * 60 * 1000);
     return () => clearInterval(id);
   }, [bot.id, refreshMeteo]);
@@ -89,19 +96,20 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   // ── P&L horaire ──
   const [pnlHoraire, setPnlHoraire] = React.useState([]);
   React.useEffect(() => {
-    if (tab !== 'apercu') return;
+    if (tab !== 'apercu' || !isLocal) return;
     const load = () => fetch('http://127.0.0.1:5000/api/pnl/hourly')
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setPnlHoraire(d); }).catch(() => {});
     load();
-    const id = setInterval(load, 60 * 60 * 1000); // refresh toutes les heures
+    const id = setInterval(load, 60 * 60 * 1000);
     return () => clearInterval(id);
-  }, [tab, bot.id]);
+  }, [tab, bot.id, isLocal]);
 
   const saveAnalyseInstructions = () => {
-    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ analyse_instructions: analyseInstructions, analyse_category: analyseCategory }),
+    sbUpsert('bot_strategies', {
+      bot_id: bot.id,
+      analyse_instructions: analyseInstructions,
+      analyse_category: analyseCategory,
+      updated_at: new Date().toISOString(),
     }).catch(() => {});
   };
 
@@ -148,32 +156,30 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
   React.useEffect(() => { if (!editingName) setDraftName(bot.name); }, [bot.name]);
 
-  // Charge la stratégie + historique au montage
+  // Charge la stratégie depuis Supabase
   React.useEffect(() => {
-    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`)
-      .then((r) => r.json())
+    sbFetch(`bot_strategies?bot_id=eq.${bot.id}`, 1)
       .then((d) => {
-        if (d.prompt   !== undefined) setStratPrompt(d.prompt);
-        if (d.enabled  !== undefined) setStratEnabled(d.enabled);
-        if (d.version  !== undefined) setStratVersion(d.version);
-        if (d.last_improved)         setStratLastImproved(d.last_improved);
-        if (d.last_reason)           setStratLastReason(d.last_reason);
+        const s = d[0];
+        if (!s) return;
+        if (s.prompt        !== undefined) setStratPrompt(s.prompt);
+        if (s.enabled       !== undefined) setStratEnabled(s.enabled);
+        if (s.version       !== undefined) setStratVersion(s.version);
+        if (s.last_improved)              setStratLastImproved(s.last_improved);
+        if (s.last_reason)                setStratLastReason(s.last_reason);
+        if (Array.isArray(s.history))     setStratHistory(s.history);
       })
-      .catch(() => {});
-    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}/history`)
-      .then((r) => r.json())
-      .then((d) => { if (Array.isArray(d)) setStratHistory(d); })
       .catch(() => {});
   }, [bot.id]);
 
   const saveStrategy = () => {
     setStratStatus('saving');
-    fetch(`http://127.0.0.1:5000/api/strategy/${bot.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: stratPrompt, enabled: stratEnabled }),
+    sbUpsert('bot_strategies', {
+      bot_id: bot.id,
+      prompt: stratPrompt,
+      enabled: stratEnabled,
+      updated_at: new Date().toISOString(),
     })
-      .then((r) => r.json())
       .then(() => setStratStatus('saved'))
       .catch(() => setStratStatus('error'));
   };
@@ -388,7 +394,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </span>
             </div>
             <div style={{ fontSize:13.5, color:'rgba(255,255,255,.65)', lineHeight:1.7, maxWidth:560 }}>
-              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>2 heures</strong> et tracke
+              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>heures</strong> et tracke
               tous les paris <strong style={{ color:'rgba(255,255,255,.9)' }}>
                 {bot.id === 'polycrypto' ? 'crypto' : 'météo'}
               </strong> dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
@@ -517,7 +523,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ fontSize:14, fontWeight:700 }}>📋 Historique des rapports</span>
                 <span style={{ fontSize:12, color:'var(--text-3)', fontWeight:500 }}>
-                  {meteoRapports.length} rapport{meteoRapports.length>1?'s':''} · toutes les 2h
+                  {meteoRapports.length} rapport{meteoRapports.length>1?'s':''} · toutes les heures
                 </span>
               </div>
               {meteoRapports.map((r,i) => {
