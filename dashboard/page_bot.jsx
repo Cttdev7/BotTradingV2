@@ -394,7 +394,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </span>
             </div>
             <div style={{ fontSize:13.5, color:'rgba(255,255,255,.65)', lineHeight:1.7, maxWidth:560 }}>
-              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>heures</strong> et tracke
+              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>30 minutes</strong> et tracke
               tous les paris <strong style={{ color:'rgba(255,255,255,.9)' }}>
                 {bot.id === 'polycrypto' ? 'crypto' : 'météo'}
               </strong> dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
@@ -523,7 +523,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ fontSize:14, fontWeight:700 }}>📋 Historique des rapports</span>
                 <span style={{ fontSize:12, color:'var(--text-3)', fontWeight:500 }}>
-                  {meteoRapports.length} rapport{meteoRapports.length>1?'s':''} · toutes les heures
+                  {meteoRapports.length} rapport{meteoRapports.length>1?'s':''} · toutes les 30 min
                 </span>
               </div>
               {meteoRapports.map((r,i) => {
