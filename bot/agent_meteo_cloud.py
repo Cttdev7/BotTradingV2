@@ -6,8 +6,11 @@ S'exécute toutes les 30 min via GitHub Actions.
 import os, datetime, requests
 from supabase import create_client
 
-GAMMA_API = "https://gamma-api.polymarket.com"
-TIMEOUT   = 15
+GAMMA_API      = "https://gamma-api.polymarket.com"
+POLYGON_RPC    = "https://polygon-bor-rpc.publicnode.com"
+USDC_CONTRACT  = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+USDCE_CONTRACT = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+TIMEOUT        = 15
 
 METEO_KEYWORDS = [
     "weather", "temperature", "rain", "snow", "hurricane", "storm",
@@ -20,6 +23,46 @@ METEO_KEYWORDS = [
 
 def get_db():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+
+# ── Wallet Polygon ────────────────────────────────────────────────────────────
+
+def fetch_wallet_balance():
+    wallet = os.environ.get("WALLET_ADDRESS", "")
+    if not wallet:
+        return None
+    data = "0x70a08231" + wallet[2:].lower().zfill(64)
+    def rpc(method, params, rid=1):
+        r = requests.post(POLYGON_RPC,
+            json={"jsonrpc": "2.0", "method": method, "params": params, "id": rid},
+            timeout=10)
+        return r.json().get("result", "0x0")
+    try:
+        pol_hex   = rpc("eth_getBalance",  [wallet, "latest"], 1)
+        usdc_hex  = rpc("eth_call", [{"to": USDC_CONTRACT,  "data": data}, "latest"], 2)
+        usdce_hex = rpc("eth_call", [{"to": USDCE_CONTRACT, "data": data}, "latest"], 3)
+        return {
+            "pol":    round(int(pol_hex,   16) / 1e18, 4),
+            "usdc":   round(int(usdc_hex,  16) / 1e6,  2),
+            "usdce":  round(int(usdce_hex, 16) / 1e6,  2),
+            "wallet": wallet,
+        }
+    except Exception as e:
+        print(f"⚠️  Wallet erreur: {e}")
+        return None
+
+def save_bot_status(db, wallet):
+    if not wallet:
+        return
+    db.table("bot_status").upsert({
+        "id":         "polyedge",
+        "wallet":     wallet.get("wallet", ""),
+        "usdc":       wallet.get("usdc", 0),
+        "usdce":      wallet.get("usdce", 0),
+        "pol":        wallet.get("pol", 0),
+        "updated_at": datetime.datetime.now().isoformat(),
+    }).execute()
+    total = wallet.get("usdc", 0) + wallet.get("usdce", 0)
+    print(f"💰 Wallet: {total:.2f} USDC | {wallet.get('pol', 0)} POL")
 
 # ── Fetch Polymarket ──────────────────────────────────────────────────────────
 
@@ -286,6 +329,10 @@ def run():
     if now.hour == 17 and now.minute < 30:
         print("6. Résumé quotidien 17h…")
         save_resume(db, tracking, taux)
+
+    # 7. Mise à jour solde wallet
+    print("7. Mise à jour solde wallet…")
+    save_bot_status(db, fetch_wallet_balance())
 
     print("✅ Cycle terminé")
 

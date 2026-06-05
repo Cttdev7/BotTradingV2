@@ -29,4 +29,5 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          WALLET_ADDRESS: ${{ secrets.WALLET_ADDRESS }}
         run: python bot/agent_meteo_cloud.py
