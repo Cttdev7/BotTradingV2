@@ -81,10 +81,10 @@ def _parse_market(m):
     }
 
 def fetch_high_temp_markets():
-    """Fetch les marchés 'highest temperature' actifs se résolvant dans les 7 prochains jours."""
+    """Fetch uniquement les marchés 'highest temperature' du jour (endDate dans les 24h)."""
     try:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now + datetime.timedelta(days=7)
+        now    = datetime.datetime.now(datetime.timezone.utc)
+        cutoff = now + datetime.timedelta(hours=24)
         result = []
         r = requests.get(GAMMA_EVENTS_API,
             params={"tag_slug": "weather", "limit": 100, "active": "true",
@@ -97,17 +97,17 @@ def fetch_high_temp_markets():
             if "highest temperature" not in title and "high temperature" not in title:
                 continue
             for m in event.get("markets", []):
-                # Filtre strict : marché actif, non fermé, endDate dans les 7 jours
                 if m.get("closed") or not m.get("active", True):
                     continue
                 end_str = m.get("endDate", "")
-                if end_str:
-                    try:
-                        end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-                        if end < now or end > cutoff:
-                            continue
-                    except:
+                if not end_str:
+                    continue
+                try:
+                    end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                    if end < now or end > cutoff:
                         continue
+                except:
+                    continue
                 parsed = _parse_market(m)
                 if parsed:
                     result.append(parsed)
