@@ -11,7 +11,7 @@ import json, os, time, datetime, requests
 
 GAMMA_API     = "https://gamma-api.polymarket.com"
 TIMEOUT       = 15
-INTERVAL      = 1800  # 30 min entre chaque cycle
+INTERVAL      = 900   # 15 min entre chaque cycle
 
 TRACKING_FILE = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
 RAPPORTS_FILE = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
