@@ -118,14 +118,15 @@ def fetch_high_temp_markets():
 
 # ── Stats globales (jamais supprimées) ───────────────────────────────────────
 
-def increment_global_stats(db, last_price_pct):
-    """Met à jour le compteur cumulé. Un marché terminé à >50% = prédiction tenue."""
+def increment_global_stats(db, resultat):
+    """Met à jour le compteur cumulé all-time."""
     res = db.table("meteo_stats").select("*").eq("id", "meteo").execute()
     current = res.data[0] if res.data else {"total_resolus": 0, "total_gagnes": 0, "total_perdus": 0}
     total_resolus = (current.get("total_resolus") or 0) + 1
-    tenu          = last_price_pct >= 50  # la prédiction a tenu si terminé à 50%+
-    total_gagnes  = (current.get("total_gagnes")  or 0) + (1 if tenu else 0)
-    total_perdus  = (current.get("total_perdus")  or 0) + (0 if tenu else 1)
+    gagnant       = resultat == "GAGNANT"
+    perdant       = resultat == "PERDANT"
+    total_gagnes  = (current.get("total_gagnes")  or 0) + (1 if gagnant else 0)
+    total_perdus  = (current.get("total_perdus")  or 0) + (1 if perdant else 0)
     taux = round(total_gagnes / total_resolus * 100, 1) if total_resolus > 0 else None
     db.table("meteo_stats").upsert({
         "id":                   "meteo",
@@ -166,14 +167,14 @@ def update_price(db, condition_id, yes_price_actuel):
         "derniere_lecture":  now,
     }).eq("condition_id", condition_id).execute()
 
-def update_terminated(db, condition_id, last_price_pct):
-    """Marque le marché comme terminé avec le dernier % connu."""
+def update_terminated(db, condition_id, resultat, last_price_pct):
+    """Marque le marché comme GAGNANT, PERDANT ou TERMINÉ."""
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     db.table("meteo_tracking").update({
-        "resultat":  f"TERMINÉ: {last_price_pct}%",
+        "resultat":  resultat,
         "resolu_le": now,
     }).eq("condition_id", condition_id).execute()
-    increment_global_stats(db, last_price_pct)
+    increment_global_stats(db, resultat)
 
 def fetch_market_by_id(condition_id):
     """Fetch un marché directement par condition_id."""
@@ -211,8 +212,17 @@ def check_and_update(db, tracking):
                 except:
                     pass
         if m is None or m.get("closed") or expired:
-            update_terminated(db, t["condition_id"], last_pct)
-            print(f"  🔚 TERMINÉ à {last_pct}% : {t['question'][:50]}")
+            # Détermine GAGNANT ou PERDANT selon le prix final
+            final_price = m["yes_price"] if m else None
+            if final_price is not None and final_price >= 0.95:
+                resultat = "GAGNANT"
+            elif final_price is not None and final_price <= 0.05:
+                resultat = "PERDANT"
+            else:
+                resultat = f"TERMINÉ: {last_pct}%"
+            update_terminated(db, t["condition_id"], resultat, last_pct)
+            icon = "✅" if resultat == "GAGNANT" else "❌" if resultat == "PERDANT" else "🔚"
+            print(f"  {icon} {resultat} : {t['question'][:50]}")
             count += 1
         else:
             new_pct = round(m["yes_price"] * 100, 1)
@@ -235,11 +245,27 @@ def load_historique(db, limit=6):
     res = db.table("meteo_rapports").select("heure,taux_victoire,analyse_mistral,strategie_proposee").order("created_at", desc=True).limit(limit).execute()
     return res.data or []
 
+def calc_roi(resolus):
+    """ROI théorique : 1 unité misée par pari au prix d'entrée."""
+    if not resolus:
+        return None
+    total_investi  = 0
+    total_retourne = 0
+    for t in resolus:
+        entry = (t.get("yes_price_au_track") or 80) / 100
+        total_investi  += entry
+        if t["resultat"] == "GAGNANT":
+            total_retourne += 1.0  # 1 USDC par token YES
+    if total_investi == 0:
+        return None
+    return round(((total_retourne - total_investi) / total_investi) * 100, 1)
+
 def save_rapport(db, tracking, active):
     resolus  = [t for t in tracking if t["resultat"] is not None]
-    gagnes   = [t for t in resolus  if t["resultat"] == "GAGNE"]
-    perdus   = [t for t in resolus  if t["resultat"] == "PERDU"]
+    gagnes   = [t for t in resolus  if t["resultat"] == "GAGNANT"]
+    perdus   = [t for t in resolus  if t["resultat"] == "PERDANT"]
     taux     = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
+    roi      = calc_roi(resolus)
     actifs80 = [{"question": m["question"][:70], "pct": round(m["yes_price"]*100,1)}
                 for m in active if m["yes_price"] >= 0.80]
     verdict  = (
@@ -249,7 +275,7 @@ def save_rapport(db, tracking, active):
         "⏳ En attente de données"
     )
     historique = load_historique(db)
-    analyse, strategie = generate_resume(tracking, taux, historique)
+    analyse, strategie = generate_resume(tracking, taux, roi, historique)
     db.table("meteo_rapports").insert({
         "heure":              datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
         "trackes":            len(tracking),
@@ -258,6 +284,7 @@ def save_rapport(db, tracking, active):
         "gagnes":             len(gagnes),
         "perdus":             len(perdus),
         "taux_victoire":      taux,
+        "roi":                roi,
         "actifs_85":          actifs80,
         "verdict":            verdict,
         "analyse_mistral":    analyse,
@@ -266,25 +293,41 @@ def save_rapport(db, tracking, active):
     print(f"📊 Trackés:{len(tracking)} | ✅{len(gagnes)} ❌{len(perdus)} | {verdict}")
     return taux
 
-def generate_resume(tracking, taux, historique):
+def generate_resume(tracking, taux, roi, historique):
     key = os.getenv("MISTRAL_API_KEY", "")
     if not key:
         return "MISTRAL_API_KEY manquante.", ""
     resolus = [t for t in tracking if t["resultat"] is not None]
-    gagnes  = [t for t in resolus  if t["resultat"] == "GAGNE"]
-    lignes  = "\n".join(
-        f"- {t['question'][:70]} | {t['yes_price_au_track']}% | {t['resultat']}"
+    gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
+    perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
+    actifs  = [t for t in tracking if t["resultat"] is None]
+    lignes_clos = "\n".join(
+        f"- {t['question'][:65]} | entrée:{t['yes_price_au_track']}% | {t['resultat']}"
         for t in resolus[-15:]
-    ) or "Aucun marché résolu."
+    ) or "Aucun marché clôturé."
+    lignes_actifs = "\n".join(
+        f"- {t['question'][:65]} | {t.get('yes_price_actuel') or t['yes_price_au_track']}% (actuel)"
+        for t in actifs[:10]
+    ) or "Aucun marché actif."
     hist_txt = "\n".join(
         f"- {h.get('heure','?')} : {h['taux_victoire']}% réussite | Stratégie : {(h.get('strategie_proposee') or 'aucune')[:80]}"
         for h in historique
     ) or "Aucun historique disponible."
-    prompt = f"""Tu es un agent d'analyse de marchés de prédiction Polymarket spécialisé en météo.
-Tu analyses les paris météo trackés à partir de 80% de probabilité YES.
+    prompt = f"""Tu es un agent de simulation de stratégie sur les marchés météo Polymarket (high-temperature).
+Tu suis uniquement les paris YES à 80%+ et tu rapportes les statistiques de simulation.
 
-AUJOURD'HUI ({datetime.datetime.now().strftime('%d/%m/%Y')}) :
-- Trackés : {len(tracking)} | Résolus : {len(resolus)} | Gagnés : {len(gagnes)} | Perdus : {len(resolus)-len(gagnes)} | Taux : {taux if taux else 'N/A'}%
+RAPPORT ({datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}) :
+- Paris suivis : {len(tracking)} | Clôturés : {len(resolus)} | GAGNANTS : {len(gagnes)} | PERDANTS : {len(perdus)}
+- Taux de réussite : {taux if taux else 'N/A'}% | ROI théorique : {roi if roi is not None else 'N/A'}%
+
+Paris clôturés :
+{lignes_clos}
+
+Paris actifs en cours :
+{lignes_actifs}
+
+HISTORIQUE DES RAPPORTS PRÉCÉDENTS :
+{hist_txt}
 
 Détail des marchés résolus :
 {lignes}

@@ -500,9 +500,16 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                     </div>
                     <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text-3)' }}>{t.tracke_le}</div>
                     <div style={{ textAlign:'center' }}>
-                      {termine && <span style={{ fontSize:11.5, fontWeight:700, color:'var(--accent)',
-                        background:'color-mix(in oklab,var(--accent) 12%,transparent)',
-                        padding:'4px 10px', borderRadius:999 }}>{t.resultat}</span>}
+                      {t.resultat === 'GAGNANT' && <span style={{ fontSize:12, fontWeight:700, color:'var(--green)',
+                        background:'color-mix(in oklab,var(--green) 15%,transparent)',
+                        padding:'4px 10px', borderRadius:999 }}>✅ Gagnant</span>}
+                      {t.resultat === 'PERDANT' && <span style={{ fontSize:12, fontWeight:700, color:'var(--red)',
+                        background:'color-mix(in oklab,var(--red) 15%,transparent)',
+                        padding:'4px 10px', borderRadius:999 }}>❌ Perdant</span>}
+                      {t.resultat && t.resultat !== 'GAGNANT' && t.resultat !== 'PERDANT' && (
+                        <span style={{ fontSize:11, fontWeight:600, color:'var(--text-3)',
+                          background:'var(--fill)', padding:'4px 8px', borderRadius:999 }}>{t.resultat}</span>
+                      )}
                       {!t.resultat && <span style={{ fontSize:12, color:'var(--text-3)',
                         background:'var(--fill)', padding:'4px 12px', borderRadius:999,
                         border:'1px solid var(--separator)' }}>⏳ En cours</span>}
@@ -550,9 +557,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                     <div style={{ display:'flex', gap:8, padding:'0 20px 12px' }}>
                       {[
                         {l:'Trackés', v:r.trackes, c:'var(--text-3)'},
-                        {l:'Résolus', v:r.resolus, c:'var(--text-3)'},
-                        {l:'✅ Gagnés', v:r.gagnes, c:'var(--green)'},
-                        {l:'❌ Perdus', v:r.perdus, c:'var(--red)'},
+                        {l:'✅ Gagnants', v:r.gagnes, c:'var(--green)'},
+                        {l:'❌ Perdants', v:r.perdus, c:'var(--red)'},
+                        {l:'ROI théorique', v: r.roi != null ? `${r.roi > 0 ? '+' : ''}${r.roi}%` : '—', c: r.roi > 0 ? 'var(--green)' : r.roi < 0 ? 'var(--red)' : 'var(--text-3)'},
                       ].map((s,j) => (
                         <div key={j} style={{ flex:1, textAlign:'center', padding:'8px 6px',
                           background:'var(--fill)', borderRadius:'var(--r-md)' }}>
