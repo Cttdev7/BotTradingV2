@@ -118,10 +118,13 @@ def fetch_high_temp_markets():
                     if parsed:
                         result.append(parsed)
                         found_in_page = True
-            # Si cette page n'a plus de marchés récents, on s'arrête
-            if len(events) < 100 or not found_in_page:
+            # On s'arrête si page incomplète ou si aucun marché récent trouvé
+            if len(events) < 100:
                 break
+            # Limite à 3 pages max (300 events) pour éviter de remonter trop loin
             offset += 100
+            if offset >= 300:
+                break
         return result
     except Exception as e:
         print(f"⚠️  Fetch erreur: {e}")
@@ -340,13 +343,7 @@ Paris actifs en cours :
 HISTORIQUE DES RAPPORTS PRÉCÉDENTS :
 {hist_txt}
 
-Détail des marchés résolus :
-{lignes}
-
-HISTORIQUE DES 6 DERNIERS RAPPORTS :
-{hist_txt}
-
-Réponds en JSON avec exactement cette structure :
+Réponds en JSON :
 {{
   "bilan": "2-3 phrases sur les résultats et la tendance",
   "apprentissage": "Ce que tu as appris par rapport aux rapports précédents (1-2 phrases)",
