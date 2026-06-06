@@ -649,14 +649,14 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                       ))}
                     </div>
                     {/* Analyse Mistral */}
-                    {r.analyse && (
+                    {(r.analyse || r.analyse_text) && (
                       <div style={{ padding:'12px 14px', borderRadius:'var(--r-md)',
                         background:'color-mix(in oklab,var(--accent) 6%,var(--bg-elev))',
                         border:'1px solid color-mix(in oklab,var(--accent) 20%,transparent)' }}>
                         <div style={{ fontSize:10.5, fontWeight:800, color:'var(--accent)',
                           letterSpacing:'.07em', marginBottom:7 }}>🤖 ANALYSE MISTRAL</div>
                         <div style={{ fontSize:13, color:'var(--text-2)', lineHeight:1.7,
-                          whiteSpace:'pre-wrap' }}>{r.analyse}</div>
+                          whiteSpace:'pre-wrap' }}>{r.analyse || r.analyse_text}</div>
                       </div>
                     )}
                   </div>

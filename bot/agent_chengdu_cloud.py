@@ -261,7 +261,7 @@ def save_resume(db, tracking):
         "gagnes":        len(gagnes),
         "perdus":        len(perdus),
         "taux_victoire": taux,
-        "analyse":       analyse,
+        "analyse_text":  analyse,
     }).execute()
     log(f"📋 Résumé 17h sauvegardé — taux: {taux}%")
 
