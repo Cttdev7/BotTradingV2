@@ -8,7 +8,13 @@ Tourne en continu sur Railway. Toutes les 15 minutes :
 """
 
 import os, json, time, datetime, requests
+from zoneinfo import ZoneInfo
 from supabase import create_client
+
+PARIS = ZoneInfo("Europe/Paris")
+
+def now_paris():
+    return datetime.datetime.now(PARIS)
 
 GAMMA_API = "https://gamma-api.polymarket.com"
 TIMEOUT   = 15
@@ -23,7 +29,7 @@ def get_db():
     return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 def log(msg):
-    print(f"[{datetime.datetime.now().strftime('%d/%m %H:%M')}] {msg}", flush=True)
+    print(f"[{now_paris().strftime('%d/%m %H:%M')}] {msg}", flush=True)
 
 # ── Slug & Fetch ──────────────────────────────────────────────────────────────
 
@@ -97,7 +103,7 @@ def load_tracking(db):
     return res.data or []
 
 def add_signal(db, market, date_str):
-    now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    now = now_paris().strftime("%d/%m/%Y %H:%M")
     pct = round(market["yes_price"] * 100, 1)
     db.table("chengdu_tracking").upsert({
         "condition_id":        market["condition_id"],
@@ -115,11 +121,11 @@ def add_signal(db, market, date_str):
 def update_price(db, condition_id, yes_price):
     db.table("chengdu_tracking").update({
         "yes_price_actuel":  round(yes_price * 100, 1),
-        "derniere_lecture":  datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "derniere_lecture":  now_paris().strftime("%d/%m/%Y %H:%M"),
     }).eq("condition_id", condition_id).execute()
 
 def resolve_signal(db, condition_id, resultat):
-    now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    now = now_paris().strftime("%d/%m/%Y %H:%M")
     db.table("chengdu_tracking").update({
         "resultat":  resultat,
         "resolu_le": now,
@@ -158,7 +164,7 @@ def update_stats(db, tracking):
         "perdus":          len(perdus),
         "taux_victoire":   taux,
         "par_date":        by_date,
-        "updated_at":      datetime.datetime.now().isoformat(),
+        "updated_at":      now_paris().isoformat(),
         "verdict": (
             "Stratégie rentable"      if taux is not None and taux >= 60 else
             "Stratégie à surveiller"  if taux is not None and taux >= 50 else
@@ -196,7 +202,7 @@ def save_rapport(db, tracking, slug):
     perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
     taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
     db.table("chengdu_rapports").insert({
-        "heure":        datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "heure":        now_paris().strftime("%d/%m/%Y %H:%M"),
         "trackes":      len(tracking),
         "en_attente":   len(tracking) - len(resolus),
         "resolus":      len(resolus),
@@ -255,7 +261,7 @@ def save_resume(db, tracking):
     taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
     analyse = generate_daily_resume(tracking)
     db.table("chengdu_resumes").insert({
-        "date":          datetime.datetime.now().strftime("%d/%m/%Y"),
+        "date":          now_paris().strftime("%d/%m/%Y"),
         "trackes":       len(tracking),
         "resolus":       len(resolus),
         "gagnes":        len(gagnes),
@@ -275,7 +281,7 @@ def run():
     db = get_db()
 
     while True:
-        now      = datetime.datetime.now()
+        now      = now_paris()
         target   = now + datetime.timedelta(days=1)
         slug     = slug_for(target)
         date_str = target.strftime("%d/%m/%Y")
