@@ -196,16 +196,25 @@ def check_and_update(db, tracking):
     if not pending:
         return 0
     count = 0
+    now = datetime.datetime.now(datetime.timezone.utc)
     for t in pending:
         m = fetch_market_by_id(t["condition_id"])
         last_pct = t.get("yes_price_actuel") or t.get("yes_price_au_track") or 0
-        if m is None or m.get("closed"):
-            # Marché disparu ou fermé → TERMINÉ avec dernier % connu
+        # Terminé si : marché disparu, fermé, ou endDate dépassée
+        expired = False
+        if m:
+            end_str = m.get("end_date", "")
+            if end_str:
+                try:
+                    end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                    expired = end < now
+                except:
+                    pass
+        if m is None or m.get("closed") or expired:
             update_terminated(db, t["condition_id"], last_pct)
             print(f"  🔚 TERMINÉ à {last_pct}% : {t['question'][:50]}")
             count += 1
         else:
-            # Mise à jour du % actuel
             new_pct = round(m["yes_price"] * 100, 1)
             update_price(db, t["condition_id"], new_pct)
             print(f"  🔄 {new_pct}% : {t['question'][:50]}")
