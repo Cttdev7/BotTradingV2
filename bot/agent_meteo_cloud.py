@@ -81,29 +81,36 @@ def _parse_market(m):
     }
 
 def fetch_high_temp_markets():
-    """Fetch tous les marchés 'highest temperature' via tag_slug=weather sur l'API events."""
+    """Fetch les marchés 'highest temperature' actifs se résolvant dans les 7 prochains jours."""
     try:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff = now + datetime.timedelta(days=7)
         result = []
-        offset = 0
-        while True:
-            r = requests.get(GAMMA_EVENTS_API,
-                params={"tag_slug": "weather", "limit": 100, "active": "true", "offset": offset},
-                timeout=TIMEOUT)
-            r.raise_for_status()
-            events = r.json()
-            if not events:
-                break
-            for event in events:
-                title = event.get("title", "").lower()
-                if "highest temperature" not in title and "high temperature" not in title:
+        r = requests.get(GAMMA_EVENTS_API,
+            params={"tag_slug": "weather", "limit": 100, "active": "true",
+                    "order": "createdAt", "ascending": "false"},
+            timeout=TIMEOUT)
+        r.raise_for_status()
+        events = r.json()
+        for event in events:
+            title = event.get("title", "").lower()
+            if "highest temperature" not in title and "high temperature" not in title:
+                continue
+            for m in event.get("markets", []):
+                # Filtre strict : marché actif, non fermé, endDate dans les 7 jours
+                if m.get("closed") or not m.get("active", True):
                     continue
-                for m in event.get("markets", []):
-                    parsed = _parse_market(m)
-                    if parsed:
-                        result.append(parsed)
-            if len(events) < 100:
-                break
-            offset += 100
+                end_str = m.get("endDate", "")
+                if end_str:
+                    try:
+                        end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                        if end < now or end > cutoff:
+                            continue
+                    except:
+                        continue
+                parsed = _parse_market(m)
+                if parsed:
+                    result.append(parsed)
         return result
     except Exception as e:
         print(f"⚠️  Fetch erreur: {e}")
