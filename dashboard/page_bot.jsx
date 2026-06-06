@@ -27,9 +27,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [meteoLastSync,   setMeteoLastSync]   = React.useState(null);
   const [meteoStats,      setMeteoStats]      = React.useState(null);
 
-  const agentPrefix = bot.id === 'polycrypto' ? 'crypto' : bot.id === 'polycrypto4h' ? 'crypto_4h' : 'meteo';
-  const agentLabel  = bot.id === 'polyedge' ? 'Mistral' : 'Gemini';
-  const agentEmoji  = bot.id === 'polyedge' ? '🌦' : bot.id === 'polycrypto4h' ? '⏱' : '₿';
+  const agentPrefix = bot.id === 'chengdu' ? 'chengdu' : bot.id === 'polycrypto' ? 'crypto' : bot.id === 'polycrypto4h' ? 'crypto_4h' : 'meteo';
+  const agentLabel  = bot.id === 'polyedge' || bot.id === 'chengdu' ? 'Mistral' : 'Gemini';
+  const agentEmoji  = bot.id === 'polyedge' ? '🌦' : bot.id === 'chengdu' ? '🌡️' : bot.id === 'polycrypto4h' ? '⏱' : '₿';
   const agentAnalyseKey = bot.id === 'polyedge' ? 'analyse_mistral' : 'analyse_gemini';
 
   const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
@@ -53,9 +53,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     });
 
   const refreshMeteo = React.useCallback(() => {
-    const tableRapports = bot.id === 'polycrypto' ? 'crypto_rapports' : bot.id === 'polycrypto4h' ? 'crypto_4h_rapports' : 'meteo_rapports';
-    const tableTracking = bot.id === 'polycrypto' ? 'crypto_tracking' : bot.id === 'polycrypto4h' ? 'crypto_4h_tracking' : 'meteo_tracking';
-    const tableResumes  = bot.id === 'polycrypto' ? 'crypto_resumes'  : bot.id === 'polycrypto4h' ? 'crypto_4h_resumes'  : 'meteo_resumes';
+    const tableRapports = bot.id === 'chengdu' ? 'chengdu_rapports' : bot.id === 'polycrypto' ? 'crypto_rapports' : bot.id === 'polycrypto4h' ? 'crypto_4h_rapports' : 'meteo_rapports';
+    const tableTracking = bot.id === 'chengdu' ? 'chengdu_tracking' : bot.id === 'polycrypto' ? 'crypto_tracking' : bot.id === 'polycrypto4h' ? 'crypto_4h_tracking' : 'meteo_tracking';
+    const tableResumes  = bot.id === 'chengdu' ? 'chengdu_resumes'  : bot.id === 'polycrypto' ? 'crypto_resumes'  : bot.id === 'polycrypto4h' ? 'crypto_4h_resumes'  : 'meteo_resumes';
 
     sbFetch(tableRapports, 48).then(d => {
       if (Array.isArray(d) && d.length) { setMeteoRapports(d); setMeteoRapport(d[0]); setMeteoLastSync(new Date()); }
@@ -66,7 +66,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     sbFetch(tableResumes, 90).then(d => {
       if (Array.isArray(d)) setMeteoResumes(d);
     }).catch(() => {});
-    const statsTable = agentPrefix === 'meteo' ? 'meteo_stats?id=eq.meteo'
+    const statsTable = agentPrefix === 'chengdu' ? 'chengdu_stats?id=eq.chengdu'
+      : agentPrefix === 'meteo' ? 'meteo_stats?id=eq.meteo'
       : agentPrefix === 'crypto_4h' ? 'crypto_4h_stats?id=eq.crypto_4h'
       : 'crypto_stats?id=eq.crypto';
     sbFetch(statsTable, 1).then(d => {
@@ -378,7 +379,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap' }}>
               <span style={{ fontSize:24 }}>{agentEmoji}</span>
               <div style={{ fontSize:17, fontWeight:800, color:'#fff', letterSpacing:'-.01em' }}>
-                Stratégie {bot.id === 'polycrypto' ? 'crypto' : 'météo'} à 80%+
+                Stratégie {bot.id === 'chengdu' ? 'Chengdu' : bot.id === 'polycrypto' ? 'crypto' : 'météo'} à 80%+
               </div>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
@@ -390,10 +391,11 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </span>
             </div>
             <div style={{ fontSize:13.5, color:'rgba(255,255,255,.65)', lineHeight:1.7, maxWidth:560 }}>
-              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>30 minutes</strong> et tracke
-              tous les paris <strong style={{ color:'rgba(255,255,255,.9)' }}>
-                {bot.id === 'polycrypto' ? 'crypto' : 'météo'}
-              </strong> dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
+              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>{bot.id === 'chengdu' ? '15' : '30'} minutes</strong> et tracke{' '}
+              {bot.id === 'chengdu'
+                ? <><strong style={{ color:'rgba(255,255,255,.9)' }}>la température max à Chengdu</strong></>
+                : <>tous les paris <strong style={{ color:'rgba(255,255,255,.9)' }}>{bot.id === 'polycrypto' ? 'crypto' : 'météo'}</strong></>
+              } dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
               Analysé par <strong style={{ color:'rgba(255,255,255,.9)' }}>{agentLabel}</strong> à chaque rapport.
             </div>
           </div>
@@ -401,7 +403,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
           {/* ── Taux global + stats ── */}
           {(() => {
             const stats = meteoStats;
-            const taux  = stats?.taux_victoire_global ?? null;
+            const taux  = stats?.taux_victoire_global ?? stats?.taux_victoire ?? null;
             const col   = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
             if (!stats && !meteoRapport) return null;
             return (
@@ -419,7 +421,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                       {taux !== null ? `${taux}%` : '—'}
                     </div>
                     <div style={{ fontSize:12.5, color:'var(--text-3)', marginTop:6 }}>
-                      {stats ? `${stats.total_gagnes} gagnés · ${stats.total_perdus} perdus · ${stats.total_resolus} résolus depuis le début` : 'En attente de données…'}
+                      {stats ? `${stats.total_gagnes ?? stats.gagnes ?? 0} gagnés · ${stats.total_perdus ?? stats.perdus ?? 0} perdus · ${stats.total_resolus ?? stats.resolus ?? 0} résolus depuis le début` : 'En attente de données…'}
                     </div>
                   </div>
                   <div style={{ fontSize:48, opacity:.15 }}>{taux >= 60 ? '✅' : taux >= 50 ? '⚠️' : taux !== null ? '❌' : '⏳'}</div>
@@ -498,7 +500,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         </span>
                       )}
                     </div>
-                    <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text-3)' }}>{t.tracke_le}</div>
+                    <div style={{ textAlign:'center', fontSize:11.5, color:'var(--text-3)' }}>{t.tracke_le || t.detecte_le}</div>
                     <div style={{ textAlign:'center' }}>
                       {t.resultat === 'GAGNANT' && <span style={{ fontSize:12, fontWeight:700, color:'var(--green)',
                         background:'color-mix(in oklab,var(--green) 15%,transparent)',

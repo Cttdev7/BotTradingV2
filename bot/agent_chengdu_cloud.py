@@ -188,6 +188,83 @@ def check_resolved(db, tracking):
         elif m:
             update_price(db, t["condition_id"], m["yes_price"])
 
+# ── Rapport cycle + Résumé 17h ───────────────────────────────────────────────
+
+def save_rapport(db, tracking, slug):
+    resolus = [t for t in tracking if t["resultat"] is not None]
+    gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
+    perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
+    taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
+    db.table("chengdu_rapports").insert({
+        "heure":        datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "trackes":      len(tracking),
+        "en_attente":   len(tracking) - len(resolus),
+        "resolus":      len(resolus),
+        "gagnes":       len(gagnes),
+        "perdus":       len(perdus),
+        "taux_victoire": taux,
+        "marche_slug":  slug,
+        "verdict": (
+            "Stratégie rentable"      if taux is not None and taux >= 60 else
+            "Stratégie à surveiller"  if taux is not None and taux >= 50 else
+            "Stratégie non rentable"  if taux is not None else
+            "En attente de données"
+        ),
+    }).execute()
+
+def generate_daily_resume(tracking):
+    key = os.getenv("MISTRAL_API_KEY", "")
+    if not key:
+        return "MISTRAL_API_KEY manquante."
+    resolus = [t for t in tracking if t["resultat"] is not None]
+    gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
+    taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
+    lignes  = "\n".join(
+        f"- {t['question'][:70]} | signalé à {t['yes_price_au_signal']}% | {t['resultat']}"
+        for t in resolus[-15:]
+    ) or "Aucun marché résolu."
+    prompt = f"""Résume en 5 lignes max ces stats de paris sur la température à Chengdu (Polymarket, seuil 80%) :
+
+Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(resolus)-len(gagnes)} | Taux: {taux}%
+
+Derniers résolus:
+{lignes}
+
+Réponds en français, très court. Donne :
+1. Le taux de réussite
+2. Si la stratégie vaut le coup (oui/non, 1 phrase)
+3. Un conseil pour demain"""
+    try:
+        r = requests.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": "mistral-small-latest",
+                  "messages": [{"role": "user", "content": prompt}],
+                  "max_tokens": 200, "temperature": 0.2},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        return f"Erreur Mistral : {e}"
+
+def save_resume(db, tracking):
+    resolus = [t for t in tracking if t["resultat"] is not None]
+    gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
+    perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
+    taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
+    analyse = generate_daily_resume(tracking)
+    db.table("chengdu_resumes").insert({
+        "date":          datetime.datetime.now().strftime("%d/%m/%Y"),
+        "trackes":       len(tracking),
+        "resolus":       len(resolus),
+        "gagnes":        len(gagnes),
+        "perdus":        len(perdus),
+        "taux_victoire": taux,
+        "analyse":       analyse,
+    }).execute()
+    log(f"📋 Résumé 17h sauvegardé — taux: {taux}%")
+
 # ── Boucle principale ─────────────────────────────────────────────────────────
 
 def run():
@@ -249,6 +326,21 @@ def run():
         perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
         taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
         log(f"📊 Signaux:{len(tracking)} | Résolus:{len(resolus)} | ✅{len(gagnes)} ❌{len(perdus)} | Taux:{taux}%")
+
+        # 5. Rapport cycle → chengdu_rapports
+        try:
+            save_rapport(db, tracking, slug)
+        except Exception as e:
+            log(f"⚠️  Rapport: {e}")
+
+        # 6. Résumé 17h → chengdu_resumes
+        if now.hour == 17 and now.minute < 15:
+            log("⏰ 17h00 — Génération du résumé quotidien…")
+            try:
+                save_resume(db, tracking)
+            except Exception as e:
+                log(f"⚠️  Résumé: {e}")
+
         log(f"   Prochain cycle dans 15 min")
         log("")
 
