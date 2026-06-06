@@ -81,36 +81,47 @@ def _parse_market(m):
     }
 
 def fetch_high_temp_markets():
-    """Fetch uniquement les marchés 'highest temperature' du jour (endDate dans les 24h)."""
+    """Fetch tous les marchés 'highest temperature' du jour et du lendemain (fenêtre 36h).
+    Pagine à travers tous les events weather pour ne rien manquer."""
     try:
         now    = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now + datetime.timedelta(hours=24)
+        cutoff = now + datetime.timedelta(hours=36)
         result = []
-        r = requests.get(GAMMA_EVENTS_API,
-            params={"tag_slug": "weather", "limit": 100, "active": "true",
-                    "order": "createdAt", "ascending": "false"},
-            timeout=TIMEOUT)
-        r.raise_for_status()
-        events = r.json()
-        for event in events:
-            title = event.get("title", "").lower()
-            if "highest temperature" not in title and "high temperature" not in title:
-                continue
-            for m in event.get("markets", []):
-                if m.get("closed") or not m.get("active", True):
+        offset = 0
+        while True:
+            r = requests.get(GAMMA_EVENTS_API,
+                params={"tag_slug": "weather", "limit": 100, "active": "true",
+                        "order": "createdAt", "ascending": "false", "offset": offset},
+                timeout=TIMEOUT)
+            r.raise_for_status()
+            events = r.json()
+            if not events:
+                break
+            found_in_page = False
+            for event in events:
+                title = event.get("title", "").lower()
+                if "highest temperature" not in title and "high temperature" not in title:
                     continue
-                end_str = m.get("endDate", "")
-                if not end_str:
-                    continue
-                try:
-                    end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
-                    if end < now or end > cutoff:
+                for m in event.get("markets", []):
+                    if m.get("closed") or not m.get("active", True):
                         continue
-                except:
-                    continue
-                parsed = _parse_market(m)
-                if parsed:
-                    result.append(parsed)
+                    end_str = m.get("endDate", "")
+                    if not end_str:
+                        continue
+                    try:
+                        end = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+                        if end < now or end > cutoff:
+                            continue
+                    except:
+                        continue
+                    parsed = _parse_market(m)
+                    if parsed:
+                        result.append(parsed)
+                        found_in_page = True
+            # Si cette page n'a plus de marchés récents, on s'arrête
+            if len(events) < 100 or not found_in_page:
+                break
+            offset += 100
         return result
     except Exception as e:
         print(f"⚠️  Fetch erreur: {e}")
