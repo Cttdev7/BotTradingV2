@@ -143,7 +143,7 @@ def fetch_chengdu_temp(date):
         data = r.json()
         for d, t in zip(data["daily"]["time"], data["daily"]["temperature_2m_max"]):
             if d == date_str and t is not None:
-                return round(t)
+                return int(t)  # troncature comme Wunderground (23.9°C → 23°C, pas 24°C)
     except Exception as e:
         log(f"⚠️  Open-Meteo: {e}")
     return None
