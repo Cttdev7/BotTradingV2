@@ -1,24 +1,32 @@
 """
 agent_chengdu_cloud.py — Bot Chengdu température maximale (Railway + Supabase)
 Tourne en continu sur Railway. Toutes les 15 minutes :
-- Analyse les 11 options de température du marché actif (avant 14h→aujourd'hui, après 14h→demain)
+- Analyse les 11 options de température du lendemain à Chengdu (J+1 heure Chengdu)
+- Récupère la température max prévue via Open-Meteo (station ZUUU approx.)
 - Enregistre les signaux >80% dans Supabase
 - Vérifie les résolutions des marchés précédents
 - Met à jour les stats globales
 """
 
-import os, json, time, datetime, requests
+import os, re, json, time, datetime, requests
 from zoneinfo import ZoneInfo
 from supabase import create_client
 
-PARIS = ZoneInfo("Europe/Paris")
+PARIS   = ZoneInfo("Europe/Paris")
+CHENGDU = ZoneInfo("Asia/Shanghai")   # UTC+8, pas de changement d'heure
 
 def now_paris():
     return datetime.datetime.now(PARIS)
 
-GAMMA_API = "https://gamma-api.polymarket.com"
-TIMEOUT   = 15
-INTERVAL  = 900  # 15 min
+def now_chengdu():
+    return datetime.datetime.now(CHENGDU)
+
+GAMMA_API    = "https://gamma-api.polymarket.com"
+TIMEOUT      = 15
+INTERVAL     = 900  # 15 min
+
+CHENGDU_LAT  = 30.578   # Chengdu Shuangliu Airport (ZUUU)
+CHENGDU_LON  = 103.947
 
 MONTHS = ["january","february","march","april","may","june",
           "july","august","september","october","november","december"]
@@ -94,10 +102,60 @@ def fetch_market_by_id(condition_id):
         log(f"⚠️  Fetch {condition_id[:16]}: {e}")
     return None
 
+# ── Température réelle Chengdu (Open-Meteo, gratuit, pas de clé) ──────────────
+
+def fetch_chengdu_temp(date):
+    """
+    Température max prévue/relevée à ZUUU via Open-Meteo.
+    Retourne un entier en °C (arrondi, comme Wunderground), ou None.
+    """
+    date_str = date.strftime("%Y-%m-%d")
+    today_chengdu = now_chengdu().date()
+    try:
+        if date.date() >= today_chengdu:
+            # Prévision (J+0, J+1, J+2)
+            r = requests.get(
+                "https://api.open-meteo.com/v1/forecast",
+                params={
+                    "latitude":     CHENGDU_LAT,
+                    "longitude":    CHENGDU_LON,
+                    "daily":        "temperature_2m_max",
+                    "timezone":     "Asia/Shanghai",
+                    "forecast_days": 3,
+                },
+                timeout=TIMEOUT,
+            )
+        else:
+            # Historique (journées passées)
+            r = requests.get(
+                "https://archive-api.open-meteo.com/v1/era5",
+                params={
+                    "latitude":   CHENGDU_LAT,
+                    "longitude":  CHENGDU_LON,
+                    "daily":      "temperature_2m_max",
+                    "timezone":   "Asia/Shanghai",
+                    "start_date": date_str,
+                    "end_date":   date_str,
+                },
+                timeout=TIMEOUT,
+            )
+        r.raise_for_status()
+        data = r.json()
+        for d, t in zip(data["daily"]["time"], data["daily"]["temperature_2m_max"]):
+            if d == date_str and t is not None:
+                return round(t)
+    except Exception as e:
+        log(f"⚠️  Open-Meteo: {e}")
+    return None
+
+def temp_from_question(question):
+    """Extrait la température en °C depuis la question Polymarket."""
+    m = re.search(r'be (\d+)°C', question)
+    return int(m.group(1)) if m else None
+
 # ── Tracking Supabase ─────────────────────────────────────────────────────────
 
 def load_tracking(db):
-    # [FIX 9] limit pour éviter de tout charger en mémoire si la table grossit
     res = db.table("chengdu_tracking").select("*").limit(500).execute()
     return res.data or []
 
@@ -179,8 +237,8 @@ def check_resolved(db, tracking):
         return
     for t in pending:
         m = fetch_market_by_id(t["condition_id"])
-        # [FIX 2] m is None = erreur réseau/API → skip, réessayer au prochain cycle
         if m is None:
+            # Erreur réseau → skip, réessayer au prochain cycle
             log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip")
             continue
         if m["closed"]:
@@ -190,7 +248,6 @@ def check_resolved(db, tracking):
             elif final <= 0.05:
                 resultat = "PERDANT"
             else:
-                # [FIX 3] utiliser le vrai prix de clôture (final), pas le cache
                 pct = round(final * 100, 1)
                 resultat = f"TERMINÉ: {pct}%"
             resolve_signal(db, t["condition_id"], resultat)
@@ -199,12 +256,12 @@ def check_resolved(db, tracking):
 
 # ── Rapport cycle + purge ─────────────────────────────────────────────────────
 
-def save_rapport(db, tracking, slug):
+def save_rapport(db, tracking, slug, temp_actuel=None):
     resolus = [t for t in tracking if t["resultat"] is not None]
     gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
     perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
     taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
-    db.table("chengdu_rapports").insert({
+    row = {
         "heure":         now_paris().strftime("%d/%m/%Y %H:%M"),
         "trackes":       len(tracking),
         "en_attente":    len(tracking) - len(resolus),
@@ -219,10 +276,12 @@ def save_rapport(db, tracking, slug):
             "Stratégie non rentable"  if taux is not None else
             "En attente de données"
         ),
-    }).execute()
+    }
+    if temp_actuel is not None:
+        row["temp_chengdu"] = temp_actuel
+    db.table("chengdu_rapports").insert(row).execute()
 
 def purge_old_rapports(db):
-    # [FIX 7] garde seulement les 2880 derniers rapports (~30 jours)
     try:
         res = db.table("chengdu_rapports").select("id").order("created_at", desc=True).offset(2880).limit(200).execute()
         ids = [r["id"] for r in (res.data or [])]
@@ -235,7 +294,6 @@ def purge_old_rapports(db):
 # ── Résumé 17h ────────────────────────────────────────────────────────────────
 
 def already_have_resume_today(db):
-    # [FIX 4] dédup — évite un double résumé si Railway redémarre entre 17h00 et 17h14
     today = now_paris().strftime("%d/%m/%Y")
     try:
         res = db.table("chengdu_resumes").select("id").eq("date", today).limit(1).execute()
@@ -243,23 +301,23 @@ def already_have_resume_today(db):
     except Exception:
         return False
 
-def generate_daily_resume(tracking):
+def generate_daily_resume(tracking, temp_actuel=None):
     key = os.getenv("MISTRAL_API_KEY", "")
     if not key:
         return "MISTRAL_API_KEY manquante."
     resolus  = [t for t in tracking if t["resultat"] is not None]
     gagnes   = [t for t in resolus  if t["resultat"] == "GAGNANT"]
     perdus   = [t for t in resolus  if t["resultat"] == "PERDANT"]
-    # [FIX 6] TERMINÉ ≠ PERDANT — séparé dans le prompt pour ne pas biaiser Mistral
     termines = [t for t in resolus  if t["resultat"] not in ("GAGNANT", "PERDANT")]
     taux     = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
     lignes   = "\n".join(
         f"- {t['question'][:70]} | signalé à {t['yes_price_au_signal']}% | {t['resultat']}"
         for t in resolus[-15:]
     ) or "Aucun marché résolu."
+    temp_line = f"\nTempérature max actuelle à Chengdu (Open-Meteo/ZUUU) : {temp_actuel}°C" if temp_actuel else ""
     prompt = f"""Résume en 5 lignes max ces stats de paris sur la température à Chengdu (Polymarket, seuil 80%) :
 
-Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus (PERDANT): {len(perdus)} | Terminés ambigus: {len(termines)} | Taux victoire: {taux}%
+Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus (PERDANT): {len(perdus)} | Terminés ambigus: {len(termines)} | Taux victoire: {taux}%{temp_line}
 
 Note: "TERMINÉ: X%" = marché fermé entre 5% et 95% (ambiguïté), ne pas compter comme perte.
 
@@ -284,12 +342,12 @@ Réponds en français, très court. Donne :
     except Exception as e:
         return f"Erreur Mistral : {e}"
 
-def save_resume(db, tracking):
+def save_resume(db, tracking, temp_actuel=None):
     resolus = [t for t in tracking if t["resultat"] is not None]
     gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
     perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
     taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
-    analyse = generate_daily_resume(tracking)
+    analyse = generate_daily_resume(tracking, temp_actuel)
     db.table("chengdu_resumes").insert({
         "date":          now_paris().strftime("%d/%m/%Y"),
         "trackes":       len(tracking),
@@ -305,19 +363,20 @@ def save_resume(db, tracking):
 
 def run():
     log("🌡️  Agent Chengdu Cloud démarré (Railway + Supabase)")
-    log("   Seuil : 80% YES | Scan : toutes les 15 min")
+    log("   Seuil : 80% YES | Scan : toutes les 15 min | Fuseau : Chengdu (UTC+8)")
     log("")
 
     while True:
-        # [FIX 5] client recréé à chaque cycle — évite les connexions expirées après plusieurs heures
         db  = get_db()
-        now = now_paris()
+        now_p = now_paris()
+        now_c = now_chengdu()
 
-        target   = now + datetime.timedelta(days=1)
+        # Date du marché = J+1 heure Chengdu (pas Paris — 6h de décalage)
+        target   = now_c + datetime.timedelta(days=1)
         slug     = slug_for(target)
         date_str = target.strftime("%d/%m/%Y")
 
-        log(f"── Cycle {now.strftime('%d/%m/%Y %H:%M')} ──")
+        log(f"── Cycle {now_p.strftime('%d/%m/%Y %H:%M')} (Chengdu: {now_c.strftime('%d/%m %H:%M')}) ──")
         log(f"   Marché suivi : {slug}")
 
         # 1. Vérifier résolutions des marchés en attente
@@ -326,7 +385,14 @@ def run():
         check_resolved(db, tracking)
         tracking = load_tracking(db)
 
-        # 2. Fetch marché Chengdu
+        # 2. Température actuelle à Chengdu (Open-Meteo)
+        temp_actuel = fetch_chengdu_temp(target)
+        if temp_actuel is not None:
+            log(f"   🌡️  Open-Meteo (ZUUU) : {temp_actuel}°C max prévu pour {date_str}")
+        else:
+            log("   🌡️  Open-Meteo : donnée indisponible")
+
+        # 3. Fetch marché Chengdu J+1
         log("Fetch marché Chengdu…")
         event, markets = fetch_event(slug)
 
@@ -337,11 +403,14 @@ def run():
             log(f"   {len(markets)} options | Top: {top[0]['question'].split('be ')[-1].split(' on')[0]} à {top[0]['yes_price']*100:.0f}%")
 
             for m in sorted(markets, key=lambda x: x["yes_price"], reverse=True):
-                flag = "🔥" if m["yes_price"] >= 0.80 else ("📊" if m["yes_price"] >= 0.30 else "  ")
-                temp = m["question"].split("be ")[-1].split(" on")[0]
-                log(f"   {flag} {m['yes_price']*100:5.1f}%  {temp}")
+                flag  = "🔥" if m["yes_price"] >= 0.80 else ("📊" if m["yes_price"] >= 0.30 else "  ")
+                temp  = m["question"].split("be ")[-1].split(" on")[0]
+                # Comparer avec la prévision Open-Meteo
+                t_int = temp_from_question(m["question"])
+                match = " ← Open-Meteo" if (temp_actuel is not None and t_int == temp_actuel) else ""
+                log(f"   {flag} {m['yes_price']*100:5.1f}%  {temp}{match}")
 
-            # 3. Nouveaux signaux >80% + mise à jour prix des signaux existants
+            # 4. Nouveaux signaux >80% + mise à jour prix signaux en attente
             tracked_ids = {t["condition_id"] for t in tracking}
             pending_ids = {t["condition_id"] for t in tracking if t["resultat"] is None}
             new_signals = 0
@@ -350,7 +419,6 @@ def run():
                     add_signal(db, m, date_str)
                     new_signals += 1
                 elif m["condition_id"] in pending_ids:
-                    # [FIX 8] mettre à jour le prix actuel des signaux déjà en base
                     update_price(db, m["condition_id"], m["yes_price"])
 
             if new_signals:
@@ -358,7 +426,17 @@ def run():
             else:
                 log("   Aucun nouveau signal (aucune option à 80%+)")
 
-        # 4. Mise à jour stats
+        # 5. Alerte si Open-Meteo et signaux trackés divergent
+        if temp_actuel is not None:
+            pending = [t for t in tracking if t["resultat"] is None]
+            signal_temps = [temp_from_question(t["question"]) for t in pending]
+            signal_temps = [x for x in signal_temps if x is not None]
+            if signal_temps and temp_actuel not in signal_temps:
+                log(f"   ⚠️  Open-Meteo ({temp_actuel}°C) ne correspond à aucun signal tracké {signal_temps}")
+            elif signal_temps and temp_actuel in signal_temps:
+                log(f"   ✅ Signal tracké {temp_actuel}°C = prévision Open-Meteo !")
+
+        # 6. Mise à jour stats
         tracking = load_tracking(db)
         update_stats(db, tracking)
 
@@ -368,21 +446,20 @@ def run():
         taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
         log(f"📊 Signaux:{len(tracking)} | Résolus:{len(resolus)} | ✅{len(gagnes)} ❌{len(perdus)} | Taux:{taux}%")
 
-        # 5. Rapport cycle → chengdu_rapports
+        # 7. Rapport cycle → chengdu_rapports
         try:
-            save_rapport(db, tracking, slug)
-            # Purge nocturne à 4h00 (1 fois/jour)
-            if now.hour == 4 and now.minute < 15:
+            save_rapport(db, tracking, slug, temp_actuel)
+            if now_p.hour == 4 and now_p.minute < 15:
                 purge_old_rapports(db)
         except Exception as e:
             log(f"⚠️  Rapport: {e}")
 
-        # 6. Résumé 17h → chengdu_resumes (avec dédup)
-        if now.hour == 17 and now.minute < 15:
+        # 8. Résumé 17h → chengdu_resumes
+        if now_p.hour == 17 and now_p.minute < 15:
             if not already_have_resume_today(db):
                 log("⏰ 17h00 — Génération du résumé quotidien…")
                 try:
-                    save_resume(db, tracking)
+                    save_resume(db, tracking, temp_actuel)
                 except Exception as e:
                     log(f"⚠️  Résumé: {e}")
             else:
