@@ -86,7 +86,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'hong-kong', name: 'Hong Kong Temp', market: 'polymarket', glyph: '🌆',
+    id: 'hong_kong', name: 'Hong Kong Temp', market: 'polymarket', glyph: '🌆',
     type: 'temperature', citySlug: 'hong-kong',
     strategy: 'Température max Hong Kong 80%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,

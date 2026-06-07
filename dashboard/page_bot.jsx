@@ -467,7 +467,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
-                            🎯 {s.question?.replace('Will the highest temperature in Chengdu be ','Temp. max Chengdu = ')?.replace(/\?$/,'') || temp}
+                            🎯 {s.question?.replace(/Will the highest temperature in .+ be /,'Temp. max = ')?.replace(/\?$/,'') || temp}
                           </div>
                           <div style={{ fontSize:11.5, color:'var(--text-3)' }}>
                             Détecté le {date_m} à {heure} · marché : {(s.date_marche||'').replace(/(\d+)\/(\d+)\/(\d+)/,'$1/$2/$3')}
@@ -806,11 +806,11 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap' }}>
               <span style={{ fontSize:24 }}>{agentEmoji}</span>
               <div style={{ fontSize:17, fontWeight:800, color:'#fff', letterSpacing:'-.01em' }}>
-                Stratégie {bot.id === 'chengdu' ? 'Chengdu' : bot.id === 'polycrypto' ? 'crypto' : 'météo'} à 80%+
+                Stratégie {bot.type === 'temperature' ? bot.name.split(' ')[0] : bot.id === 'polycrypto' ? 'crypto' : 'météo'} à 80%+
               </div>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
-                AUTO · {bot.id === 'chengdu' ? 'Railway' : 'GitHub Actions'}
+                AUTO · {bot.type === 'temperature' ? 'Railway' : 'GitHub Actions'}
               </span>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
@@ -818,9 +818,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </span>
             </div>
             <div style={{ fontSize:13.5, color:'rgba(255,255,255,.65)', lineHeight:1.7, maxWidth:560 }}>
-              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>{bot.id === 'chengdu' ? '15' : '30'} minutes</strong> et tracke{' '}
-              {bot.id === 'chengdu'
-                ? <><strong style={{ color:'rgba(255,255,255,.9)' }}>la température max à Chengdu</strong></>
+              L'agent scrute Polymarket toutes les <strong style={{ color:'rgba(255,255,255,.9)' }}>{bot.type === 'temperature' ? '15' : '30'} minutes</strong> et tracke{' '}
+              {bot.type === 'temperature'
+                ? <><strong style={{ color:'rgba(255,255,255,.9)' }}>la température max à {bot.name.replace(' Temp','')}</strong></>
                 : <>tous les paris <strong style={{ color:'rgba(255,255,255,.9)' }}>{bot.id === 'polycrypto' ? 'crypto' : 'météo'}</strong></>
               } dont la probabilité YES dépasse <strong style={{ color:'rgba(255,255,255,.9)' }}>80%</strong>.
               Analysé par <strong style={{ color:'rgba(255,255,255,.9)' }}>{agentLabel}</strong> à chaque rapport.

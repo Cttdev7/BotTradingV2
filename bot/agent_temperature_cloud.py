@@ -35,7 +35,7 @@ VILLES = [
         "tz":          ZoneInfo("Asia/Seoul"),
     },
     {
-        "id":          "hong-kong",
+        "id":          "hong_kong",
         "label":       "Hong Kong",
         "slug_prefix": "highest-temperature-in-hong-kong",
         "lat":         22.319,
@@ -172,7 +172,7 @@ def temp_from_question(question):
 # ── Tracking Supabase ─────────────────────────────────────────────────────────
 
 def load_tracking(db, ville):
-    res = db.table(f"{ville['id']}_tracking").select("*").limit(500).execute()
+    res = db.table(f"{ville['id']}_tracking").select("*").limit(5000).execute()
     return res.data or []
 
 def add_signal(db, ville, market, date_str):
@@ -276,8 +276,8 @@ def check_resolved(db, ville, tracking):
                             log(f"  📡 Open-Meteo {temp_om}°C → PERDANT {temp_marche}°C ⚠️ RATÉ", ville)
                         else:
                             log(f"  📡 Open-Meteo {temp_om}°C → {resultat} {temp_marche}°C ❌ INCORRECT", ville)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log(f"  ⚠️ Erreur parsing date/Open-Meteo : {e}", ville)
         else:
             update_price(db, ville, t["condition_id"], m["yes_price"])
 
