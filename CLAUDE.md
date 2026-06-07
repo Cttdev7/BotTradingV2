@@ -72,24 +72,29 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 - ✅ Bot polyedge connecté, données en temps réel
 - ✅ Mode simulation `DRY_RUN=true` — aucun ordre réel sans activation
 - ✅ Agent Mistral pour l'analyse indépendante des marchés
-- ✅ **Agent Chengdu cloud** — tourne sur Railway 24/7, données dans Supabase
-- ✅ Dashboard mis à jour avec bot `chengdu` (id: 'chengdu', glyph: '🌡️')
-- ⏳ `MISTRAL_API_KEY` — à ajouter dans `bot/.env` et variables Railway
+- ✅ **Bot température multi-villes** — `agent_temperature_cloud.py` sur Railway 24/7
+- ✅ **3 villes actives** : Chengdu 🌡️, Séoul 🏙️, Hong Kong 🌆
+- ✅ **Open-Meteo** intégré — température réelle par ville (sans clé API)
+- ✅ **Dashboard Analyse** générique — fonctionne pour toutes les villes `type: 'temperature'`
+- ⏳ `MISTRAL_API_KEY` — à ajouter dans variables Railway pour résumé 17h
 - ⏳ `ANTHROPIC_API_KEY` — à ajouter dans `bot/.env`
 - ⏳ USDC sur Polygon — wallet vide, à alimenter
 
-## Agent Chengdu (priorité actuelle)
-- **Marché** : température maximale à Chengdu sur Polymarket
-- **URL pattern** : `highest-temperature-in-chengdu-on-june-{day}-{year}`
-- **Stratégie** : tracker les options à YES >80%, mesurer les résultats
-- **Scan** : toutes les 15 min, surveille le lendemain (J+1)
+## Bot Température Multi-Villes (actif sur Railway)
+- **Script** : `bot/agent_temperature_cloud.py` (lancé via `Procfile`)
+- **Villes** : Chengdu (UTC+8), Séoul (UTC+9), Hong Kong (UTC+8)
+- **Ajouter une ville** : 1 entrée dans `VILLES` + 4 tables Supabase `{id}_*` + 1 bot dans `data.jsx`
+- **Stratégie** : tracker les options YES >80% (marché encore ouvert), mesurer les résultats
+- **Scan** : toutes les 15 min, J+0 si encore ouvert sinon J+1
+- **Résolution** : détecte `closed OR resolved` (2 états Polymarket)
 - **Cloud** : Railway (projet `lucid-encouragement`) → `Procfile`
-- **Base de données Supabase** :
-  - `chengdu_tracking` — signaux détectés
-  - `chengdu_stats` — stats globales (id='chengdu')
-  - `chengdu_rapports` — rapport à chaque cycle
-  - `chengdu_resumes` — résumé Mistral quotidien à 17h
-- **Timezone** : Europe/Paris (zoneinfo)
+- **Tables Supabase par ville** (`{ville_id}` = chengdu / seoul / hong-kong) :
+  - `{ville_id}_tracking` — signaux détectés
+  - `{ville_id}_stats` — stats globales
+  - `{ville_id}_rapports` — rapport à chaque cycle
+  - `{ville_id}_resumes` — résumé Mistral quotidien à 17h
+- **Timezones** : bot interne = timezone locale de la ville, logs = `Europe/Paris`
+- **Open-Meteo** : température max via coordonnées GPS de chaque ville
 - **Logs Railway** : `/logs` dans le projet Railway
 
 ## Pour activer le trading réel
