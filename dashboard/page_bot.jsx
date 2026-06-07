@@ -366,8 +366,270 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
         </div>
       )}
 
-      {/* ── onglet Analyse ── */}
-      {tab === 'analyse' && (
+      {/* ── onglet Analyse Chengdu ── */}
+      {tab === 'analyse' && bot.id === 'chengdu' && (() => {
+        const stats = meteoStats;
+        const taux  = stats?.taux_victoire ?? null;
+        const col   = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
+
+        // Grouper les signaux par date, 3 jours max
+        const byDate = {};
+        meteoTracking.forEach(t => {
+          const d = t.date_marche || '';
+          if (d) { if (!byDate[d]) byDate[d] = []; byDate[d].push(t); }
+        });
+        const parseDate = s => { const [d,m,y] = (s||'').split('/'); return new Date(y,m-1,d); };
+        const dates3 = Object.keys(byDate).sort((a,b) => parseDate(b)-parseDate(a)).slice(0,3);
+
+        return (
+          <div style={{ maxWidth: 760 }}>
+
+            {/* 1. Taux de réussite */}
+            <Card style={{ marginBottom:'var(--gap)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:8 }}>
+                    TAUX DE RÉUSSITE — STRATÉGIE 80%+
+                  </div>
+                  <div style={{ fontSize:64, fontWeight:900, lineHeight:1, color:col }}>
+                    {taux !== null ? `${taux}%` : '—'}
+                  </div>
+                  <div style={{ fontSize:13, color:'var(--text-3)', marginTop:8 }}>
+                    {stats
+                      ? `${stats.gagnes ?? 0} gagnés · ${stats.perdus ?? 0} perdus · ${stats.resolus ?? 0} résolus`
+                      : 'En attente de données…'}
+                  </div>
+                </div>
+                <div style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:52, opacity:.15 }}>{taux>=60?'✅':taux>=50?'⚠️':taux!==null?'❌':'⏳'}</div>
+                  <div style={{ fontSize:12, color:col, fontWeight:700, marginTop:4 }}>{stats?.verdict||''}</div>
+                </div>
+              </div>
+              {(stats?.updated_at || meteoRapport?.heure) && (
+                <div style={{ fontSize:11, color:'var(--text-3)', marginTop:12,
+                  borderTop:'1px solid var(--separator)', paddingTop:10,
+                  display:'flex', gap:16 }}>
+                  {meteoRapport?.heure && <span>Dernier cycle : {meteoRapport.heure}</span>}
+                  {meteoRapport?.marche_slug && (
+                    <span style={{ color:'var(--accent)' }}>
+                      {meteoRapport.marche_slug.replace('highest-temperature-in-chengdu-on-','')}
+                    </span>
+                  )}
+                  <button onClick={refreshMeteo} className="tap"
+                    style={{ border:'none', background:'transparent', cursor:'pointer',
+                      color:'var(--accent)', fontWeight:600, fontSize:11, padding:0 }}>↻ refresh</button>
+                </div>
+              )}
+            </Card>
+
+            {/* 2. Historique 3 jours */}
+            {dates3.length > 0 && (
+              <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
+                <div style={{ padding:'13px 20px', background:'var(--fill)',
+                  borderBottom:'1px solid var(--separator)',
+                  display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:14, fontWeight:700 }}>📅 Historique — 3 derniers jours</span>
+                  <span style={{ fontSize:12, color:'var(--text-3)' }}>
+                    {meteoTracking.length} signal{meteoTracking.length>1?'s':''}
+                  </span>
+                </div>
+                {dates3.map((date, di) => {
+                  const sigs    = byDate[date];
+                  const gagnes  = sigs.filter(s => s.resultat === 'GAGNANT').length;
+                  const perdus  = sigs.filter(s => s.resultat === 'PERDANT').length;
+                  const attente = sigs.filter(s => !s.resultat).length;
+                  const resolus = sigs.filter(s => s.resultat).length;
+                  const taux_j  = resolus > 0 ? Math.round(gagnes/resolus*100) : null;
+                  const col_j   = taux_j>=60?'var(--green)':taux_j>=50?'var(--orange)':taux_j!==null?'var(--red)':'var(--text-3)';
+                  return (
+                    <div key={date} style={{ borderBottom:di<dates3.length-1?'1px solid var(--separator)':'none' }}>
+                      {/* En-tête du jour */}
+                      <div style={{ padding:'12px 20px', display:'flex',
+                        justifyContent:'space-between', alignItems:'center' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                          <span style={{ fontSize:14, fontWeight:700 }}>{date}</span>
+                          <span style={{ fontSize:12, color:'var(--text-3)' }}>
+                            {sigs.length} signal{sigs.length>1?'s':''}
+                          </span>
+                          {attente > 0 && (
+                            <span style={{ fontSize:11, color:'var(--orange)',
+                              background:'color-mix(in oklab,var(--orange) 15%,transparent)',
+                              padding:'2px 8px', borderRadius:999 }}>⏳ {attente} en attente</span>
+                          )}
+                        </div>
+                        <span style={{ fontSize:22, fontWeight:900, color:col_j }}>
+                          {taux_j !== null ? `${taux_j}%` : '—'}
+                        </span>
+                      </div>
+                      {/* Signaux du jour */}
+                      {sigs.map((s, si) => {
+                        const temp = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                        const heure = (s.detecte_le||'').split(' ')?.[1] || '';
+                        return (
+                          <div key={si} style={{ display:'grid',
+                            gridTemplateColumns:'1fr 80px 130px',
+                            padding:'9px 20px 9px 32px', alignItems:'center',
+                            borderTop:'1px solid var(--separator)',
+                            background:'color-mix(in oklab,var(--fill) 60%,transparent)' }}>
+                            <div style={{ fontSize:13.5, color:'var(--text)' }}>
+                              🎯 <strong>{temp}</strong>
+                              <span style={{ fontSize:12, color:'var(--text-3)', marginLeft:8 }}>
+                                signalé à {s.yes_price_au_signal}%
+                              </span>
+                            </div>
+                            <div style={{ fontSize:11.5, color:'var(--text-3)', textAlign:'center' }}>
+                              {heure}
+                            </div>
+                            <div style={{ textAlign:'right' }}>
+                              {s.resultat === 'GAGNANT' && (
+                                <span style={{ fontSize:12, fontWeight:700, color:'var(--green)',
+                                  background:'color-mix(in oklab,var(--green) 15%,transparent)',
+                                  padding:'3px 10px', borderRadius:999 }}>✅ Gagnant</span>
+                              )}
+                              {s.resultat === 'PERDANT' && (
+                                <span style={{ fontSize:12, fontWeight:700, color:'var(--red)',
+                                  background:'color-mix(in oklab,var(--red) 15%,transparent)',
+                                  padding:'3px 10px', borderRadius:999 }}>❌ Perdant</span>
+                              )}
+                              {s.resultat && s.resultat !== 'GAGNANT' && s.resultat !== 'PERDANT' && (
+                                <span style={{ fontSize:11, color:'var(--text-3)',
+                                  background:'var(--fill)', padding:'3px 8px', borderRadius:999 }}>
+                                  {s.resultat}
+                                </span>
+                              )}
+                              {!s.resultat && (
+                                <span style={{ fontSize:11, color:'var(--text-3)',
+                                  background:'var(--fill)', padding:'3px 10px', borderRadius:999,
+                                  border:'1px solid var(--separator)' }}>⏳ En cours</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* 3. Logs bot */}
+            {meteoRapports.length > 0 && (
+              <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
+                <div style={{ padding:'13px 20px', background:'var(--fill)',
+                  borderBottom:'1px solid var(--separator)',
+                  display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ width:7, height:7, borderRadius:999, background:'var(--green)',
+                      boxShadow:'0 0 0 3px color-mix(in oklab,var(--green) 25%,transparent)' }} />
+                    <span style={{ fontSize:14, fontWeight:700 }}>Logs bot</span>
+                    <span style={{ fontSize:12, color:'var(--text-3)' }}>· Railway · toutes les 15 min</span>
+                  </div>
+                  <button onClick={refreshMeteo} className="tap"
+                    style={{ border:'1px solid var(--separator)', background:'var(--bg-elev)',
+                      borderRadius:'var(--r-sm)', padding:'4px 12px', fontSize:12,
+                      fontWeight:600, cursor:'pointer', color:'var(--accent)' }}>↻</button>
+                </div>
+                {meteoRapports.slice(0,20).map((r, i) => {
+                  const col_r  = r.taux_victoire>=60?'var(--green)':r.taux_victoire>=50?'var(--orange)':r.taux_victoire!==null?'var(--red)':'var(--text-3)';
+                  const slug_s = (r.marche_slug||'').replace('highest-temperature-in-chengdu-on-','');
+                  return (
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:10,
+                      padding:'9px 20px',
+                      borderBottom:i<Math.min(meteoRapports.length,20)-1?'1px solid var(--separator)':'none',
+                      background:i===0?'color-mix(in oklab,var(--accent) 4%,transparent)':'transparent',
+                      fontFamily:'monospace' }}>
+                      <span style={{ color:'var(--text-3)', fontSize:11.5, minWidth:108, flexShrink:0 }}>
+                        {r.heure}
+                      </span>
+                      <span style={{ color:'var(--accent)', fontSize:11.5, minWidth:130,
+                        flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {slug_s}
+                      </span>
+                      <span style={{ color:'var(--text-3)', fontSize:11.5, flex:1 }}>
+                        {r.trackes>0?`📊${r.trackes} `:''}
+                        {r.en_attente>0?`⏳${r.en_attente} `:''}
+                        {r.gagnes>0?`✅${r.gagnes} `:''}
+                        {r.perdus>0?`❌${r.perdus}`:''}
+                        {r.trackes===0?'— aucun signal':''}
+                      </span>
+                      <span style={{ color:col_r, fontWeight:700, fontSize:12, minWidth:34, textAlign:'right' }}>
+                        {r.taux_victoire!==null?`${r.taux_victoire}%`:'—'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* 4. Résumés 17h */}
+            {meteoResumes.length > 0 && (
+              <Card style={{ padding:0, overflow:'hidden' }}>
+                <div style={{ padding:'13px 20px', background:'var(--fill)',
+                  borderBottom:'1px solid var(--separator)',
+                  display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:18 }}>📋</span>
+                    <span style={{ fontSize:14, fontWeight:700 }}>Résumés Mistral 17h</span>
+                  </div>
+                  <span style={{ fontSize:12, color:'var(--text-3)' }}>
+                    {meteoResumes.length} jour{meteoResumes.length>1?'s':''}
+                  </span>
+                </div>
+                {meteoResumes.map((r,i) => {
+                  const t2  = r.taux_victoire;
+                  const c2  = t2>=60?'var(--green)':t2>=50?'var(--orange)':t2!==null?'var(--red)':'var(--text-3)';
+                  return (
+                    <div key={i} style={{ borderBottom:i<meteoResumes.length-1?'1px solid var(--separator)':'none',
+                      padding:'16px 20px' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                        <span style={{ fontSize:14, fontWeight:700 }}>📅 {r.date}</span>
+                        <span style={{ fontSize:24, fontWeight:900, color:c2 }}>{t2!==null?`${t2}%`:'—'}</span>
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
+                        {[
+                          {l:'Trackés',v:r.trackes,c:'var(--text-3)'},
+                          {l:'Résolus',v:r.resolus,c:'var(--text-2)'},
+                          {l:'✅ Gagnés',v:r.gagnes,c:'var(--green)'},
+                          {l:'❌ Perdus',v:r.perdus,c:'var(--red)'},
+                        ].map((s,j) => (
+                          <div key={j} style={{ textAlign:'center', padding:'7px 6px',
+                            background:'var(--fill)', borderRadius:'var(--r-md)' }}>
+                            <div style={{ fontSize:18, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
+                            <div style={{ fontSize:10.5, color:'var(--text-3)', marginTop:3 }}>{s.l}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {(r.analyse||r.analyse_text) && (
+                        <div style={{ padding:'11px 14px', borderRadius:'var(--r-md)',
+                          background:'color-mix(in oklab,var(--accent) 6%,var(--bg-elev))',
+                          border:'1px solid color-mix(in oklab,var(--accent) 20%,transparent)',
+                          fontSize:13, color:'var(--text-2)', lineHeight:1.7, whiteSpace:'pre-wrap' }}>
+                          <div style={{ fontSize:10.5, fontWeight:800, color:'var(--accent)',
+                            letterSpacing:'.07em', marginBottom:6 }}>🤖 ANALYSE MISTRAL</div>
+                          {r.analyse||r.analyse_text}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* Empty state */}
+            {meteoRapports.length===0 && meteoTracking.length===0 && (
+              <div style={{ textAlign:'center', padding:'56px 24px', color:'var(--text-3)',
+                borderRadius:'var(--r-card)', border:'1.5px dashed var(--separator)' }}>
+                <div style={{ fontSize:40, marginBottom:14 }}>🌡️</div>
+                <div style={{ fontSize:16, fontWeight:700, color:'var(--text-2)', marginBottom:8 }}>En attente du premier cycle</div>
+                <div style={{ fontSize:13.5, lineHeight:1.7 }}>Le bot tourne sur Railway et scrappe Polymarket toutes les 15 min.</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── onglet Analyse (autres bots) ── */}
+      {tab === 'analyse' && bot.id !== 'chengdu' && (
         <div style={{ maxWidth: 760 }}>
 
           {/* ── Hero stratégie ── */}
