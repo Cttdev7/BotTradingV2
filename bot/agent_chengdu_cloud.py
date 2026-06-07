@@ -477,7 +477,7 @@ def run():
             pending_ids = {t["condition_id"] for t in tracking if t["resultat"] is None}
             new_signals = 0
             for m in markets:
-                if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.80:
+                if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.80 and not m["closed"] and not m["resolved"]:
                     add_signal(db, m, date_str)
                     new_signals += 1
                 elif m["condition_id"] in pending_ids:
