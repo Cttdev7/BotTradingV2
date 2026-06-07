@@ -417,13 +417,24 @@ def run():
         now_p = now_paris()
         now_c = now_chengdu()
 
-        # Date du marché = J+1 heure Chengdu (pas Paris — 6h de décalage)
-        target   = now_c + datetime.timedelta(days=1)
+        # Date du marché : J+0 si encore ouvert sur Polymarket, sinon J+1 (heure Chengdu)
+        today_c    = now_c.replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_c = today_c + datetime.timedelta(days=1)
+
+        # Vérifie si le marché du jour est encore ouvert
+        _slug_today = slug_for(today_c)
+        _, _mkts_j0 = fetch_event(_slug_today)
+        _j0_open    = any(not m["closed"] for m in _mkts_j0) if _mkts_j0 else False
+
+        target   = today_c if _j0_open else tomorrow_c
         slug     = slug_for(target)
         date_str = target.strftime("%d/%m/%Y")
 
         log(f"── Cycle {now_p.strftime('%d/%m/%Y %H:%M')} (Chengdu: {now_c.strftime('%d/%m %H:%M')}) ──")
-        log(f"   Marché suivi : {slug}")
+        if _j0_open:
+            log(f"   Marché suivi : {slug}  (J+0 encore ouvert)")
+        else:
+            log(f"   Marché suivi : {slug}  (J+1)")
 
         # 1. Vérifier résolutions des marchés en attente
         log("Vérification des marchés résolus…")
@@ -438,9 +449,12 @@ def run():
         else:
             log("   🌡️  Open-Meteo : donnée indisponible")
 
-        # 3. Fetch marché Chengdu J+1
+        # 3. Fetch marché Chengdu (réutilise le fetch J+0 si applicable, sinon fetch J+1)
         log("Fetch marché Chengdu…")
-        event, markets = fetch_event(slug)
+        if _j0_open:
+            event, markets = None, _mkts_j0
+        else:
+            event, markets = fetch_event(slug)
 
         if not markets:
             log("   ⚠️  Aucun marché trouvé")
