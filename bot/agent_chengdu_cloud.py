@@ -16,10 +16,9 @@ PARIS = ZoneInfo("Europe/Paris")
 def now_paris():
     return datetime.datetime.now(PARIS)
 
-GAMMA_API          = "https://gamma-api.polymarket.com"
-TIMEOUT            = 15
-INTERVAL           = 900   # 15 min
-MARKET_CLOSE_HOUR  = 14    # marchés Chengdu ferment à 12h UTC = 14h Paris
+GAMMA_API = "https://gamma-api.polymarket.com"
+TIMEOUT   = 15
+INTERVAL  = 900  # 15 min
 
 MONTHS = ["january","february","march","april","may","june",
           "july","august","september","october","november","december"]
@@ -314,8 +313,7 @@ def run():
         db  = get_db()
         now = now_paris()
 
-        # [FIX 1] avant 14h → marché du jour encore ouvert ; après 14h → marché du lendemain
-        target   = now if now.hour < MARKET_CLOSE_HOUR else now + datetime.timedelta(days=1)
+        target   = now + datetime.timedelta(days=1)
         slug     = slug_for(target)
         date_str = target.strftime("%d/%m/%Y")
 
