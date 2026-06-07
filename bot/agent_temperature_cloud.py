@@ -34,6 +34,14 @@ VILLES = [
         "lon":         126.978,
         "tz":          ZoneInfo("Asia/Seoul"),
     },
+    {
+        "id":          "hong-kong",
+        "label":       "Hong Kong",
+        "slug_prefix": "highest-temperature-in-hong-kong",
+        "lat":         22.319,
+        "lon":         114.169,
+        "tz":          ZoneInfo("Asia/Hong_Kong"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"

@@ -85,6 +85,15 @@ const BOTS = [
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
     series: Array(90).fill(0),
   },
+  {
+    id: 'hong-kong', name: 'Hong Kong Temp', market: 'polymarket', glyph: '🌆',
+    type: 'temperature', citySlug: 'hong-kong',
+    strategy: 'Température max Hong Kong 80%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
 ];
 
 // TODO: API — positions mises à jour en temps réel par api.jsx
