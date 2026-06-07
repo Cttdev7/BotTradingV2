@@ -251,6 +251,23 @@ def check_resolved(db, tracking):
                 pct = round(final * 100, 1)
                 resultat = f"TERMINÉ: {pct}%"
             resolve_signal(db, t["condition_id"], resultat)
+
+            # Comparaison avec Open-Meteo au moment de la résolution
+            temp_marche = temp_from_question(t["question"])
+            if temp_marche is not None and resultat in ("GAGNANT", "PERDANT"):
+                try:
+                    d = datetime.datetime.strptime(t["date_marche"], "%d/%m/%Y")
+                    date_dt = d.replace(tzinfo=CHENGDU)
+                    temp_om = fetch_chengdu_temp(date_dt)
+                    if temp_om is not None:
+                        if temp_om == temp_marche and resultat == "GAGNANT":
+                            log(f"  📡 Open-Meteo avait prévu {temp_om}°C → résolu GAGNANT à {temp_marche}°C ✅ STATION CORRECTE")
+                        elif temp_om == temp_marche and resultat == "PERDANT":
+                            log(f"  📡 Open-Meteo avait prévu {temp_om}°C → résolu PERDANT à {temp_marche}°C ⚠️ RATÉ (même temp)")
+                        else:
+                            log(f"  📡 Open-Meteo avait prévu {temp_om}°C → résolu {resultat} à {temp_marche}°C ❌ STATION INCORRECTE")
+                except Exception:
+                    pass
         else:
             update_price(db, t["condition_id"], m["yes_price"])
 
@@ -277,8 +294,6 @@ def save_rapport(db, tracking, slug, temp_actuel=None):
             "En attente de données"
         ),
     }
-    if temp_actuel is not None:
-        row["temp_chengdu"] = temp_actuel
     db.table("chengdu_rapports").insert(row).execute()
 
 def purge_old_rapports(db):
@@ -301,6 +316,34 @@ def already_have_resume_today(db):
     except Exception:
         return False
 
+def build_open_meteo_bilan(tracking):
+    """Pour chaque marché résolu GAGNANT/PERDANT, compare avec la prévision Open-Meteo."""
+    resolus = [t for t in tracking if t["resultat"] in ("GAGNANT", "PERDANT")]
+    if not resolus:
+        return ""
+    lines = []
+    seen_dates = {}
+    for t in resolus[-10:]:
+        date_str_raw = t.get("date_marche", "")
+        temp_marche  = temp_from_question(t["question"])
+        if not date_str_raw or temp_marche is None:
+            continue
+        if date_str_raw not in seen_dates:
+            try:
+                d = datetime.datetime.strptime(date_str_raw, "%d/%m/%Y").replace(tzinfo=CHENGDU)
+                seen_dates[date_str_raw] = fetch_chengdu_temp(d)
+            except Exception:
+                seen_dates[date_str_raw] = None
+        temp_om = seen_dates[date_str_raw]
+        if temp_om is None:
+            continue
+        match = (temp_om == temp_marche and t["resultat"] == "GAGNANT")
+        verdict = "✅ STATION CORRECTE" if match else "❌ STATION INCORRECTE"
+        lines.append(
+            f"- {date_str_raw} | Open-Meteo prévoyait {temp_om}°C → résolu {t['resultat']} à {temp_marche}°C | {verdict}"
+        )
+    return "\n".join(lines)
+
 def generate_daily_resume(tracking, temp_actuel=None):
     key = os.getenv("MISTRAL_API_KEY", "")
     if not key:
@@ -314,7 +357,9 @@ def generate_daily_resume(tracking, temp_actuel=None):
         f"- {t['question'][:70]} | signalé à {t['yes_price_au_signal']}% | {t['resultat']}"
         for t in resolus[-15:]
     ) or "Aucun marché résolu."
-    temp_line = f"\nTempérature max actuelle à Chengdu (Open-Meteo/ZUUU) : {temp_actuel}°C" if temp_actuel else ""
+    temp_line   = f"\nTempérature max prévue demain à Chengdu (Open-Meteo/ZUUU) : {temp_actuel}°C" if temp_actuel else ""
+    om_bilan    = build_open_meteo_bilan(tracking)
+    om_section  = f"\n\nBilan Open-Meteo vs résolutions réelles :\n{om_bilan}" if om_bilan else ""
     prompt = f"""Résume en 5 lignes max ces stats de paris sur la température à Chengdu (Polymarket, seuil 80%) :
 
 Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus (PERDANT): {len(perdus)} | Terminés ambigus: {len(termines)} | Taux victoire: {taux}%{temp_line}
@@ -322,12 +367,13 @@ Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | P
 Note: "TERMINÉ: X%" = marché fermé entre 5% et 95% (ambiguïté), ne pas compter comme perte.
 
 Derniers résolus:
-{lignes}
+{lignes}{om_section}
 
 Réponds en français, très court. Donne :
 1. Le taux de réussite (sur GAGNANT/PERDANT uniquement)
 2. Si la stratégie vaut le coup (oui/non, 1 phrase)
-3. Un conseil pour demain"""
+3. Si Open-Meteo a été fiable (oui/non, 1 phrase)
+4. Un conseil pour demain"""
     try:
         r = requests.post(
             "https://api.mistral.ai/v1/chat/completions",
