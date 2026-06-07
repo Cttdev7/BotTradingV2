@@ -1,7 +1,7 @@
 """
 agent_chengdu_cloud.py — Bot Chengdu température maximale (Railway + Supabase)
 Tourne en continu sur Railway. Toutes les 15 minutes :
-- Analyse les 11 options de température du lendemain à Chengdu
+- Analyse les 11 options de température du marché actif (avant 14h→aujourd'hui, après 14h→demain)
 - Enregistre les signaux >80% dans Supabase
 - Vérifie les résolutions des marchés précédents
 - Met à jour les stats globales
@@ -16,9 +16,10 @@ PARIS = ZoneInfo("Europe/Paris")
 def now_paris():
     return datetime.datetime.now(PARIS)
 
-GAMMA_API = "https://gamma-api.polymarket.com"
-TIMEOUT   = 15
-INTERVAL  = 900  # 15 min
+GAMMA_API          = "https://gamma-api.polymarket.com"
+TIMEOUT            = 15
+INTERVAL           = 900   # 15 min
+MARKET_CLOSE_HOUR  = 14    # marchés Chengdu ferment à 12h UTC = 14h Paris
 
 MONTHS = ["january","february","march","april","may","june",
           "july","august","september","october","november","december"]
@@ -37,7 +38,6 @@ def slug_for(date):
     return f"highest-temperature-in-chengdu-on-{MONTHS[date.month-1]}-{date.day}-{date.year}"
 
 def fetch_event(slug):
-    """Récupère toutes les options de température pour un slug donné."""
     try:
         r = requests.get(f"{GAMMA_API}/events", params={"slug": slug}, timeout=TIMEOUT)
         r.raise_for_status()
@@ -69,7 +69,6 @@ def fetch_event(slug):
         return None, []
 
 def fetch_market_by_id(condition_id):
-    """Relit un marché spécifique par son condition_id."""
     try:
         r = requests.get(f"{GAMMA_API}/markets",
                          params={"conditionId": condition_id},
@@ -99,7 +98,8 @@ def fetch_market_by_id(condition_id):
 # ── Tracking Supabase ─────────────────────────────────────────────────────────
 
 def load_tracking(db):
-    res = db.table("chengdu_tracking").select("*").execute()
+    # [FIX 9] limit pour éviter de tout charger en mémoire si la table grossit
+    res = db.table("chengdu_tracking").select("*").limit(500).execute()
     return res.data or []
 
 def add_signal(db, market, date_str):
@@ -141,7 +141,6 @@ def update_stats(db, tracking):
     perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
     taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
 
-    # Stats par date
     by_date = {}
     for t in tracking:
         d = t["date_marche"]
@@ -181,20 +180,25 @@ def check_resolved(db, tracking):
         return
     for t in pending:
         m = fetch_market_by_id(t["condition_id"])
-        if m is None or m["closed"]:
-            final = m["yes_price"] if m else None
-            if final is not None and final >= 0.95:
+        # [FIX 2] m is None = erreur réseau/API → skip, réessayer au prochain cycle
+        if m is None:
+            log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip")
+            continue
+        if m["closed"]:
+            final = m["yes_price"]
+            if final >= 0.95:
                 resultat = "GAGNANT"
-            elif final is not None and final <= 0.05:
+            elif final <= 0.05:
                 resultat = "PERDANT"
             else:
-                pct = t.get("yes_price_actuel") or t.get("yes_price_au_signal") or 0
+                # [FIX 3] utiliser le vrai prix de clôture (final), pas le cache
+                pct = round(final * 100, 1)
                 resultat = f"TERMINÉ: {pct}%"
             resolve_signal(db, t["condition_id"], resultat)
-        elif m:
+        else:
             update_price(db, t["condition_id"], m["yes_price"])
 
-# ── Rapport cycle + Résumé 17h ───────────────────────────────────────────────
+# ── Rapport cycle + purge ─────────────────────────────────────────────────────
 
 def save_rapport(db, tracking, slug):
     resolus = [t for t in tracking if t["resultat"] is not None]
@@ -202,14 +206,14 @@ def save_rapport(db, tracking, slug):
     perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
     taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
     db.table("chengdu_rapports").insert({
-        "heure":        now_paris().strftime("%d/%m/%Y %H:%M"),
-        "trackes":      len(tracking),
-        "en_attente":   len(tracking) - len(resolus),
-        "resolus":      len(resolus),
-        "gagnes":       len(gagnes),
-        "perdus":       len(perdus),
+        "heure":         now_paris().strftime("%d/%m/%Y %H:%M"),
+        "trackes":       len(tracking),
+        "en_attente":    len(tracking) - len(resolus),
+        "resolus":       len(resolus),
+        "gagnes":        len(gagnes),
+        "perdus":        len(perdus),
         "taux_victoire": taux,
-        "marche_slug":  slug,
+        "marche_slug":   slug,
         "verdict": (
             "Stratégie rentable"      if taux is not None and taux >= 60 else
             "Stratégie à surveiller"  if taux is not None and taux >= 50 else
@@ -218,26 +222,53 @@ def save_rapport(db, tracking, slug):
         ),
     }).execute()
 
+def purge_old_rapports(db):
+    # [FIX 7] garde seulement les 2880 derniers rapports (~30 jours)
+    try:
+        res = db.table("chengdu_rapports").select("id").order("created_at", desc=True).offset(2880).limit(200).execute()
+        ids = [r["id"] for r in (res.data or [])]
+        if ids:
+            db.table("chengdu_rapports").delete().in_("id", ids).execute()
+            log(f"  🧹 Purge: {len(ids)} anciens rapports supprimés")
+    except Exception as e:
+        log(f"  ⚠️  Purge rapports: {e}")
+
+# ── Résumé 17h ────────────────────────────────────────────────────────────────
+
+def already_have_resume_today(db):
+    # [FIX 4] dédup — évite un double résumé si Railway redémarre entre 17h00 et 17h14
+    today = now_paris().strftime("%d/%m/%Y")
+    try:
+        res = db.table("chengdu_resumes").select("id").eq("date", today).limit(1).execute()
+        return bool(res.data)
+    except Exception:
+        return False
+
 def generate_daily_resume(tracking):
     key = os.getenv("MISTRAL_API_KEY", "")
     if not key:
         return "MISTRAL_API_KEY manquante."
-    resolus = [t for t in tracking if t["resultat"] is not None]
-    gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
-    taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
-    lignes  = "\n".join(
+    resolus  = [t for t in tracking if t["resultat"] is not None]
+    gagnes   = [t for t in resolus  if t["resultat"] == "GAGNANT"]
+    perdus   = [t for t in resolus  if t["resultat"] == "PERDANT"]
+    # [FIX 6] TERMINÉ ≠ PERDANT — séparé dans le prompt pour ne pas biaiser Mistral
+    termines = [t for t in resolus  if t["resultat"] not in ("GAGNANT", "PERDANT")]
+    taux     = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
+    lignes   = "\n".join(
         f"- {t['question'][:70]} | signalé à {t['yes_price_au_signal']}% | {t['resultat']}"
         for t in resolus[-15:]
     ) or "Aucun marché résolu."
     prompt = f"""Résume en 5 lignes max ces stats de paris sur la température à Chengdu (Polymarket, seuil 80%) :
 
-Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(resolus)-len(gagnes)} | Taux: {taux}%
+Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus (PERDANT): {len(perdus)} | Terminés ambigus: {len(termines)} | Taux victoire: {taux}%
+
+Note: "TERMINÉ: X%" = marché fermé entre 5% et 95% (ambiguïté), ne pas compter comme perte.
 
 Derniers résolus:
 {lignes}
 
 Réponds en français, très court. Donne :
-1. Le taux de réussite
+1. Le taux de réussite (sur GAGNANT/PERDANT uniquement)
 2. Si la stratégie vaut le coup (oui/non, 1 phrase)
 3. Un conseil pour demain"""
     try:
@@ -278,11 +309,13 @@ def run():
     log("   Seuil : 80% YES | Scan : toutes les 15 min")
     log("")
 
-    db = get_db()
-
     while True:
-        now      = now_paris()
-        target   = now + datetime.timedelta(days=1)
+        # [FIX 5] client recréé à chaque cycle — évite les connexions expirées après plusieurs heures
+        db  = get_db()
+        now = now_paris()
+
+        # [FIX 1] avant 14h → marché du jour encore ouvert ; après 14h → marché du lendemain
+        target   = now if now.hour < MARKET_CLOSE_HOUR else now + datetime.timedelta(days=1)
         slug     = slug_for(target)
         date_str = target.strftime("%d/%m/%Y")
 
@@ -295,7 +328,7 @@ def run():
         check_resolved(db, tracking)
         tracking = load_tracking(db)
 
-        # 2. Fetch marché Chengdu du lendemain
+        # 2. Fetch marché Chengdu
         log("Fetch marché Chengdu…")
         event, markets = fetch_event(slug)
 
@@ -310,13 +343,17 @@ def run():
                 temp = m["question"].split("be ")[-1].split(" on")[0]
                 log(f"   {flag} {m['yes_price']*100:5.1f}%  {temp}")
 
-            # 3. Enregistrer les signaux >80%
+            # 3. Nouveaux signaux >80% + mise à jour prix des signaux existants
             tracked_ids = {t["condition_id"] for t in tracking}
+            pending_ids = {t["condition_id"] for t in tracking if t["resultat"] is None}
             new_signals = 0
             for m in markets:
                 if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.80:
                     add_signal(db, m, date_str)
                     new_signals += 1
+                elif m["condition_id"] in pending_ids:
+                    # [FIX 8] mettre à jour le prix actuel des signaux déjà en base
+                    update_price(db, m["condition_id"], m["yes_price"])
 
             if new_signals:
                 log(f"   🎯 {new_signals} nouveau(x) signal(s) !")
@@ -336,16 +373,22 @@ def run():
         # 5. Rapport cycle → chengdu_rapports
         try:
             save_rapport(db, tracking, slug)
+            # Purge nocturne à 4h00 (1 fois/jour)
+            if now.hour == 4 and now.minute < 15:
+                purge_old_rapports(db)
         except Exception as e:
             log(f"⚠️  Rapport: {e}")
 
-        # 6. Résumé 17h → chengdu_resumes
+        # 6. Résumé 17h → chengdu_resumes (avec dédup)
         if now.hour == 17 and now.minute < 15:
-            log("⏰ 17h00 — Génération du résumé quotidien…")
-            try:
-                save_resume(db, tracking)
-            except Exception as e:
-                log(f"⚠️  Résumé: {e}")
+            if not already_have_resume_today(db):
+                log("⏰ 17h00 — Génération du résumé quotidien…")
+                try:
+                    save_resume(db, tracking)
+                except Exception as e:
+                    log(f"⚠️  Résumé: {e}")
+            else:
+                log("⏰ 17h00 — Résumé déjà généré aujourd'hui, skip")
 
         log(f"   Prochain cycle dans 15 min")
         log("")
