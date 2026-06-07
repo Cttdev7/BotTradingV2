@@ -27,7 +27,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [meteoLastSync,   setMeteoLastSync]   = React.useState(null);
   const [meteoStats,      setMeteoStats]      = React.useState(null);
 
-  const agentPrefix = bot.id === 'chengdu' ? 'chengdu' : bot.id === 'polycrypto' ? 'crypto' : bot.id === 'polycrypto4h' ? 'crypto_4h' : 'meteo';
+  const agentPrefix = bot.type === 'temperature' ? bot.id : bot.id === 'polycrypto' ? 'crypto' : bot.id === 'polycrypto4h' ? 'crypto_4h' : 'meteo';
   const agentLabel  = bot.id === 'polyedge' || bot.id === 'chengdu' ? 'Mistral' : 'Gemini';
   const agentEmoji  = bot.id === 'polyedge' ? '🌦' : bot.id === 'chengdu' ? '🌡️' : bot.id === 'polycrypto4h' ? '⏱' : '₿';
   const agentAnalyseKey = bot.id === 'polyedge' ? 'analyse_mistral' : 'analyse_gemini';
@@ -366,74 +366,217 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
         </div>
       )}
 
-      {/* ── onglet Analyse Chengdu ── */}
-      {tab === 'analyse' && bot.id === 'chengdu' && (() => {
-        const stats = meteoStats;
-        const taux  = stats?.taux_victoire ?? null;
-        const col   = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
+      {/* ── onglet Analyse Temperature (Chengdu, Séoul, …) ── */}
+      {tab === 'analyse' && bot.type === 'temperature' && (() => {
+        const stats   = meteoStats;
+        const taux    = stats?.taux_victoire ?? null;
+        const col     = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
+        const pending = meteoTracking.filter(t => !t.resultat);
+        const resolved= meteoTracking.filter(t => t.resultat);
 
-        // Grouper les signaux par date, 3 jours max
+        const slug_court = (meteoRapport?.marche_slug||'').replace(`highest-temperature-in-${bot.citySlug}-on-`,'');
+
+        // Grouper par date, 5 jours max
         const byDate = {};
         meteoTracking.forEach(t => {
           const d = t.date_marche || '';
           if (d) { if (!byDate[d]) byDate[d] = []; byDate[d].push(t); }
         });
         const parseDate = s => { const [d,m,y] = (s||'').split('/'); return new Date(y,m-1,d); };
-        const dates3 = Object.keys(byDate).sort((a,b) => parseDate(b)-parseDate(a)).slice(0,3);
+        const dates5 = Object.keys(byDate).sort((a,b) => parseDate(b)-parseDate(a)).slice(0,5);
 
         return (
           <div style={{ maxWidth: 760 }}>
 
-            {/* 1. Taux de réussite */}
+            {/* ── Header : marché actif ── */}
+            {meteoRapport && (
+              <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
+                background:'linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)', padding:'18px 22px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
+                  <div>
+                    <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.4)', letterSpacing:'.08em', marginBottom:6 }}>
+                      MARCHÉ EN SURVEILLANCE · RAILWAY · 15 MIN
+                    </div>
+                    <div style={{ fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-.01em' }}>
+                      🌡️ {slug_court || '…'}
+                    </div>
+                    <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginTop:5 }}>
+                      Dernier cycle : {meteoRapport.heure}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                    <div style={{ textAlign:'center', padding:'10px 18px',
+                      background:'rgba(255,255,255,.08)', borderRadius:'var(--r-md)',
+                      border:'1px solid rgba(255,255,255,.12)' }}>
+                      <div style={{ fontSize:24, fontWeight:900, color:'#fff', lineHeight:1 }}>
+                        {meteoRapport.trackes ?? 0}
+                      </div>
+                      <div style={{ fontSize:10.5, color:'rgba(255,255,255,.45)', marginTop:3 }}>trackés</div>
+                    </div>
+                    <div style={{ textAlign:'center', padding:'10px 18px',
+                      background:'rgba(255,165,0,.15)', borderRadius:'var(--r-md)',
+                      border:'1px solid rgba(255,165,0,.25)' }}>
+                      <div style={{ fontSize:24, fontWeight:900, color:'#ffb74d', lineHeight:1 }}>
+                        {meteoRapport.en_attente ?? 0}
+                      </div>
+                      <div style={{ fontSize:10.5, color:'rgba(255,255,255,.45)', marginTop:3 }}>en attente</div>
+                    </div>
+                    <button onClick={refreshMeteo} className="tap"
+                      style={{ border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)',
+                        borderRadius:'var(--r-sm)', padding:'8px 14px', fontSize:13,
+                        fontWeight:700, cursor:'pointer', color:'#fff' }}>↻</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Signaux actifs (en attente de résolution) ── */}
+            {pending.length > 0 && (
+              <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
+                <div style={{ padding:'13px 20px', background:'color-mix(in oklab,var(--orange) 8%,var(--fill))',
+                  borderBottom:'1px solid var(--separator)',
+                  display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ width:8, height:8, borderRadius:999, background:'var(--orange)',
+                      boxShadow:'0 0 0 3px color-mix(in oklab,var(--orange) 30%,transparent)',
+                      animation:'pulse 2s infinite' }} />
+                    <span style={{ fontSize:14, fontWeight:700 }}>Paris en cours</span>
+                    <span style={{ fontSize:12, color:'var(--text-3)' }}>· résolution Polymarket en attente</span>
+                  </div>
+                  <span style={{ fontSize:12, fontWeight:700, color:'var(--orange)',
+                    background:'color-mix(in oklab,var(--orange) 15%,transparent)',
+                    padding:'3px 10px', borderRadius:999 }}>
+                    {pending.length} actif{pending.length>1?'s':''}
+                  </span>
+                </div>
+                {pending.map((s, i) => {
+                  const temp    = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                  const init    = s.yes_price_au_signal ?? 0;
+                  const actuel  = s.yes_price_actuel ?? init;
+                  const delta   = actuel - init;
+                  const colAct  = actuel >= 80 ? 'var(--green)' : actuel >= 50 ? 'var(--orange)' : 'var(--red)';
+                  const heure   = (s.detecte_le||'').split(' ')?.[1] || '';
+                  const date_m  = (s.detecte_le||'').split(' ')?.[0] || '';
+                  return (
+                    <div key={i} style={{ padding:'16px 20px',
+                      borderBottom:i<pending.length-1?'1px solid var(--separator)':'none',
+                      background:'color-mix(in oklab,var(--orange) 3%,transparent)' }}>
+                      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
+                            🎯 {s.question?.replace('Will the highest temperature in Chengdu be ','Temp. max Chengdu = ')?.replace(/\?$/,'') || temp}
+                          </div>
+                          <div style={{ fontSize:11.5, color:'var(--text-3)' }}>
+                            Détecté le {date_m} à {heure} · marché : {(s.date_marche||'').replace(/(\d+)\/(\d+)\/(\d+)/,'$1/$2/$3')}
+                          </div>
+                        </div>
+                        {/* Prix */}
+                        <div style={{ textAlign:'right', flexShrink:0 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end', marginBottom:4 }}>
+                            <span style={{ fontSize:12, color:'var(--text-3)', textDecoration:'line-through' }}>
+                              {init}%
+                            </span>
+                            <span style={{ fontSize:11, color:'var(--text-3)' }}>→</span>
+                            <span style={{ fontSize:26, fontWeight:900, lineHeight:1, color:colAct }}>
+                              {actuel}%
+                            </span>
+                          </div>
+                          <div style={{ fontSize:12, fontWeight:700,
+                            color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-3)' }}>
+                            {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(1)} pts
+                          </div>
+                        </div>
+                      </div>
+                      {/* Barre de confiance */}
+                      <div style={{ marginTop:12 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5,
+                          color:'var(--text-3)', marginBottom:4 }}>
+                          <span>Confiance actuelle</span>
+                          <span style={{ color:colAct, fontWeight:700 }}>{actuel}% YES</span>
+                        </div>
+                        <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
+                            background: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)',
+                            transition:'width .4s ease' }} />
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5,
+                          color:'var(--text-3)', marginTop:3 }}>
+                          <span>0%</span><span>Seuil 80%</span><span>100%</span>
+                        </div>
+                      </div>
+                      <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
+                        <span style={{ fontSize:11, color:'var(--orange)', fontWeight:700,
+                          background:'color-mix(in oklab,var(--orange) 12%,transparent)',
+                          padding:'3px 12px', borderRadius:999,
+                          border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
+                          ⏳ En attente de clôture Polymarket
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* ── Taux de réussite global ── */}
             <Card style={{ marginBottom:'var(--gap)' }}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <div>
                   <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:8 }}>
                     TAUX DE RÉUSSITE — STRATÉGIE 80%+
                   </div>
-                  <div style={{ fontSize:64, fontWeight:900, lineHeight:1, color:col }}>
-                    {taux !== null ? `${taux}%` : '—'}
-                  </div>
+                  {taux !== null ? (
+                    <div style={{ fontSize:64, fontWeight:900, lineHeight:1, color:col }}>{taux}%</div>
+                  ) : (
+                    <div style={{ fontSize:32, fontWeight:800, lineHeight:1, color:'var(--text-3)' }}>—</div>
+                  )}
                   <div style={{ fontSize:13, color:'var(--text-3)', marginTop:8 }}>
-                    {stats
+                    {stats && stats.resolus > 0
                       ? `${stats.gagnes ?? 0} gagnés · ${stats.perdus ?? 0} perdus · ${stats.resolus ?? 0} résolus`
-                      : 'En attente de données…'}
+                      : resolved.length === 0
+                        ? '⏳ Premier résultat en attente — les stats s\'afficheront ici'
+                        : 'En attente de données…'}
                   </div>
                 </div>
                 <div style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:52, opacity:.15 }}>{taux>=60?'✅':taux>=50?'⚠️':taux!==null?'❌':'⏳'}</div>
-                  <div style={{ fontSize:12, color:col, fontWeight:700, marginTop:4 }}>{stats?.verdict||''}</div>
+                  <div style={{ fontSize:48, opacity: taux !== null ? .15 : .08 }}>
+                    {taux>=60?'✅':taux>=50?'⚠️':taux!==null?'❌':'⏳'}
+                  </div>
+                  {taux !== null && (
+                    <div style={{ fontSize:12, color:col, fontWeight:700, marginTop:4 }}>{stats?.verdict||''}</div>
+                  )}
                 </div>
               </div>
-              {(stats?.updated_at || meteoRapport?.heure) && (
-                <div style={{ fontSize:11, color:'var(--text-3)', marginTop:12,
-                  borderTop:'1px solid var(--separator)', paddingTop:10,
-                  display:'flex', gap:16 }}>
-                  {meteoRapport?.heure && <span>Dernier cycle : {meteoRapport.heure}</span>}
-                  {meteoRapport?.marche_slug && (
-                    <span style={{ color:'var(--accent)' }}>
-                      {meteoRapport.marche_slug.replace('highest-temperature-in-chengdu-on-','')}
-                    </span>
-                  )}
-                  <button onClick={refreshMeteo} className="tap"
-                    style={{ border:'none', background:'transparent', cursor:'pointer',
-                      color:'var(--accent)', fontWeight:600, fontSize:11, padding:0 }}>↻ refresh</button>
+              {/* Mini stats résolus */}
+              {(stats?.resolus > 0 || resolved.length > 0) && (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginTop:16 }}>
+                  {[
+                    { l:'✅ Gagnés',  v: stats?.gagnes  ?? resolved.filter(t=>t.resultat==='GAGNANT').length, c:'var(--green)' },
+                    { l:'❌ Perdus',  v: stats?.perdus  ?? resolved.filter(t=>t.resultat==='PERDANT').length, c:'var(--red)' },
+                    { l:'📊 Résolus', v: stats?.resolus ?? resolved.length, c:'var(--text-2)' },
+                  ].map((s,j) => (
+                    <div key={j} style={{ textAlign:'center', padding:'10px 8px',
+                      background:'var(--fill)', borderRadius:'var(--r-md)' }}>
+                      <div style={{ fontSize:22, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
+                      <div style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>{s.l}</div>
+                    </div>
+                  ))}
                 </div>
               )}
             </Card>
 
-            {/* 2. Historique 3 jours */}
-            {dates3.length > 0 && (
+            {/* ── Historique par jour ── */}
+            {dates5.length > 0 && (
               <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
                 <div style={{ padding:'13px 20px', background:'var(--fill)',
                   borderBottom:'1px solid var(--separator)',
                   display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ fontSize:14, fontWeight:700 }}>📅 Historique — 3 derniers jours</span>
+                  <span style={{ fontSize:14, fontWeight:700 }}>📅 Historique par jour</span>
                   <span style={{ fontSize:12, color:'var(--text-3)' }}>
                     {meteoTracking.length} signal{meteoTracking.length>1?'s':''}
                   </span>
                 </div>
-                {dates3.map((date, di) => {
+                {dates5.map((date, di) => {
                   const sigs    = byDate[date];
                   const gagnes  = sigs.filter(s => s.resultat === 'GAGNANT').length;
                   const perdus  = sigs.filter(s => s.resultat === 'PERDANT').length;
@@ -442,13 +585,13 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   const taux_j  = resolus > 0 ? Math.round(gagnes/resolus*100) : null;
                   const col_j   = taux_j>=60?'var(--green)':taux_j>=50?'var(--orange)':taux_j!==null?'var(--red)':'var(--text-3)';
                   return (
-                    <div key={date} style={{ borderBottom:di<dates3.length-1?'1px solid var(--separator)':'none' }}>
-                      {/* En-tête du jour */}
+                    <div key={date} style={{ borderBottom:di<dates5.length-1?'1px solid var(--separator)':'none' }}>
                       <div style={{ padding:'12px 20px', display:'flex',
-                        justifyContent:'space-between', alignItems:'center' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                        justifyContent:'space-between', alignItems:'center',
+                        background: di===0?'color-mix(in oklab,var(--accent) 3%,transparent)':'transparent' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                           <span style={{ fontSize:14, fontWeight:700 }}>{date}</span>
-                          <span style={{ fontSize:12, color:'var(--text-3)' }}>
+                          <span style={{ fontSize:11.5, color:'var(--text-3)' }}>
                             {sigs.length} signal{sigs.length>1?'s':''}
                           </span>
                           {attente > 0 && (
@@ -456,30 +599,46 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                               background:'color-mix(in oklab,var(--orange) 15%,transparent)',
                               padding:'2px 8px', borderRadius:999 }}>⏳ {attente} en attente</span>
                           )}
+                          {resolus > 0 && gagnes === resolus && (
+                            <span style={{ fontSize:11, color:'var(--green)',
+                              background:'color-mix(in oklab,var(--green) 15%,transparent)',
+                              padding:'2px 8px', borderRadius:999 }}>✅ Parfait</span>
+                          )}
                         </div>
                         <span style={{ fontSize:22, fontWeight:900, color:col_j }}>
-                          {taux_j !== null ? `${taux_j}%` : '—'}
+                          {taux_j !== null ? `${taux_j}%` : attente > 0 ? '⏳' : '—'}
                         </span>
                       </div>
-                      {/* Signaux du jour */}
                       {sigs.map((s, si) => {
-                        const temp = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
-                        const heure = (s.detecte_le||'').split(' ')?.[1] || '';
+                        const temp   = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                        const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
+                        const init   = s.yes_price_au_signal ?? 0;
+                        const actuel = s.yes_price_actuel ?? init;
+                        const delta  = actuel - init;
                         return (
                           <div key={si} style={{ display:'grid',
-                            gridTemplateColumns:'1fr 80px 130px',
-                            padding:'9px 20px 9px 32px', alignItems:'center',
+                            gridTemplateColumns:'1fr 120px 80px 130px',
+                            padding:'10px 20px 10px 32px', alignItems:'center',
                             borderTop:'1px solid var(--separator)',
-                            background:'color-mix(in oklab,var(--fill) 60%,transparent)' }}>
-                            <div style={{ fontSize:13.5, color:'var(--text)' }}>
-                              🎯 <strong>{temp}</strong>
-                              <span style={{ fontSize:12, color:'var(--text-3)', marginLeft:8 }}>
-                                signalé à {s.yes_price_au_signal}%
+                            background:'color-mix(in oklab,var(--fill) 50%,transparent)' }}>
+                            <div style={{ fontSize:13.5, color:'var(--text)', fontWeight:600 }}>
+                              🎯 {temp}
+                            </div>
+                            <div style={{ textAlign:'center', fontSize:12 }}>
+                              <span style={{ color:'var(--text-3)' }}>{init}%</span>
+                              <span style={{ color:'var(--text-3)', margin:'0 4px' }}>→</span>
+                              <span style={{ fontWeight:700,
+                                color: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)' }}>
+                                {actuel}%
                               </span>
+                              {delta !== 0 && (
+                                <span style={{ fontSize:10, marginLeft:4,
+                                  color: delta>0?'var(--green)':'var(--red)' }}>
+                                  ({delta>0?'+':''}{delta.toFixed(0)})
+                                </span>
+                              )}
                             </div>
-                            <div style={{ fontSize:11.5, color:'var(--text-3)', textAlign:'center' }}>
-                              {heure}
-                            </div>
+                            <div style={{ fontSize:11.5, color:'var(--text-3)', textAlign:'center' }}>{heure}</div>
                             <div style={{ textAlign:'right' }}>
                               {s.resultat === 'GAGNANT' && (
                                 <span style={{ fontSize:12, fontWeight:700, color:'var(--green)',
@@ -498,9 +657,12 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                                 </span>
                               )}
                               {!s.resultat && (
-                                <span style={{ fontSize:11, color:'var(--text-3)',
-                                  background:'var(--fill)', padding:'3px 10px', borderRadius:999,
-                                  border:'1px solid var(--separator)' }}>⏳ En cours</span>
+                                <span style={{ fontSize:11, color:'var(--orange)',
+                                  background:'color-mix(in oklab,var(--orange) 12%,transparent)',
+                                  padding:'3px 10px', borderRadius:999,
+                                  border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
+                                  ⏳ En cours
+                                </span>
                               )}
                             </div>
                           </div>
@@ -512,7 +674,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </Card>
             )}
 
-            {/* 3. Logs bot */}
+            {/* ── Logs bot ── */}
             {meteoRapports.length > 0 && (
               <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
                 <div style={{ padding:'13px 20px', background:'var(--fill)',
@@ -521,8 +683,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <span style={{ width:7, height:7, borderRadius:999, background:'var(--green)',
                       boxShadow:'0 0 0 3px color-mix(in oklab,var(--green) 25%,transparent)' }} />
-                    <span style={{ fontSize:14, fontWeight:700 }}>Logs bot</span>
-                    <span style={{ fontSize:12, color:'var(--text-3)' }}>· Railway · toutes les 15 min</span>
+                    <span style={{ fontSize:14, fontWeight:700 }}>Logs Railway</span>
+                    <span style={{ fontSize:12, color:'var(--text-3)' }}>· toutes les 15 min</span>
                   </div>
                   <button onClick={refreshMeteo} className="tap"
                     style={{ border:'1px solid var(--separator)', background:'var(--bg-elev)',
@@ -531,17 +693,15 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 </div>
                 {meteoRapports.slice(0,20).map((r, i) => {
                   const col_r  = r.taux_victoire>=60?'var(--green)':r.taux_victoire>=50?'var(--orange)':r.taux_victoire!==null?'var(--red)':'var(--text-3)';
-                  const slug_s = (r.marche_slug||'').replace('highest-temperature-in-chengdu-on-','');
+                  const slug_s = (r.marche_slug||'').replace(`highest-temperature-in-${bot.citySlug}-on-`,'');
                   return (
                     <div key={i} style={{ display:'flex', alignItems:'center', gap:10,
                       padding:'9px 20px',
                       borderBottom:i<Math.min(meteoRapports.length,20)-1?'1px solid var(--separator)':'none',
                       background:i===0?'color-mix(in oklab,var(--accent) 4%,transparent)':'transparent',
                       fontFamily:'monospace' }}>
-                      <span style={{ color:'var(--text-3)', fontSize:11.5, minWidth:108, flexShrink:0 }}>
-                        {r.heure}
-                      </span>
-                      <span style={{ color:'var(--accent)', fontSize:11.5, minWidth:130,
+                      <span style={{ color:'var(--text-3)', fontSize:11.5, minWidth:108, flexShrink:0 }}>{r.heure}</span>
+                      <span style={{ color:'var(--accent)', fontSize:11.5, minWidth:120,
                         flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {slug_s}
                       </span>
@@ -550,7 +710,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         {r.en_attente>0?`⏳${r.en_attente} `:''}
                         {r.gagnes>0?`✅${r.gagnes} `:''}
                         {r.perdus>0?`❌${r.perdus}`:''}
-                        {r.trackes===0?'— aucun signal':''}
+                        {r.trackes===0?'aucun signal':''}
                       </span>
                       <span style={{ color:col_r, fontWeight:700, fontSize:12, minWidth:34, textAlign:'right' }}>
                         {r.taux_victoire!==null?`${r.taux_victoire}%`:'—'}
@@ -561,14 +721,14 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </Card>
             )}
 
-            {/* 4. Résumés 17h */}
+            {/* ── Résumés Mistral 17h ── */}
             {meteoResumes.length > 0 && (
               <Card style={{ padding:0, overflow:'hidden' }}>
                 <div style={{ padding:'13px 20px', background:'var(--fill)',
                   borderBottom:'1px solid var(--separator)',
                   display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span style={{ fontSize:18 }}>📋</span>
+                    <span style={{ fontSize:16 }}>📋</span>
                     <span style={{ fontSize:14, fontWeight:700 }}>Résumés Mistral 17h</span>
                   </div>
                   <span style={{ fontSize:12, color:'var(--text-3)' }}>
@@ -576,8 +736,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   </span>
                 </div>
                 {meteoResumes.map((r,i) => {
-                  const t2  = r.taux_victoire;
-                  const c2  = t2>=60?'var(--green)':t2>=50?'var(--orange)':t2!==null?'var(--red)':'var(--text-3)';
+                  const t2 = r.taux_victoire;
+                  const c2 = t2>=60?'var(--green)':t2>=50?'var(--orange)':t2!==null?'var(--red)':'var(--text-3)';
                   return (
                     <div key={i} style={{ borderBottom:i<meteoResumes.length-1?'1px solid var(--separator)':'none',
                       padding:'16px 20px' }}>
@@ -592,7 +752,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                           {l:'✅ Gagnés',v:r.gagnes,c:'var(--green)'},
                           {l:'❌ Perdus',v:r.perdus,c:'var(--red)'},
                         ].map((s,j) => (
-                          <div key={j} style={{ textAlign:'center', padding:'7px 6px',
+                          <div key={j} style={{ textAlign:'center', padding:'8px 6px',
                             background:'var(--fill)', borderRadius:'var(--r-md)' }}>
                             <div style={{ fontSize:18, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
                             <div style={{ fontSize:10.5, color:'var(--text-3)', marginTop:3 }}>{s.l}</div>
@@ -615,13 +775,15 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </Card>
             )}
 
-            {/* Empty state */}
+            {/* ── Empty state total ── */}
             {meteoRapports.length===0 && meteoTracking.length===0 && (
               <div style={{ textAlign:'center', padding:'56px 24px', color:'var(--text-3)',
                 borderRadius:'var(--r-card)', border:'1.5px dashed var(--separator)' }}>
                 <div style={{ fontSize:40, marginBottom:14 }}>🌡️</div>
                 <div style={{ fontSize:16, fontWeight:700, color:'var(--text-2)', marginBottom:8 }}>En attente du premier cycle</div>
-                <div style={{ fontSize:13.5, lineHeight:1.7 }}>Le bot tourne sur Railway et scrappe Polymarket toutes les 15 min.</div>
+                <div style={{ fontSize:13.5, lineHeight:1.7 }}>
+                  Le bot tourne sur Railway et scrape Polymarket toutes les 15 min.
+                </div>
               </div>
             )}
           </div>
@@ -629,7 +791,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       })()}
 
       {/* ── onglet Analyse (autres bots) ── */}
-      {tab === 'analyse' && bot.id !== 'chengdu' && (
+      {tab === 'analyse' && bot.type !== 'temperature' && (
         <div style={{ maxWidth: 760 }}>
 
           {/* ── Hero stratégie ── */}
