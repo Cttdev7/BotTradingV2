@@ -69,6 +69,7 @@ def fetch_event(slug):
                 "yes_price":    yes_price,
                 "volume":       float(m.get("volume24hr") or m.get("volume") or 0),
                 "closed":       m.get("closed", False),
+                "resolved":     m.get("resolved", False),
             })
         return event, markets
     except Exception as e:
@@ -97,6 +98,7 @@ def fetch_market_by_id(condition_id):
                 "condition_id": m.get("conditionId", ""),
                 "yes_price":    yes_price,
                 "closed":       m.get("closed", False),
+                "resolved":     m.get("resolved", False),
             }
     except Exception as e:
         log(f"⚠️  Fetch {condition_id[:16]}: {e}")
@@ -241,7 +243,7 @@ def check_resolved(db, tracking):
             # Erreur réseau → skip, réessayer au prochain cycle
             log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip")
             continue
-        if m["closed"]:
+        if m["closed"] or m["resolved"]:
             final = m["yes_price"]
             if final >= 0.95:
                 resultat = "GAGNANT"
@@ -424,7 +426,7 @@ def run():
         # Vérifie si le marché du jour est encore ouvert
         _slug_today = slug_for(today_c)
         _, _mkts_j0 = fetch_event(_slug_today)
-        _j0_open    = any(not m["closed"] for m in _mkts_j0) if _mkts_j0 else False
+        _j0_open    = any(not m["closed"] and not m["resolved"] for m in _mkts_j0) if _mkts_j0 else False
 
         target   = today_c if _j0_open else tomorrow_c
         slug     = slug_for(target)
