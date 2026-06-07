@@ -383,7 +383,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </div>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
-                AUTO · GitHub Actions
+                AUTO · {bot.id === 'chengdu' ? 'Railway' : 'GitHub Actions'}
               </span>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
@@ -530,7 +530,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                 <span style={{ fontSize:14, fontWeight:700 }}>📋 Historique des rapports</span>
                 <span style={{ fontSize:12, color:'var(--text-3)', fontWeight:500 }}>
-                  {meteoRapports.length} rapport{meteoRapports.length>1?'s':''} · toutes les 30 min
+                  {meteoRapports.length} rapport{meteoRapports.length>1?'s':''} · toutes les {bot.id === 'chengdu' ? '15' : '30'} min
                 </span>
               </div>
               {meteoRapports.map((r,i) => {
@@ -674,7 +674,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 Premier rapport à 17h00
               </div>
               <div style={{ fontSize:13.5, lineHeight:1.7, maxWidth:360, margin:'0 auto' }}>
-                L'agent tourne sur GitHub et scrappe Polymarket toutes les 30 min.
+                L'agent tourne sur {bot.id === 'chengdu' ? 'Railway' : 'GitHub'} et scrappe Polymarket toutes les {bot.id === 'chengdu' ? '15' : '30'} min.
                 Le premier rapport apparaîtra ici aujourd'hui à 17h.
               </div>
             </div>
