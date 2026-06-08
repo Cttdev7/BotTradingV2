@@ -150,6 +150,62 @@ def get_balance() -> dict:
     except requests.exceptions.Timeout:
         return {"usdc": 0.0}
 
+WEATHER_CITY_SLUGS = [
+    'chengdu', 'seoul', 'hong-kong', 'nyc', 'london', 'tokyo',
+    'atlanta', 'seattle', 'miami', 'singapore', 'madrid', 'shanghai',
+]
+
+def get_weather_markets() -> list:
+    """Marchés température actifs pour les 12 villes suivies par les bots d'analyse."""
+    import json as _json
+    try:
+        r = requests.get(
+            f"{GAMMA_API}/markets",
+            params={
+                "limit": 500,
+                "active": "true",
+                "closed": "false",
+                "order": "volume24hr",
+                "ascending": "false",
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        all_markets = r.json()
+        if not isinstance(all_markets, list):
+            return []
+
+        result = []
+        for m in all_markets:
+            question = (m.get("question") or "").lower()
+            slug     = (m.get("groupSlug") or m.get("slug") or "").lower()
+            if "highest temperature" not in question and "highest-temperature" not in slug:
+                continue
+            if not any(city in slug or city in question for city in WEATHER_CITY_SLUGS):
+                continue
+
+            raw_prices   = m.get("outcomePrices", [])
+            raw_outcomes = m.get("outcomes", [])
+            prices   = _json.loads(raw_prices)   if isinstance(raw_prices, str)   else raw_prices
+            outcomes = _json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
+            tokens   = [{"outcome": o, "price": float(p or 0)} for o, p in zip(outcomes, prices)]
+
+            result.append({
+                "condition_id": m.get("conditionId", ""),
+                "question":     m.get("question", ""),
+                "slug":         slug,
+                "volume":       float(m.get("volume24hr") or m.get("volume") or 0),
+                "active":       m.get("active", True),
+                "closed":       m.get("closed", False),
+                "tokens":       tokens,
+            })
+
+        return result
+    except Exception as e:
+        print(f"[weather_markets] Erreur: {e}")
+        return []
+
+
 def get_activity(limit: int = 50) -> list:
     """Historique des trades du wallet."""
     try:

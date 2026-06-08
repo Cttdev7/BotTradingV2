@@ -101,12 +101,12 @@ def run_cycle(bot_id: str = "polyedge"):
             history = updated
             save_history(history)
 
-    # 3. Données Polymarket
+    # 3. Données Polymarket (marchés météo uniquement)
     try:
-        markets = polymarket.get_active_markets(limit=50)
+        markets = polymarket.get_weather_markets()
         balance = polymarket.get_balance()
         usdc    = balance.get("usdc", 0)
-        log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
+        log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés météo | {_stats(history)}")
     except Exception as e:
         log(f"Erreur récupération données : {e}")
         return

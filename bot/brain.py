@@ -25,57 +25,98 @@ def get_client():
     return _client
 
 
-def _load_mistral_context() -> str:
-    """
-    Charge les 3 derniers rapports Mistral depuis Supabase ou le JSON local.
-    Retourne un texte formaté pour enrichir le contexte de Claude.
-    """
-    rapports = []
+_WEATHER_VILLES = [
+    "chengdu", "seoul", "hong_kong", "nyc", "london", "tokyo",
+    "atlanta", "seattle", "miami", "singapore", "madrid", "shanghai",
+]
 
-    # Essaie Supabase d'abord
+def _load_analysis_context() -> str:
+    """
+    Charge depuis Supabase les données des bots d'analyse météo :
+    - Dernière analyse stratégique Mistral cross-ville
+    - Performance (taux victoire) par ville
+    - Signaux actifs non résolus = opportunités détectées
+    """
     supabase_url = os.getenv("SUPABASE_URL", "")
     supabase_key = os.getenv("SUPABASE_KEY", "")
-    if supabase_url and supabase_key:
+    if not supabase_url or not supabase_key:
+        return "Données d'analyse non disponibles (SUPABASE_URL/KEY manquants)."
+
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+    }
+    base = f"{supabase_url}/rest/v1"
+    sections = []
+
+    # 1. Dernière analyse stratégique Mistral cross-ville
+    try:
+        r = requests.get(
+            f"{base}/strategie_analyses",
+            params={"order": "created_at.desc", "limit": "1"},
+            headers=headers, timeout=5,
+        )
+        if r.status_code == 200 and r.json():
+            a = r.json()[0]
+            sections.append(
+                f"=== ANALYSE STRATÉGIQUE MISTRAL ({a.get('date', '?')}) ===\n"
+                + (a.get("analyse_text") or "")[:600]
+            )
+    except Exception:
+        pass
+
+    # 2. Performance par ville (taux de réussite des signaux passés)
+    stats_lines = []
+    for ville in _WEATHER_VILLES:
         try:
             r = requests.get(
-                f"{supabase_url}/rest/v1/meteo_rapports?order=created_at.desc&limit=3",
-                headers={"apikey": supabase_key, "Authorization": f"Bearer {supabase_key}"},
-                timeout=5,
+                f"{base}/{ville}_stats",
+                params={"limit": "1"},
+                headers=headers, timeout=3,
             )
-            if r.status_code == 200:
-                rapports = r.json()
+            if r.status_code == 200 and r.json():
+                s = r.json()[0]
+                resolus = int(s.get("resolus") or 0)
+                gagnes  = int(s.get("gagnes") or 0)
+                taux    = s.get("taux_victoire")
+                if resolus > 0:
+                    stats_lines.append(
+                        f"  {ville}: {taux}% victoire ({gagnes}/{resolus} résolus)"
+                    )
         except Exception:
             pass
-
-    # Fallback JSON local
-    if not rapports:
-        local = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
-        if os.path.exists(local):
-            try:
-                with open(local) as f:
-                    rapports = json.load(f)[:3]
-            except Exception:
-                pass
-
-    if not rapports:
-        return "Aucune donnée Mistral disponible."
-
-    lines = []
-    for r in rapports:
-        taux = r.get("taux_victoire")
-        taux_str = f"{taux}% de réussite" if taux is not None else "données insuffisantes"
-        actifs = r.get("actifs_85") or r.get("actifs_80") or []
-        opps   = "\n".join(
-            f"    · {m.get('question','?')[:70]} → YES {m.get('pct','?')}%"
-            for m in actifs[:5]
-        ) or "    · Aucun marché à 80%+"
-        lines.append(
-            f"[{r.get('heure','?')}] {taux_str}\n"
-            f"  Marchés actifs identifiés par Mistral :\n{opps}\n"
-            f"  Analyse : {(r.get('analyse_mistral') or '')[:200]}\n"
-            f"  Stratégie suggérée : {(r.get('strategie_proposee') or 'aucune')[:150]}"
+    if stats_lines:
+        sections.append(
+            "=== PERFORMANCE DES BOTS D'ANALYSE PAR VILLE ===\n"
+            + "\n".join(stats_lines)
         )
-    return "\n\n".join(lines)
+
+    # 3. Signaux actifs non résolus = opportunités identifiées maintenant
+    signal_lines = []
+    for ville in _WEATHER_VILLES:
+        try:
+            r = requests.get(
+                f"{base}/{ville}_tracking",
+                params={"resultat": "is.null", "limit": "5", "order": "detecte_le.desc"},
+                headers=headers, timeout=3,
+            )
+            if r.status_code == 200:
+                for sig in r.json():
+                    price = sig.get("yes_price_au_signal") or sig.get("yes_price_actuel") or 0
+                    signal_lines.append(
+                        f"  [{ville}] {(sig.get('question') or '')[:70]}"
+                        f" → YES {float(price)*100:.0f}%"
+                        f" | détecté {(sig.get('detecte_le') or '')[:10]}"
+                    )
+        except Exception:
+            pass
+    if signal_lines:
+        sections.append(
+            "=== SIGNAUX ACTIFS DES BOTS D'ANALYSE (opportunités non résolues) ===\n"
+            + "\n".join(signal_lines[:20])
+        )
+
+    return "\n\n".join(sections) if sections else "Aucune donnée d'analyse disponible."
 
 
 def _format_markets(markets: list) -> str:
@@ -131,20 +172,25 @@ def decide(strategy: dict, markets: list, history: list, balance_usdc: float) ->
     if not prompt_text:
         return []
 
-    system_prompt = """Tu es un assistant de trading sur Polymarket (marchés de prédiction).
-Tu analyses des marchés et prends des décisions d'achat/vente basées sur la stratégie fournie.
+    system_prompt = """Tu es ProfitWeather, un bot de trading spécialisé sur les marchés météo Polymarket.
+Tu trades UNIQUEMENT les marchés "highest temperature in {ville}" sur les 12 villes suivies par les bots d'analyse.
 
-Tu as accès aux rapports d'un agent Mistral indépendant qui analyse les marchés météo en continu.
-Utilise ses analyses pour valider ou affiner tes décisions — si Mistral identifie une opportunité
-sur un marché que tu vois aussi, c'est un signal fort. Si Mistral est pessimiste sur un marché,
-sois plus prudent.
+Tu as accès :
+1. Aux données des bots d'analyse météo (signaux actifs + taux de réussite par ville)
+2. À la dernière analyse stratégique Mistral cross-ville
+3. À l'historique de tes trades passés
+
+Logique de décision :
+- Un signal actif d'un bot d'analyse (YES >75%) EST une opportunité à étudier
+- Croise le signal avec le marché disponible : est-ce que le prix actuel est cohérent avec le signal ?
+- Favorise les villes avec un bon taux de réussite historique (>60%)
+- Suis la stratégie fournie pour calibrer taille et critères d'entrée
 
 Règles absolues :
-- Ne jamais miser plus de 20% du solde disponible sur un seul marché
-- Ne jamais miser sur un marché avec un volume < 1000 USDC (trop peu liquide)
-- Privilégier les marchés validés à la fois par ta stratégie ET par Mistral
-- Toujours justifier chaque décision en une phrase
-- Si aucun marché ne correspond, retourner une liste vide []
+- Ne jamais miser plus de 20% du solde sur un seul marché
+- Ne jamais miser sur un marché avec volume < 500 USDC
+- Si aucun signal ne correspond à un marché disponible, retourner []
+- Toujours justifier en une phrase pourquoi le signal + marché sont alignés
 
 Tu réponds UNIQUEMENT en JSON valide :
 [
@@ -153,27 +199,27 @@ Tu réponds UNIQUEMENT en JSON valide :
     "condition_id": "identifiant_du_marche",
     "outcome": "Yes",
     "amount_usdc": 25.0,
-    "reason": "raison courte incluant si Mistral confirme"
+    "reason": "raison courte (ville, signal bot, alignement prix)"
   }
 ]"""
 
-    mistral_ctx = _load_mistral_context()
+    analysis_ctx = _load_analysis_context()
 
     user_message = f"""STRATÉGIE :
 {prompt_text}
 
 SOLDE DISPONIBLE : ${balance_usdc:.2f} USDC
 
-RAPPORTS DE L'AGENT MISTRAL (analyse indépendante des marchés météo — utilise ces données pour affiner tes décisions) :
-{mistral_ctx}
+DONNÉES DES BOTS D'ANALYSE MÉTÉO (signaux actifs, performance par ville, analyse Mistral) :
+{analysis_ctx}
 
-MARCHÉS DISPONIBLES :
+MARCHÉS MÉTÉO DISPONIBLES :
 {_format_markets(markets)}
 
 HISTORIQUE DES TRADES (apprends de tes erreurs) :
 {_format_history(history)}
 
-En tenant compte de l'analyse Mistral et de ton historique, retourne tes décisions en JSON."""
+Croise les signaux actifs des bots d'analyse avec les marchés disponibles et retourne tes décisions en JSON."""
 
     response = get_client().messages.create(
         model=config.CLAUDE_MODEL,
@@ -251,7 +297,7 @@ Réponds en JSON :
   "reason": "explication courte de ce que tu as changé et pourquoi"
 }"""
 
-    mistral_ctx = _load_mistral_context()
+    analysis_ctx = _load_analysis_context()
 
     user = f"""STRATÉGIE ACTUELLE (version {version}) :
 {current_prompt}
@@ -264,8 +310,8 @@ BILAN DES TRADES :
 HISTORIQUE DÉTAILLÉ (30 derniers) :
 {_format_history(history[-30:])}
 
-RAPPORTS DE L'AGENT MISTRAL (analyse indépendante — intègre ces enseignements dans la nouvelle stratégie) :
-{mistral_ctx}
+DONNÉES BOTS D'ANALYSE MÉTÉO (signaux, performance par ville, analyse Mistral) :
+{analysis_ctx}
 
 Réécris la stratégie en combinant :
 1. Ce qui a marché/raté dans l'historique des trades
