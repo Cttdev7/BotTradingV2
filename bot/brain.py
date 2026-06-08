@@ -121,19 +121,41 @@ def _load_analysis_context() -> str:
 
 
 def _format_markets(markets: list) -> str:
-    """Formate les marchés pour le prompt Claude."""
+    """Formate les marchés météo pour Claude — priorise les YES >70%, groupe par ville."""
     if not markets:
-        return "Aucun marché disponible."
-    lines = []
-    for m in markets[:30]:  # max 30 marchés pour ne pas saturer le contexte
+        return "Aucun marché météo disponible."
+
+    # Trie : YES > 0.70 en premier (les plus probables = ceux qui correspondent aux signaux)
+    def sort_key(m):
         tokens = m.get("tokens", [])
-        yes_price = next((t.get("price", "?") for t in tokens if t.get("outcome") == "Yes"), "?")
-        no_price  = next((t.get("price", "?") for t in tokens if t.get("outcome") == "No"),  "?")
-        volume = m.get("volume", 0)
+        yes = next((t.get("price", 0) for t in tokens if t.get("outcome") == "Yes"), 0)
+        return -float(yes)
+
+    sorted_markets = sorted(markets, key=sort_key)
+
+    lines = []
+    current_city = None
+    count = 0
+    for m in sorted_markets:
+        if count >= 60:  # max 60 marchés pour ne pas saturer le contexte
+            break
+        tokens    = m.get("tokens", [])
+        yes_price = next((t.get("price", 0) for t in tokens if t.get("outcome") == "Yes"), 0)
+        no_price  = next((t.get("price", 0) for t in tokens if t.get("outcome") == "No"),  0)
+        volume    = float(m.get("volume") or 0)
+        city      = m.get("city", "?")
+
+        # En-tête de ville
+        if city != current_city:
+            lines.append(f"\n[{city.upper()}]")
+            current_city = city
+
         lines.append(
-            f"- [{m.get('condition_id','?')[:12]}] {m.get('question','?')[:80]}\n"
-            f"  YES={yes_price} | NO={no_price} | Volume=${float(volume or 0):,.0f}"
+            f"  [{m.get('condition_id','?')[:14]}] {m.get('question','?')[:75]}\n"
+            f"    YES={yes_price:.2f} | NO={no_price:.2f} | Vol=${volume:,.0f}"
         )
+        count += 1
+
     return "\n".join(lines)
 
 
@@ -370,12 +392,14 @@ def check_market_outcomes(trades: list) -> list:
                 if tok.get("outcome", "").lower() == outcome.lower():
                     price = float(tok.get("price", -1))
                     if price <= 0.01 or price >= 0.99:  # marché résolu
-                        qty   = float(t.get("qty", t.get("amount_usdc", 0)))
-                        entry = float(t.get("price", 0.5))
-                        if t.get("side") == "buy":
-                            t["pnl"] = round((price - entry) * qty, 2)
-                        else:
-                            t["pnl"] = round((entry - price) * qty, 2)
+                        amount = float(t.get("amount_usdc", 0))
+                        entry  = float(t.get("price", 0.5))
+                        if entry > 0:
+                            shares = amount / entry  # nombre de shares achetés
+                            if t.get("side") == "buy":
+                                t["pnl"] = round(shares * (price - entry), 2)
+                            else:
+                                t["pnl"] = round(shares * (entry - price), 2)
         except Exception:
             pass
         updated.append(t)

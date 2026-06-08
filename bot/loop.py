@@ -106,7 +106,13 @@ def run_cycle(bot_id: str = "polyedge"):
         markets = polymarket.get_weather_markets()
         balance = polymarket.get_balance()
         usdc    = balance.get("usdc", 0)
-        log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés météo | {_stats(history)}")
+
+        # En simulation, utilise un solde fictif si le wallet est vide
+        if trader.DRY_RUN and usdc < 1:
+            usdc = 100.0
+            log(f"[SIMULATION] Solde fictif : $100.00 | {len(markets)} marchés météo | {_stats(history)}")
+        else:
+            log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés météo | {_stats(history)}")
     except Exception as e:
         log(f"Erreur récupération données : {e}")
         return
@@ -125,6 +131,13 @@ def run_cycle(bot_id: str = "polyedge"):
 
     if not decisions:
         log("Aucune opportunité détectée pour cette stratégie")
+        return
+
+    # Déduplication — ne pas racheter un marché déjà ouvert
+    open_cids = {t.get("condition_id") for t in history if t.get("pnl") is None and t.get("bot") == bot_id}
+    decisions = [d for d in decisions if d.get("condition_id") not in open_cids]
+    if not decisions:
+        log("Tous les signaux sont déjà en position ouverte — rien à ajouter")
         return
 
     # 5. Exécution + sauvegarde
@@ -175,6 +188,11 @@ def run_improvement(bot_id: str = "polyedge"):
 
     if not strategy.get("prompt", "").strip():
         log("Pas de stratégie à améliorer")
+        return
+
+    resolved = [t for t in bot_history if t.get("pnl") is not None]
+    if len(resolved) < 5:
+        log(f"Pas assez de trades résolus ({len(resolved)}/5 minimum) — amélioration reportée")
         return
 
     try:
