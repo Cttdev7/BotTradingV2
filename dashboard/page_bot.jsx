@@ -637,11 +637,12 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         </span>
                       </div>
                       {sigs.map((s, si) => {
-                        const temp   = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
-                        const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
-                        const init   = s.yes_price_au_signal ?? 0;
-                        const actuel = s.yes_price_actuel ?? init;
-                        const delta  = actuel - init;
+                        const temp       = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                        const heure      = (s.detecte_le||'').split(' ')?.[1] || '';
+                        const init       = s.yes_price_au_signal ?? 0;
+                        const actuel     = s.yes_price_actuel ?? init;
+                        const delta      = actuel - init;
+                        const enRevision = !s.resultat && init >= 75 && actuel >= 45 && actuel <= 55;
                         return (
                           <div key={si} style={{ display:'grid',
                             gridTemplateColumns:'1fr 120px 80px 130px',
@@ -654,15 +655,21 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                             <div style={{ textAlign:'center', fontSize:12 }}>
                               <span style={{ color:'var(--text-3)' }}>{init}%</span>
                               <span style={{ color:'var(--text-3)', margin:'0 4px' }}>→</span>
-                              <span style={{ fontWeight:700,
-                                color: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)' }}>
-                                {actuel}%
-                              </span>
-                              {delta !== 0 && (
-                                <span style={{ fontSize:10, marginLeft:4,
-                                  color: delta>0?'var(--green)':'var(--red)' }}>
-                                  ({delta>0?'+':''}{delta.toFixed(0)})
-                                </span>
+                              {enRevision ? (
+                                <span style={{ fontWeight:700, color:'var(--green)' }}>~100%</span>
+                              ) : (
+                                <>
+                                  <span style={{ fontWeight:700,
+                                    color: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)' }}>
+                                    {actuel}%
+                                  </span>
+                                  {delta !== 0 && (
+                                    <span style={{ fontSize:10, marginLeft:4,
+                                      color: delta>0?'var(--green)':'var(--red)' }}>
+                                      ({delta>0?'+':''}{delta.toFixed(0)})
+                                    </span>
+                                  )}
+                                </>
                               )}
                             </div>
                             <div style={{ fontSize:11.5, color:'var(--text-3)', textAlign:'center' }}>{heure}</div>
@@ -683,7 +690,15 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                                   {s.resultat}
                                 </span>
                               )}
-                              {!s.resultat && (
+                              {!s.resultat && enRevision && (
+                                <span style={{ fontSize:11, color:'var(--green)', fontWeight:700,
+                                  background:'color-mix(in oklab,var(--green) 12%,transparent)',
+                                  padding:'3px 10px', borderRadius:999,
+                                  border:'1px solid color-mix(in oklab,var(--green) 25%,transparent)' }}>
+                                  📋 En révision
+                                </span>
+                              )}
+                              {!s.resultat && !enRevision && (
                                 <span style={{ fontSize:11, color:'var(--orange)',
                                   background:'color-mix(in oklab,var(--orange) 12%,transparent)',
                                   padding:'3px 10px', borderRadius:999,
