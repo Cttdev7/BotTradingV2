@@ -90,6 +90,22 @@ VILLES = [
         "lon":         -80.208,
         "tz":          ZoneInfo("America/New_York"),
     },
+    {
+        "id":          "singapore",
+        "label":       "Singapour",
+        "slug_prefix": "highest-temperature-in-singapore",
+        "lat":         1.352,
+        "lon":         103.820,
+        "tz":          ZoneInfo("Asia/Singapore"),
+    },
+    {
+        "id":          "madrid",
+        "label":       "Madrid",
+        "slug_prefix": "highest-temperature-in-madrid",
+        "lat":         40.416,
+        "lon":         -3.703,
+        "tz":          ZoneInfo("Europe/Madrid"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"
