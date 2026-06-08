@@ -253,14 +253,17 @@ def check_resolved(db, ville, tracking):
         if m is None:
             log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip", ville)
             continue
-        if m["closed"] or m["resolved"]:
-            final = m["yes_price"]
+        final = m["yes_price"]
+        # Résolution officielle OU prix quasi-certain (marché "En cours de révision")
+        if m["closed"] or m["resolved"] or final >= 0.99 or final <= 0.01:
             if final >= 0.95:
                 resultat = "GAGNANT"
             elif final <= 0.05:
                 resultat = "PERDANT"
             else:
                 resultat = f"TERMINÉ: {round(final * 100, 1)}%"
+            if not (m["closed"] or m["resolved"]):
+                log(f"  🔍 Prix={round(final*100,1)}% → résolution anticipée ({resultat})", ville)
             resolve_signal(db, ville, t["condition_id"], resultat)
 
             temp_marche = temp_from_question(t["question"])
