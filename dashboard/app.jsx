@@ -372,9 +372,6 @@ function App() {
           </div>
         </div>
 
-        <div style={{ padding: 12, borderTop: '1px solid var(--separator)' }}>
-          <window.Button full icon="plus" onClick={() => setSheet(true)}>Nouveau bot</window.Button>
-        </div>
       </aside>
 
       {/* main */}
