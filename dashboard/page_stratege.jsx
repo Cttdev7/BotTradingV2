@@ -11,6 +11,11 @@ function StratègePage({ onBack }) {
     { id: 'seoul',     label: 'Séoul',      glyph: '🏙️' },
     { id: 'hong_kong', label: 'Hong Kong',  glyph: '🌆' },
     { id: 'nyc',       label: 'NYC',        glyph: '🗽' },
+    { id: 'london',    label: 'Londres',    glyph: '🎡' },
+    { id: 'tokyo',     label: 'Tokyo',      glyph: '🗼' },
+    { id: 'atlanta',   label: 'Atlanta',    glyph: '🍑' },
+    { id: 'seattle',   label: 'Seattle',    glyph: '🌲' },
+    { id: 'miami',     label: 'Miami',      glyph: '🌴' },
   ];
 
   const [analyses, setAnalyses]     = React.useState([]);
