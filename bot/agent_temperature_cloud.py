@@ -42,6 +42,14 @@ VILLES = [
         "lon":         114.169,
         "tz":          ZoneInfo("Asia/Hong_Kong"),
     },
+    {
+        "id":          "nyc",
+        "label":       "NYC",
+        "slug_prefix": "highest-temperature-in-nyc",
+        "lat":         40.713,
+        "lon":         -74.006,
+        "tz":          ZoneInfo("America/New_York"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"
