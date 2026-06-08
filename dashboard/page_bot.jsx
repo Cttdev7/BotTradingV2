@@ -694,59 +694,6 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </Card>
             )}
 
-            {/* ── Résumés Mistral 17h ── */}
-            {meteoResumes.length > 0 && (
-              <Card style={{ padding:0, overflow:'hidden' }}>
-                <div style={{ padding:'13px 20px', background:'var(--fill)',
-                  borderBottom:'1px solid var(--separator)',
-                  display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span style={{ fontSize:16 }}>📋</span>
-                    <span style={{ fontSize:14, fontWeight:700 }}>Résumés Mistral 17h</span>
-                  </div>
-                  <span style={{ fontSize:12, color:'var(--text-3)' }}>
-                    {meteoResumes.length} jour{meteoResumes.length>1?'s':''}
-                  </span>
-                </div>
-                {meteoResumes.map((r,i) => {
-                  const t2 = r.taux_victoire;
-                  const c2 = t2>=60?'var(--green)':t2>=50?'var(--orange)':t2!==null?'var(--red)':'var(--text-3)';
-                  return (
-                    <div key={i} style={{ borderBottom:i<meteoResumes.length-1?'1px solid var(--separator)':'none',
-                      padding:'16px 20px' }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                        <span style={{ fontSize:14, fontWeight:700 }}>📅 {r.date}</span>
-                        <span style={{ fontSize:24, fontWeight:900, color:c2 }}>{t2!==null?`${t2}%`:'—'}</span>
-                      </div>
-                      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
-                        {[
-                          {l:'Trackés',v:r.trackes,c:'var(--text-3)'},
-                          {l:'Résolus',v:r.resolus,c:'var(--text-2)'},
-                          {l:'✅ Gagnés',v:r.gagnes,c:'var(--green)'},
-                          {l:'❌ Perdus',v:r.perdus,c:'var(--red)'},
-                        ].map((s,j) => (
-                          <div key={j} style={{ textAlign:'center', padding:'8px 6px',
-                            background:'var(--fill)', borderRadius:'var(--r-md)' }}>
-                            <div style={{ fontSize:18, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
-                            <div style={{ fontSize:10.5, color:'var(--text-3)', marginTop:3 }}>{s.l}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {(r.analyse||r.analyse_text) && (
-                        <div style={{ padding:'11px 14px', borderRadius:'var(--r-md)',
-                          background:'color-mix(in oklab,var(--accent) 6%,var(--bg-elev))',
-                          border:'1px solid color-mix(in oklab,var(--accent) 20%,transparent)',
-                          fontSize:13, color:'var(--text-2)', lineHeight:1.7, whiteSpace:'pre-wrap' }}>
-                          <div style={{ fontSize:10.5, fontWeight:800, color:'var(--accent)',
-                            letterSpacing:'.07em', marginBottom:6 }}>🤖 ANALYSE MISTRAL</div>
-                          {r.analyse||r.analyse_text}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </Card>
-            )}
 
             {/* ── Empty state total ── */}
             {meteoRapports.length===0 && meteoTracking.length===0 && (
