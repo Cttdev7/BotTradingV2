@@ -357,8 +357,10 @@ function App() {
           <div style={{ fontWeight: 600, color: 'var(--text-3)', marginBottom: 6,
             textTransform: 'uppercase', letterSpacing: '.04em', fontSize: 10.5 }}>Wallet Polygon</div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-            <span style={{ color: 'var(--text-2)' }}>USDC</span>
-            <span className="num" style={{ fontWeight: 600 }}>${(walletBalance.usdc + walletBalance.usdce).toFixed(2)}</span>
+            <span style={{ color: 'var(--text-2)' }}>PUSD</span>
+            <span className="num" style={{ fontWeight: 600, color: walletBalance.usdc > 0 ? 'var(--green)' : 'var(--text)' }}>
+              ${(walletBalance.usdc + walletBalance.usdce).toFixed(2)}
+            </span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--text-2)' }}>POL</span>

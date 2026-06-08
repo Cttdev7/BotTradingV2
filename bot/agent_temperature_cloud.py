@@ -664,6 +664,44 @@ def already_have_strategie_today(db):
     except Exception:
         return False
 
+# ── Wallet balance ────────────────────────────────────────────────────────────
+
+POLYGON_RPC = "https://polygon-bor-rpc.publicnode.com"
+
+def sync_wallet(db):
+    """Lit la balance Polymarket (PUSD) + POL on-chain et écrit dans bot_status."""
+    wallet = os.environ.get("WALLET_ADDRESS", "")
+    if not wallet:
+        return
+    try:
+        # Valeur portfolio Polymarket (inclut PUSD)
+        r = requests.get("https://data-api.polymarket.com/value",
+                         params={"user": wallet.lower()}, timeout=10)
+        data = r.json()
+        pusd = float(data[0]["value"]) if data and isinstance(data, list) and data else 0.0
+    except Exception:
+        pusd = 0.0
+    try:
+        # Solde POL natif on-chain
+        r2 = requests.post(POLYGON_RPC,
+            json={"jsonrpc": "2.0", "method": "eth_getBalance",
+                  "params": [wallet, "latest"], "id": 1}, timeout=10)
+        pol = int(r2.json().get("result", "0x0"), 16) / 1e18
+    except Exception:
+        pol = 0.0
+    try:
+        db.table("bot_status").upsert({
+            "id":         "polyedge",
+            "wallet":     wallet,
+            "usdc":       round(pusd, 2),
+            "usdce":      0,
+            "pol":        round(pol, 4),
+            "updated_at": datetime.datetime.now(PARIS).isoformat(),
+        }).execute()
+        log(f"💰 Wallet sync : PUSD ${pusd:.2f} | POL {pol:.4f}")
+    except Exception as e:
+        log(f"⚠️  Wallet sync: {e}")
+
 # ── Boucle principale ─────────────────────────────────────────────────────────
 
 def run():
@@ -674,6 +712,13 @@ def run():
 
     while True:
         db = get_db()
+
+        # Sync wallet toutes les 15 min
+        try:
+            sync_wallet(db)
+        except Exception as e:
+            log(f"⚠️  Wallet: {e}")
+
         for ville in VILLES:
             try:
                 run_ville(db, ville)
