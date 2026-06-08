@@ -5,7 +5,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const { POSITIONS, TXNS, RANGES, MARKETS, fmtUSD, fmtPct, sliceRange,
     Card, BotGlyph, MarketChip, StatusPill, Toggle, Segmented, AreaChart,
     Stat, Delta, Button, Icon, Meter } = window;
-  const [tab, setTab] = React.useState('apercu');
+  const [tab, setTab] = React.useState(bot.type === 'temperature' ? 'analyse' : 'apercu');
   const [range, setRange] = React.useState('1M');
   const [editingName, setEditingName] = React.useState(false);
   const [draftName, setDraftName] = React.useState(bot.name);
@@ -255,7 +255,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       {/* onglets */}
       <div style={{ marginBottom: 'var(--gap)', maxWidth: 380 }}>
         <Segmented size="sm" value={tab} onChange={setTab}
-          options={[{ value: 'apercu', label: 'Aperçu' }, { value: 'strategie', label: 'Stratégie' }, { value: 'analyse', label: 'Analyse' }]} />
+          options={bot.type === 'temperature'
+            ? [{ value: 'analyse', label: 'Analyse' }]
+            : [{ value: 'apercu', label: 'Aperçu' }, { value: 'strategie', label: 'Stratégie' }, { value: 'analyse', label: 'Analyse' }]} />
       </div>
 
       {/* ── onglet Stratégie ── */}
