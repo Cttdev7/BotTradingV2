@@ -310,6 +310,23 @@ function App() {
               </button>
               {meteoOpen && (
                 <>
+                  {/* Mistral en premier */}
+                  <div className="bot-item" style={{ borderRadius: 'var(--r-md)', marginLeft: 8,
+                    background: nav.page === 'stratege' ? 'var(--fill)' : 'transparent' }}>
+                    <button onClick={() => go('stratege')} className="tap"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                        border: 'none', cursor: 'pointer', textAlign: 'left', padding: '6px 9px',
+                        borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
+                      <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0,
+                        background: 'linear-gradient(135deg,#6366f1,#a855f7)',
+                        display: 'grid', placeItems: 'center', fontSize: 13 }}>🧠</span>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 550, color: 'var(--text)' }}>Mistral</span>
+                      <span style={{ fontSize: 10, color: '#a855f7', fontWeight: 700,
+                        background: 'color-mix(in oklab,#a855f7 12%,transparent)',
+                        padding: '1px 6px', borderRadius: 999 }}>IA</span>
+                    </button>
+                  </div>
+                  {/* Villes */}
                   {meteoBots.map((b) => {
                     const sel = nav.botId === b.id;
                     return (
@@ -328,22 +345,6 @@ function App() {
                       </div>
                     );
                   })}
-                  {/* Entrée Mistral Stratège */}
-                  <div className="bot-item" style={{ borderRadius: 'var(--r-md)', marginLeft: 8,
-                    background: nav.page === 'stratege' ? 'var(--fill)' : 'transparent' }}>
-                    <button onClick={() => go('stratege')} className="tap"
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                        border: 'none', cursor: 'pointer', textAlign: 'left', padding: '6px 9px',
-                        borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
-                      <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0,
-                        background: 'linear-gradient(135deg,#6366f1,#a855f7)',
-                        display: 'grid', placeItems: 'center', fontSize: 13 }}>🧠</span>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 550, color: 'var(--text)' }}>Mistral</span>
-                      <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 700,
-                        background: 'color-mix(in oklab,var(--accent) 12%,transparent)',
-                        padding: '1px 6px', borderRadius: 999 }}>IA</span>
-                    </button>
-                  </div>
                 </>
               )}
             </>

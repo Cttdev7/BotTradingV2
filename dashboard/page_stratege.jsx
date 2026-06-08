@@ -2,17 +2,25 @@
 // page_stratege.jsx — Analyse Mistral cross-ville
 // ============================================================
 function StratègePage({ onBack }) {
-  const { Card, Button, Icon } = window;
+  const { Card, Icon } = window;
   const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
   const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
 
-  const [analyses, setAnalyses] = React.useState([]);
-  const [loading, setLoading]   = React.useState(true);
-  const [triggering, setTriggering] = React.useState(false);
-  const [expanded, setExpanded] = React.useState({});
+  const VILLES = [
+    { id: 'chengdu',   label: 'Chengdu',    glyph: '🌡️' },
+    { id: 'seoul',     label: 'Séoul',      glyph: '🏙️' },
+    { id: 'hong_kong', label: 'Hong Kong',  glyph: '🌆' },
+    { id: 'nyc',       label: 'NYC',        glyph: '🗽' },
+  ];
 
+  const [analyses, setAnalyses]     = React.useState([]);
+  const [loading, setLoading]       = React.useState(true);
+  const [triggering, setTriggering] = React.useState(false);
+  const [expanded, setExpanded]     = React.useState({});
+  const [cityStats, setCityStats]   = React.useState({});
+
+  // ─── fetch analyses Mistral ───────────────────────────────
   const fetchAnalyses = React.useCallback(() => {
-    setLoading(true);
     fetch(`${SB_URL}/rest/v1/strategie_analyses?order=created_at.desc&limit=20`, {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
     })
@@ -21,166 +29,307 @@ function StratègePage({ onBack }) {
       .catch(() => setLoading(false));
   }, []);
 
+  // ─── fetch stats par ville ────────────────────────────────
+  const fetchCityStats = React.useCallback(() => {
+    Promise.all(VILLES.map(v =>
+      fetch(`${SB_URL}/rest/v1/${v.id}_tracking?select=yes_price_au_signal,yes_price_actuel,resultat&limit=500`, {
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
+      }).then(r => r.json()).then(rows => {
+        const data = Array.isArray(rows) ? rows : [];
+        const remapped = data.map(t => {
+          if (!t.resultat) {
+            const init = t.yes_price_au_signal ?? 0;
+            const act  = t.yes_price_actuel ?? init;
+            if (init >= 75 && act >= 45 && act <= 55) return { ...t, resultat: 'GAGNANT' };
+          }
+          return t;
+        });
+        const resolved = remapped.filter(t => t.resultat);
+        const won = resolved.filter(t => t.resultat === 'GAGNANT').length;
+        const total = remapped.length;
+        const taux = resolved.length > 0 ? Math.round(won / resolved.length * 100) : null;
+        return { id: v.id, total, won, lost: resolved.filter(t => t.resultat === 'PERDANT').length,
+          pending: total - resolved.length, taux };
+      }).catch(() => ({ id: v.id, total: 0, won: 0, lost: 0, pending: 0, taux: null }))
+    )).then(results => {
+      const map = {};
+      results.forEach(r => { map[r.id] = r; });
+      setCityStats(map);
+    });
+  }, []);
+
   React.useEffect(() => {
     fetchAnalyses();
-    const id = setInterval(fetchAnalyses, 2 * 60 * 1000);
+    fetchCityStats();
+    const id = setInterval(() => { fetchAnalyses(); fetchCityStats(); }, 2 * 60 * 1000);
     return () => clearInterval(id);
-  }, [fetchAnalyses]);
+  }, [fetchAnalyses, fetchCityStats]);
 
   const triggerAnalyse = () => {
     setTriggering(true);
     fetch(`${SB_URL}/rest/v1/strategie_config?id=eq.main`, {
       method: 'PATCH',
-      headers: {
-        apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
-        'Content-Type': 'application/json', Prefer: 'return=minimal'
-      },
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json', Prefer: 'return=minimal' },
       body: JSON.stringify({ trigger: true })
-    })
-      .then(() => {
-        setTimeout(() => {
-          setTriggering(false);
-          fetchAnalyses();
-        }, 3000);
-      })
+    }).then(() => setTimeout(() => { setTriggering(false); fetchAnalyses(); }, 3000))
       .catch(() => setTriggering(false));
   };
 
-  const latest = analyses[0];
-  const history = analyses.slice(1);
-
-  // Parse les sections de l'analyse (1. BILAN / 2. RECO / 3. FEUILLE)
+  // ─── parsing sections Mistral ─────────────────────────────
   const parseSections = (text) => {
-    if (!text) return [{ title: '', body: text }];
+    if (!text) return [];
     const sections = [];
-    const lines = text.split('\n');
     let current = null;
-    for (const line of lines) {
-      const match = line.match(/^#+\s*(.+)|^\d\.\s+\*\*(.+?)\*\*|^\*\*(\d\..+?)\*\*/);
-      if (match) {
+    for (const line of text.split('\n')) {
+      const m = line.match(/^#{1,3}\s+(.+)|^\*\*(\d+\..+?)\*\*\s*$|^(\d+)\.\s+\*\*(.+?)\*\*/);
+      if (m) {
         if (current) sections.push(current);
-        current = { title: (match[1] || match[2] || match[3] || '').replace(/\*/g, ''), body: '' };
+        const title = (m[1] || m[2] || m[4] || '').replace(/\*\*/g, '').trim();
+        current = { title, body: '' };
       } else if (current) {
         current.body += (current.body ? '\n' : '') + line;
       } else {
-        sections.push({ title: '', body: line });
+        if (!current) current = { title: '', body: '' };
+        current.body += (current.body ? '\n' : '') + line;
       }
     }
-    if (current) sections.push(current);
-    return sections.filter(s => s.title || s.body.trim());
+    if (current && (current.title || current.body.trim())) sections.push(current);
+    return sections;
   };
 
-  const sectionIcon = (title) => {
-    const t = (title || '').toUpperCase();
-    if (t.includes('BILAN') || t.includes('PERFORMANCE')) return '📊';
-    if (t.includes('RECOMM') || t.includes('CONSEIL')) return '💡';
-    if (t.includes('FEUILLE') || t.includes('ROUTE') || t.includes('ACTION')) return '🚀';
-    return '📋';
+  const SECTION_META = {
+    bilan:  { icon: '📊', color: '#3b82f6', bg: 'color-mix(in oklab,#3b82f6 10%,transparent)' },
+    reco:   { icon: '💡', color: '#f59e0b', bg: 'color-mix(in oklab,#f59e0b 10%,transparent)' },
+    route:  { icon: '🚀', color: '#10b981', bg: 'color-mix(in oklab,#10b981 10%,transparent)' },
+    other:  { icon: '📋', color: 'var(--text-3)', bg: 'var(--fill)' },
   };
+
+  const getSectionMeta = (title) => {
+    const t = (title || '').toUpperCase();
+    if (t.includes('BILAN') || t.includes('PERFORMANCE')) return SECTION_META.bilan;
+    if (t.includes('RECOMM') || t.includes('CONSEIL') || t.includes('ACTION')) return SECTION_META.reco;
+    if (t.includes('FEUILLE') || t.includes('ROUTE') || t.includes('PRIORIT')) return SECTION_META.route;
+    return SECTION_META.other;
+  };
+
+  // ─── totaux globaux ────────────────────────────────────────
+  const allStats = Object.values(cityStats);
+  const totalSignaux  = allStats.reduce((s, c) => s + c.total, 0);
+  const totalGagnes   = allStats.reduce((s, c) => s + c.won, 0);
+  const totalPerdus   = allStats.reduce((s, c) => s + c.lost, 0);
+  const totalPending  = allStats.reduce((s, c) => s + c.pending, 0);
+  const totalResolved = totalGagnes + totalPerdus;
+  const tauxGlobal    = totalResolved > 0 ? Math.round(totalGagnes / totalResolved * 100) : null;
+
+  const latest  = analyses[0];
+  const history = analyses.slice(1);
 
   return (
-    <div style={{ maxWidth: 780, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 'var(--gap)' }}>
-        <button onClick={onBack} className="tap" style={{ border: 'none', background: 'var(--fill)',
-          borderRadius: 999, width: 34, height: 34, display: 'grid', placeItems: 'center',
-          cursor: 'pointer', color: 'var(--text-2)', flexShrink: 0 }}>
-          <Icon name="chevron-left" size={18} stroke={2.2} />
+    <div style={{ maxWidth: 800, margin: '0 auto' }}>
+
+      {/* ── Hero header ── */}
+      <div style={{ borderRadius: 'var(--r-card)', marginBottom: 'var(--gap)', overflow: 'hidden',
+        background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4c1d95 100%)',
+        padding: '28px 28px 24px', position: 'relative' }}>
+        <button onClick={onBack} className="tap" style={{ border: 'none', background: 'rgba(255,255,255,.12)',
+          borderRadius: 999, width: 32, height: 32, display: 'grid', placeItems: 'center',
+          cursor: 'pointer', color: '#fff', marginBottom: 20, backdropFilter: 'blur(8px)' }}>
+          <Icon name="chevron-left" size={17} stroke={2.4} />
         </button>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>
-            🧠 Mistral Stratège
-          </h1>
-          <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 2 }}>
-            Analyse cross-ville · Rapport de performance · Recommandations
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 32 }}>🧠</span>
+              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: '#fff',
+                letterSpacing: '-.02em' }}>Mistral Stratège</h1>
+            </div>
+            <p style={{ margin: 0, fontSize: 13.5, color: 'rgba(255,255,255,.65)', lineHeight: 1.5 }}>
+              Analyse IA cross-ville · Bilan de performance · Recommandations<br/>
+              Objectif : construire un bot météo rentable sur Polymarket
+            </p>
+            {latest && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Dernière analyse', val: latest.date },
+                  { label: 'Signaux analysés', val: latest.nb_signaux },
+                  { label: 'Villes', val: latest.nb_villes },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8,
+                    padding: '5px 12px', backdropFilter: 'blur(8px)' }}>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,.55)', textTransform: 'uppercase',
+                      letterSpacing: '.05em' }}>{s.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{s.val}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={fetchAnalyses} className="tap" style={{ border: 'none', background: 'var(--fill)',
-            borderRadius: 999, width: 34, height: 34, display: 'grid', placeItems: 'center',
-            cursor: 'pointer', color: 'var(--text-2)' }}>
-            <Icon name="refresh" size={16} stroke={2} />
-          </button>
-          <button onClick={triggerAnalyse} disabled={triggering} className="tap" style={{
-            border: 'none', cursor: triggering ? 'default' : 'pointer',
-            background: triggering ? 'var(--fill)' : 'var(--accent)',
-            color: triggering ? 'var(--text-3)' : '#fff',
-            borderRadius: 'var(--r-md)', padding: '8px 16px',
-            fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
-            transition: 'background .2s' }}>
-            <Icon name={triggering ? 'clock' : 'sparkles'} size={15} stroke={2} />
-            {triggering ? 'En cours… (~15 min)' : 'Analyser maintenant'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+            <button onClick={triggerAnalyse} disabled={triggering} className="tap" style={{
+              border: 'none', cursor: triggering ? 'default' : 'pointer',
+              background: triggering ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.95)',
+              color: triggering ? 'rgba(255,255,255,.5)' : '#312e81',
+              borderRadius: 'var(--r-md)', padding: '9px 16px',
+              fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
+              transition: 'all .2s', whiteSpace: 'nowrap' }}>
+              <Icon name={triggering ? 'clock' : 'sparkles'} size={15} stroke={2} />
+              {triggering ? 'En cours… (~15 min)' : 'Analyser maintenant'}
+            </button>
+            <button onClick={() => { fetchAnalyses(); fetchCityStats(); }} className="tap" style={{
+              border: '1px solid rgba(255,255,255,.2)', background: 'transparent',
+              color: 'rgba(255,255,255,.7)', borderRadius: 'var(--r-md)', padding: '8px 16px',
+              fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="refresh" size={14} stroke={2} />
+              Rafraîchir
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Dernière analyse */}
+      {/* ── Tableau de bord des bots météo ── */}
+      <div style={{ borderRadius: 'var(--r-card)', marginBottom: 'var(--gap)',
+        background: 'var(--bg-elev)', border: '1px solid var(--separator)', overflow: 'hidden' }}>
+        {/* Header */}
+        <div style={{ padding: '13px 20px', background: 'var(--fill)',
+          borderBottom: '1px solid var(--separator)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>🌍</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>Performance des bots météo</span>
+          </div>
+          {tauxGlobal !== null && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Global</span>
+              <span style={{ fontSize: 15, fontWeight: 800,
+                color: tauxGlobal >= 70 ? 'var(--green)' : tauxGlobal >= 50 ? 'var(--orange)' : 'var(--red)' }}>
+                {tauxGlobal}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Résumé global */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+          borderBottom: '1px solid var(--separator)' }}>
+          {[
+            { label: 'Signaux totaux', val: totalSignaux, color: 'var(--text)' },
+            { label: 'Gagnés', val: totalGagnes, color: 'var(--green)' },
+            { label: 'Perdus', val: totalPerdus, color: 'var(--red)' },
+            { label: 'En attente', val: totalPending, color: 'var(--text-3)' },
+          ].map((s, i) => (
+            <div key={i} style={{ padding: '14px 16px', textAlign: 'center',
+              borderRight: i < 3 ? '1px solid var(--separator)' : 'none' }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.val}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Détail par ville */}
+        {VILLES.map((v, i) => {
+          const s = cityStats[v.id];
+          const taux = s?.taux;
+          const tauxColor = taux == null ? 'var(--text-3)'
+            : taux >= 70 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : 'var(--red)';
+          const barWidth = taux ?? 0;
+          return (
+            <div key={v.id} style={{ padding: '13px 20px',
+              borderBottom: i < VILLES.length - 1 ? '1px solid var(--separator)' : 'none',
+              display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span style={{ fontSize: 20, flexShrink: 0 }}>{v.glyph}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{v.label}</span>
+                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                    {s ? `${s.won}G / ${s.lost}P — ${s.total} signaux` : '—'}
+                  </span>
+                </div>
+                {/* Barre de progression */}
+                <div style={{ height: 6, borderRadius: 999, background: 'var(--fill)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${barWidth}%`, borderRadius: 999,
+                    background: taux == null ? 'var(--fill)'
+                      : taux >= 70 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : 'var(--red)',
+                    transition: 'width .6s ease' }} />
+                </div>
+              </div>
+              <div style={{ flexShrink: 0, width: 44, textAlign: 'right' }}>
+                {taux !== null ? (
+                  <span style={{ fontSize: 16, fontWeight: 800, color: tauxColor }}>{taux}%</span>
+                ) : (
+                  <span style={{ fontSize: 12, color: 'var(--text-3)' }}>—</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Analyse Mistral ── */}
       {loading ? (
-        <Card style={{ padding: 32, textAlign: 'center', color: 'var(--text-3)' }}>
+        <Card style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)', fontSize: 14 }}>
           Chargement…
         </Card>
       ) : !latest ? (
-        <Card style={{ padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🧠</div>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Aucune analyse disponible</div>
-          <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 20 }}>
-            La première analyse se génère automatiquement à 18h,<br/>ou clique "Analyser maintenant" (résultat dans ~15 min).
+        <Card style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 52, marginBottom: 14 }}>🧠</div>
+          <div style={{ fontSize: 17, fontWeight: 800, marginBottom: 8 }}>Aucune analyse disponible</div>
+          <div style={{ fontSize: 13.5, color: 'var(--text-3)', lineHeight: 1.6, marginBottom: 24 }}>
+            La première analyse se génère automatiquement à <strong>18h</strong>,<br/>
+            ou clique <strong>"Analyser maintenant"</strong> — résultat dans ~15 min.
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', background: 'var(--fill)',
-            borderRadius: 'var(--r-md)', padding: '10px 16px', display: 'inline-block' }}>
-            ⚠️ Assure-toi que <strong>MISTRAL_API_KEY</strong> est configurée dans Railway
+          <div style={{ fontSize: 12, color: 'var(--orange)', background: 'color-mix(in oklab,var(--orange) 10%,transparent)',
+            borderRadius: 'var(--r-md)', padding: '10px 18px', display: 'inline-flex', gap: 7, alignItems: 'center' }}>
+            <Icon name="bolt" size={14} style={{ color: 'var(--orange)' }} />
+            Vérifie que <strong>MISTRAL_API_KEY</strong> est configurée dans Railway
           </div>
         </Card>
       ) : (
         <>
-          {/* Carte analyse principale */}
-          <Card style={{ marginBottom: 'var(--gap)', padding: 0, overflow: 'hidden',
-            border: '1px solid color-mix(in oklab,var(--accent) 25%,var(--separator))' }}>
-            <div style={{ padding: '14px 20px', background: 'color-mix(in oklab,var(--accent) 8%,var(--bg-elev))',
-              borderBottom: '1px solid var(--separator)',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 16 }}>🧠</span>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>Dernière analyse</span>
-                <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>· {latest.date}</span>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <span style={{ fontSize: 11, color: 'var(--text-3)',
-                  background: 'var(--fill)', padding: '3px 8px', borderRadius: 999 }}>
-                  {latest.nb_signaux} signaux
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--text-3)',
-                  background: 'var(--fill)', padding: '3px 8px', borderRadius: 999 }}>
-                  {latest.nb_villes} villes
-                </span>
-              </div>
-            </div>
-            {parseSections(latest.analyse_text).map((s, i) => (
-              <div key={i} style={{ padding: '16px 20px',
-                borderBottom: i < parseSections(latest.analyse_text).length - 1 ? '1px solid var(--separator)' : 'none' }}>
+          {/* Sections de la dernière analyse */}
+          {parseSections(latest.analyse_text).map((s, i) => {
+            const meta = getSectionMeta(s.title);
+            return (
+              <div key={i} style={{ borderRadius: 'var(--r-card)', marginBottom: 12, overflow: 'hidden',
+                border: `1px solid color-mix(in oklab,${meta.color} 20%,var(--separator))`,
+                background: 'var(--bg-elev)' }}>
                 {s.title && (
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--accent)',
-                    textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8, display: 'flex', gap: 6 }}>
-                    <span>{sectionIcon(s.title)}</span>
-                    <span>{s.title}</span>
+                  <div style={{ padding: '11px 18px', background: meta.bg,
+                    borderBottom: `1px solid color-mix(in oklab,${meta.color} 15%,var(--separator))`,
+                    display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>{meta.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: meta.color,
+                      textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                      {s.title.replace(/^\d+\.\s*/, '')}
+                    </span>
                   </div>
                 )}
-                <div style={{ fontSize: 13.5, color: 'var(--text)', lineHeight: 1.65,
-                  whiteSpace: 'pre-wrap' }}>
+                <div style={{ padding: '16px 20px', fontSize: 14, color: 'var(--text)',
+                  lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
                   {s.body.trim()}
                 </div>
               </div>
-            ))}
-          </Card>
+            );
+          })}
 
-          {/* Historique analyses */}
+          {/* Info auto */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            borderRadius: 'var(--r-md)', background: 'var(--fill)', fontSize: 12,
+            color: 'var(--text-3)', marginBottom: 'var(--gap)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--green)', flexShrink: 0 }} />
+            Analyse auto quotidienne à <strong style={{ color: 'var(--text-2)' }}>18h Paris</strong>
+            &nbsp;· "Analyser maintenant" → résultat dans ~15 min (prochain cycle Railway)
+          </div>
+
+          {/* Historique */}
           {history.length > 0 && (
             <Card style={{ padding: 0, overflow: 'hidden' }}>
               <div style={{ padding: '13px 20px', background: 'var(--fill)',
                 borderBottom: '1px solid var(--separator)',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 700 }}>📅 Historique analyses</span>
-                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{history.length} précédentes</span>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>📅 Analyses précédentes</span>
+                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{history.length} entrées</span>
               </div>
               {history.map((a, i) => (
                 <div key={a.id} style={{ borderBottom: i < history.length - 1 ? '1px solid var(--separator)' : 'none' }}>
@@ -190,18 +339,19 @@ function StratègePage({ onBack }) {
                       justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{a.date}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-3)',
-                        background: 'var(--fill)', padding: '2px 7px', borderRadius: 999 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-3)', background: 'var(--fill)',
+                        padding: '2px 8px', borderRadius: 999 }}>
                         {a.nb_signaux} signaux · {a.nb_villes} villes
                       </span>
                     </div>
-                    <Icon name={expanded[a.id] ? 'chevron-up' : 'chevron-down'} size={14} stroke={2}
+                    <Icon name={expanded[a.id] ? 'chevron-up' : 'chevron-down'} size={14} stroke={2.2}
                       style={{ color: 'var(--text-3)', flexShrink: 0 }} />
                   </button>
                   {expanded[a.id] && (
-                    <div style={{ padding: '0 20px 16px', fontSize: 13, color: 'var(--text)',
-                      lineHeight: 1.65, whiteSpace: 'pre-wrap', borderTop: '1px solid var(--separator)',
-                      paddingTop: 14, background: 'color-mix(in oklab,var(--fill) 40%,transparent)' }}>
+                    <div style={{ padding: '14px 20px 18px', fontSize: 13.5, color: 'var(--text)',
+                      lineHeight: 1.7, whiteSpace: 'pre-wrap',
+                      borderTop: '1px solid var(--separator)',
+                      background: 'color-mix(in oklab,var(--fill) 50%,transparent)' }}>
                       {a.analyse_text}
                     </div>
                   )}
@@ -211,14 +361,6 @@ function StratègePage({ onBack }) {
           )}
         </>
       )}
-
-      {/* Info Railway */}
-      <div style={{ marginTop: 'var(--gap)', padding: '12px 16px', borderRadius: 'var(--r-md)',
-        background: 'var(--fill)', fontSize: 12, color: 'var(--text-3)',
-        display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--green)', flexShrink: 0 }} />
-        Analyse auto quotidienne à <strong style={{ color: 'var(--text-2)' }}>18h Paris</strong> · Bot Railway actif · "Analyser maintenant" : résultat dans ~15 min
-      </div>
     </div>
   );
 }
