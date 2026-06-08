@@ -484,14 +484,121 @@ def run_ville(db, ville):
     except Exception as e:
         log(f"⚠️  Rapport: {e}", ville)
 
-    # 7. Résumé 17h
-    if now_p.hour == 17 and now_p.minute < 15:
-        if not already_have_resume_today(db, ville):
-            log("⏰ 17h00 — Génération résumé quotidien…", ville)
-            try:
-                save_resume(db, ville, tracking, temp_actuel)
-            except Exception as e:
-                log(f"⚠️  Résumé: {e}", ville)
+
+# ── Agent Stratège Mistral (cross-ville) ─────────────────────────────────────
+
+def analyser_strategie(db, villes):
+    key = os.getenv("MISTRAL_API_KEY", "")
+    if not key:
+        log("⚠️  MISTRAL_API_KEY manquante — analyse stratégique impossible")
+        return
+
+    # Collecter tous les signaux de toutes les villes
+    all_tracking = []
+    for ville in villes:
+        rows = load_tracking(db, ville)
+        for r in rows:
+            r["ville"] = ville["label"]
+        all_tracking.extend(rows)
+
+    if not all_tracking:
+        log("⚠️  Aucune donnée pour l'analyse stratégique")
+        return
+
+    resolus = [t for t in all_tracking if t.get("resultat")]
+    gagnes  = [t for t in resolus if t.get("resultat") == "GAGNANT"]
+    perdus  = [t for t in resolus if t.get("resultat") == "PERDANT"]
+    taux_g  = round(len(gagnes) / len(resolus) * 100, 1) if resolus else 0
+
+    # Stats par ville
+    by_ville = {}
+    for t in resolus:
+        v = t["ville"]
+        if v not in by_ville:
+            by_ville[v] = {"gagnes": 0, "perdus": 0, "signaux": []}
+        by_ville[v]["gagnes" if t["resultat"] == "GAGNANT" else "perdus"] += 1
+        by_ville[v]["signaux"].append(t.get("yes_price_au_signal", 0))
+
+    stats_ville = "\n".join([
+        f"- {v}: {s['gagnes']}G/{s['perdus']}P ({round(s['gagnes']/(s['gagnes']+s['perdus'])*100) if s['gagnes']+s['perdus'] else 0}%) | seuils: {sorted(s['signaux'])}"
+        for v, s in by_ville.items()
+    ]) or "Aucun résultat résolu pour le moment."
+
+    # Détail des 60 derniers signaux
+    details = "\n".join([
+        f"- {t['ville']} | {t.get('question','?')[:65]} | signal:{t.get('yes_price_au_signal')}% | {t.get('resultat','en attente')} | {(t.get('detecte_le','?') or '?')[:16]}"
+        for t in all_tracking[-60:]
+    ])
+
+    prompt = f"""Tu es un expert en trading sur marchés de prédiction Polymarket, spécialisé dans les marchés météo température.
+
+Le bot tracked les options YES >75% sur les marchés "highest temperature in [ville] on [date]".
+Objectif final : exécuter de vrais trades et être rentable.
+
+DONNÉES ACTUELLES
+- Signaux total : {len(all_tracking)} | Résolus : {len(resolus)} | En attente : {len(all_tracking)-len(resolus)}
+- Gagnés : {len(gagnes)} | Perdus : {len(perdus)} | Taux global : {taux_g}%
+- Villes actives : {', '.join(v['label'] for v in villes)}
+- Seuil actuel : 75% YES
+
+PERFORMANCE PAR VILLE
+{stats_ville}
+
+HISTORIQUE SIGNAUX (60 derniers)
+{details}
+
+Produis une analyse stratégique structurée en 3 parties :
+
+1. BILAN DE PERFORMANCE
+Analyse ce qui marche et ce qui ne marche pas. Identifie les patterns : quelles villes sont les plus fiables, quels seuils gagnent vraiment, y a-t-il des patterns de timing ou de saison.
+
+2. RECOMMANDATIONS CONCRÈTES
+Sois précis et actionnable : quel seuil optimal recommandes-tu (ex: 80% au lieu de 75%), quelles villes prioriser ou surveiller, faut-il ajouter d'autres villes, comment améliorer la détection.
+
+3. FEUILLE DE ROUTE — 3 ACTIONS PRIORITAIRES
+Les 3 choses les plus importantes à faire pour que ce bot devienne rentable sur Polymarket météo. Priorise par impact.
+
+Maximum 350 mots. Sois direct et factuel."""
+
+    try:
+        r = requests.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={"model": "mistral-small-latest", "messages": [{"role": "user", "content": prompt}], "max_tokens": 700},
+            timeout=30
+        )
+        r.raise_for_status()
+        analyse = r.json()["choices"][0]["message"]["content"]
+        now = datetime.datetime.now(PARIS).strftime("%d/%m/%Y %H:%M")
+        db.table("strategie_analyses").insert({
+            "date":        now,
+            "nb_signaux":  len(all_tracking),
+            "nb_villes":   len(villes),
+            "analyse_text": analyse,
+        }).execute()
+        log(f"🧠 Analyse stratégique générée ({len(all_tracking)} signaux, {len(villes)} villes)")
+        # Réinitialiser le flag trigger
+        db.table("strategie_config").update({"trigger": False}).eq("id", "main").execute()
+    except Exception as e:
+        log(f"⚠️  Erreur analyse stratégique : {e}")
+
+def check_strategie_trigger(db):
+    """Retourne True si un trigger on-demand a été demandé depuis le dashboard."""
+    try:
+        row = db.table("strategie_config").select("trigger").eq("id", "main").single().execute()
+        return row.data.get("trigger", False)
+    except Exception:
+        return False
+
+def already_have_strategie_today(db):
+    """Évite de générer 2 fois la même analyse dans la même heure."""
+    try:
+        now = datetime.datetime.now(PARIS)
+        prefix = now.strftime("%d/%m/%Y %H:")
+        rows = db.table("strategie_analyses").select("date").order("created_at", desc=True).limit(1).execute().data
+        return bool(rows and rows[0]["date"].startswith(prefix))
+    except Exception:
+        return False
 
 # ── Boucle principale ─────────────────────────────────────────────────────────
 
@@ -509,6 +616,18 @@ def run():
             except Exception as e:
                 log(f"❌ Erreur cycle: {e}", ville)
             log("")
+
+        # Analyse stratégique : 18h auto + trigger on-demand
+        now_p = datetime.datetime.now(PARIS)
+        try:
+            on_demand = check_strategie_trigger(db)
+            run_strategie = on_demand or (now_p.hour == 18 and now_p.minute < 15)
+            if run_strategie and not already_have_strategie_today(db):
+                source = "on-demand" if on_demand else "18h auto"
+                log(f"🧠 Lancement analyse stratégique ({source})…")
+                analyser_strategie(db, VILLES)
+        except Exception as e:
+            log(f"⚠️  Analyse stratégique: {e}")
 
         log(f"⏳ Prochain cycle dans 15 min\n")
         time.sleep(INTERVAL)
