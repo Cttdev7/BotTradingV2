@@ -2,60 +2,59 @@
 
 ## Ce que fait ce projet
 Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashboard iOS-style.
-Le bot utilise Claude Haiku pour analyser les marchés et décider quoi trader selon une stratégie écrite en langage naturel.
-Un agent Mistral indépendant analyse les marchés et propose des stratégies.
+- **ProfitWeather** : bot de trading météo — Claude Haiku décide quoi acheter selon les signaux des bots d'analyse
+- **Agent météo multi-villes** : 12 bots d'analyse qui trackent les options YES >75% sur les marchés température
+- **Stratège Mistral** : analyse cross-ville quotidienne, apprend des analyses passées
 
 ## Structure du projet
 ```
 Bottrading V2/
-├── dashboard/          ← Frontend web (HTML/CSS/JSX, React via CDN)
-│   ├── index.html      ← Point d'entrée
-│   ├── styles.css      ← Design tokens iOS
-│   ├── app.jsx         ← Shell, navigation, sync API
+├── dashboard/          ← Frontend web (HTML/CSS/JSX, React via CDN) → Vercel
+│   ├── index.html
+│   ├── styles.css
+│   ├── app.jsx         ← Shell, navigation, sidebar avec drapeaux pays
 │   ├── api.jsx         ← Fetch données réelles depuis localhost:5000
-│   ├── data.jsx        ← Bot polyedge, TXNS/POSITIONS vides (remplis par api.jsx)
-│   ├── charts.jsx      ← Sparkline, AreaChart, Donut, Meter
-│   ├── icons.jsx       ← Icônes SVG SF-style
-│   ├── ui.jsx          ← Composants partagés (Card, Toggle, Button…)
-│   ├── tweaks-panel.jsx← Panneau thème/densité
+│   ├── data.jsx        ← 12 bots température + ProfitWeather + Crypto
+│   ├── charts.jsx
+│   ├── icons.jsx
+│   ├── ui.jsx
+│   ├── tweaks-panel.jsx
 │   ├── page_dashboard.jsx
-│   ├── page_bot.jsx    ← Onglets Aperçu / Stratégie / Analyse Mistral par bot
+│   ├── page_bot.jsx    ← Onglet unique "Analyse" pour les bots température
+│   ├── page_stratege.jsx ← Page Mistral stratège (hero violet, stats par ville)
 │   ├── page_portfolio.jsx
 │   ├── page_settings.jsx
-│   └── page_history.jsx← Prop transactions depuis app.jsx
+│   └── page_history.jsx
 ├── bot/                ← Backend Python
-│   ├── config.py       ← Charge .env (MISTRAL_API_KEY, ANTHROPIC_API_KEY…)
-│   ├── auth.py         ← Signature HMAC-SHA256 partagée
-│   ├── polymarket.py   ← API Polymarket (marchés, balance, positions)
-│   ├── mistral.py      ← Agent d'analyse Mistral
-│   ├── brain.py        ← Cerveau IA Claude Haiku (décisions de trading)
+│   ├── config.py       ← Charge .env
+│   ├── auth.py         ← Signature HMAC-SHA256
+│   ├── polymarket.py   ← API Polymarket + get_weather_markets() ← clé
+│   ├── brain.py        ← Claude Haiku : décide quoi trader, lit les signaux Supabase
 │   ├── trader.py       ← Exécution ordres (DRY_RUN=true par défaut)
-│   ├── loop.py         ← Boucle toutes les 15 min
+│   ├── loop.py         ← Boucle ProfitWeather toutes les 15 min (local)
 │   ├── server.py       ← Flask API port 5000
-│   ├── agent_meteo.py          ← Agent météo local (JSON)
-│   ├── agent_meteo_cloud.py    ← Agent météo cloud (GitHub Actions + Supabase)
-│   ├── agent_chengdu.py        ← Agent Chengdu local (JSON)
-│   ├── agent_chengdu_cloud.py  ← Agent Chengdu cloud (Railway + Supabase) ← ACTIF
+│   ├── agent_temperature_cloud.py ← 12 villes, Railway 24/7 ← ACTIF
+│   ├── strategy.json   ← Stratégie ProfitWeather (ignoré par git, local)
+│   ├── history.json    ← Historique trades (ignoré par git, local)
 │   ├── requirements.txt
-│   ├── .env            ← Clés API (jamais committé)
-│   └── .env.example    ← Template
-├── Procfile            ← Commande Railway : python3 bot/agent_chengdu_cloud.py
-├── requirements.txt    ← Dépendances racine pour Railway
-└── scripts/            ← Scripts de lancement double-clic
+│   └── .env            ← Toutes les clés (jamais committé)
+├── Procfile            ← Railway : python3 bot/agent_temperature_cloud.py
+├── requirements.txt    ← Dépendances Railway
+└── scripts/
     ├── Lancer le dashboard.command
     ├── Lancer le bot.command
-    └── Lancer la stratégie.command
+    └── Lancer la stratégie.command  ← Lance ProfitWeather (loop.py)
 ```
 
 ## Lancer le projet
 ```bash
-# Dashboard
+# Dashboard local
 cd dashboard && python3 -m http.server 8080   # → http://localhost:8080
 
-# Serveur bot
+# Serveur bot (données temps réel dashboard)
 python3 bot/server.py                          # → http://localhost:5000
 
-# Boucle de trading
+# ProfitWeather — simulation
 python3 bot/loop.py
 ```
 Ou double-cliquer sur les fichiers dans `scripts/`.
@@ -65,47 +64,59 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 - Composants exposés sur `window` (ex. `window.BotPage`)
 - Styles inline React partout (pas de classes CSS sauf layout global)
 - Variables CSS : `var(--accent)`, `var(--green)`, `var(--text)`, `var(--fill)`…
+- Dashboard déployé sur **Vercel** (auto-deploy depuis GitHub)
 
 ## État actuel
-- ✅ Dashboard iOS complet (6 pages dont Analyse Mistral)
-- ✅ Connexion Polymarket réelle — `can_trade: True`
-- ✅ Bot polyedge connecté, données en temps réel
-- ✅ Mode simulation `DRY_RUN=true` — aucun ordre réel sans activation
-- ✅ Agent Mistral pour l'analyse indépendante des marchés
-- ✅ **Bot température multi-villes** — `agent_temperature_cloud.py` sur Railway 24/7
-- ✅ **3 villes actives** : Chengdu 🌡️, Séoul 🏙️, Hong Kong 🌆
-- ✅ **Open-Meteo** intégré — température réelle par ville (sans clé API)
-- ✅ **Dashboard Analyse** générique — fonctionne pour toutes les villes `type: 'temperature'`
-- ⏳ `MISTRAL_API_KEY` — à ajouter dans variables Railway pour résumé 17h
-- ⏳ `ANTHROPIC_API_KEY` — à ajouter dans `bot/.env`
-- ⏳ USDC sur Polygon — wallet vide, à alimenter
+- ✅ Dashboard iOS complet — Vercel, auto-deploy GitHub
+- ✅ **12 villes actives** : Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳
+- ✅ **ProfitWeather** (id: `polyedge`) — bot de trading météo, prêt pour simulation
+- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_SECRET, API_PASSPHRASE), SUPABASE
+- ✅ `can_trade: True` — clés Polymarket valides
+- ✅ `DRY_RUN=true` — simulation, aucun ordre réel
+- ✅ Stratège Mistral — analyses croisées, mémoire des 7 dernières analyses
+- ⏳ Attendre signaux bots d'analyse sur marchés J+1 avant première simulation
+- ⏳ Wallet PUSD à $0 via data-api (à vérifier / déposer pour trading réel)
 
-## Bot Température Multi-Villes (actif sur Railway)
+## ProfitWeather — Bot de trading (local)
+- **Script** : `bot/loop.py` (lancé via `scripts/Lancer la stratégie.command`)
+- **Cerveau** : Claude Haiku (`brain.py`) — lit les signaux Supabase + décide
+- **Stratégie** : acheter YES sur marchés météo où les bots d'analyse ont détecté signal ≥75%
+- **Marchés** : `polymarket.get_weather_markets()` — construit les slugs J+0/J+1 par ville, interroge l'API events Polymarket (132 marchés pour 12 villes)
+- **Contexte Claude** : `_load_analysis_context()` lit depuis Supabase :
+  - `strategie_analyses` — dernière analyse Mistral cross-ville
+  - `{ville}_stats` — taux de réussite par ville
+  - `{ville}_tracking` WHERE resultat IS NULL — signaux actifs
+- **Cycle** : toutes les 15 min, auto-amélioration de stratégie toutes les 6h
+- **Persistance** : `strategy.json` + `history.json` (fichiers locaux, ignorés par git)
+- **Pour passer en réel** : `DRY_RUN=false` dans `bot/.env` (clés déjà en place)
+
+## Bot Température Multi-Villes (actif sur Railway 24/7)
 - **Script** : `bot/agent_temperature_cloud.py` (lancé via `Procfile`)
-- **Villes** : Chengdu (UTC+8), Séoul (UTC+9), Hong Kong (UTC+8)
-- **Ajouter une ville** : 1 entrée dans `VILLES` + 4 tables Supabase `{id}_*` + 1 bot dans `data.jsx`
-- **Stratégie** : tracker les options YES >80% (marché encore ouvert), mesurer les résultats
+- **Railway** : projet `lucid-encouragement`, service `BotTradingV2`
+- **Seuil signal** : YES ≥ 75%
 - **Scan** : toutes les 15 min, J+0 si encore ouvert sinon J+1
-- **Résolution** : détecte `closed OR resolved` (2 états Polymarket)
-- **Cloud** : Railway (projet `lucid-encouragement`) → `Procfile`
-- **Tables Supabase par ville** (`{ville_id}` = chengdu / seoul / hong-kong) :
-  - `{ville_id}_tracking` — signaux détectés
-  - `{ville_id}_stats` — stats globales
+- **Slug Polymarket** : `highest-temperature-in-{city}-on-{month}-{day}-{year}`
+- **Tables Supabase par ville** (`{ville_id}` = chengdu / seoul / hong-kong / nyc / london / tokyo / atlanta / seattle / miami / singapore / madrid / shanghai) :
+  - `{ville_id}_tracking` — signaux détectés (condition_id UNIQUE, yes_price_au_signal, resultat…)
+  - `{ville_id}_stats` — stats globales (taux_victoire, gagnes, resolus…)
   - `{ville_id}_rapports` — rapport à chaque cycle
-  - `{ville_id}_resumes` — résumé Mistral quotidien à 17h
-- **Timezones** : bot interne = timezone locale de la ville, logs = `Europe/Paris`
-- **Open-Meteo** : température max via coordonnées GPS de chaque ville
-- **Logs Railway** : `/logs` dans le projet Railway
+  - `{ville_id}_resumes` — résumé Mistral quotidien
+- **Tables globales** : `strategie_analyses`, `strategie_config`, `bot_status`
+
+## Ajouter une nouvelle ville
+1. Vérifier le slug Polymarket : `highest-temperature-in-{city}-on-...`
+2. Ajouter dans `VILLES` de `agent_temperature_cloud.py`
+3. Ajouter bot dans `dashboard/data.jsx` avec `type:'temperature'`, `citySlug`, `flag`, `glyph`
+4. Ajouter ville dans `VILLES` de `dashboard/page_stratege.jsx`
+5. Créer 4 tables Supabase avec le bon schéma (voir tables ci-dessus)
 
 ## Pour activer le trading réel
-1. `ANTHROPIC_API_KEY=sk-ant-...` dans `bot/.env`
-2. `MISTRAL_API_KEY=...` dans `bot/.env`
-3. Déposer des USDC sur le wallet Polygon
-4. Écrire une stratégie dans le dashboard (onglet Stratégie du bot)
-5. `DRY_RUN=false` dans `bot/.env`
-6. Double-cliquer sur `scripts/Lancer la stratégie.command`
+1. Vérifier que le wallet a du PUSD sur Polymarket
+2. `DRY_RUN=false` dans `bot/.env` (toutes les autres clés sont déjà en place)
+3. Double-cliquer sur `scripts/Lancer la stratégie.command`
 
 ## Préférences utilisateur
 - L'utilisateur ne code pas — expliquer simplement
 - Toujours tester en local avant de déclarer terminé
-- Bot actif principal : `chengdu` (Agent Chengdu cloud sur Railway)
+- Bot actif principal : `agent_temperature_cloud.py` sur Railway
+- ProfitWeather tourne en local (pas encore sur Railway)
