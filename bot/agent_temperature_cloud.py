@@ -3,7 +3,7 @@ agent_temperature_cloud.py — Bot température multi-villes (Railway + Supabase
 Tourne en continu sur Railway. Toutes les 15 minutes, pour chaque ville :
 - Analyse les options de température (J+0 si ouvert, sinon J+1)
 - Récupère la température max prévue via Open-Meteo
-- Enregistre les signaux >80% dans Supabase ({ville_id}_tracking)
+- Enregistre les signaux >75% dans Supabase ({ville_id}_tracking)
 - Vérifie les résolutions des marchés précédents
 - Met à jour les stats globales ({ville_id}_stats)
 Ajouter une ville = ajouter 1 entrée dans VILLES.
@@ -341,7 +341,7 @@ def generate_daily_resume(ville, tracking, temp_actuel=None):
         for t in resolus[-15:]
     ) or "Aucun marché résolu."
     temp_line = f"\nTempérature max prévue demain à {ville['label']} (Open-Meteo) : {temp_actuel}°C" if temp_actuel else ""
-    prompt = f"""Résume en 5 lignes max ces stats de paris sur la température à {ville['label']} (Polymarket, seuil 80%) :
+    prompt = f"""Résume en 5 lignes max ces stats de paris sur la température à {ville['label']} (Polymarket, seuil 75%) :
 
 Signaux: {len(tracking)} | Résolus: {len(resolus)} | Gagnés: {len(gagnes)} | Perdus: {len(perdus)} | Taux: {taux}%{temp_line}
 
@@ -428,7 +428,7 @@ def run_ville(db, ville):
         log(f"   {len(markets)} options | Top: {top[0]['question'].split('be ')[-1].split(' on')[0]} à {top[0]['yes_price']*100:.0f}%", ville)
 
         for m in sorted(markets, key=lambda x: x["yes_price"], reverse=True):
-            flag  = "🔥" if m["yes_price"] >= 0.80 else ("📊" if m["yes_price"] >= 0.30 else "  ")
+            flag  = "🔥" if m["yes_price"] >= 0.75 else ("📊" if m["yes_price"] >= 0.30 else "  ")
             temp  = m["question"].split("be ")[-1].split(" on")[0]
             t_int = temp_from_question(m["question"])
             match = " ← Open-Meteo" if (temp_actuel is not None and t_int == temp_actuel) else ""
@@ -439,7 +439,7 @@ def run_ville(db, ville):
         pending_ids = {t["condition_id"] for t in tracking if t["resultat"] is None}
         new_signals = 0
         for m in markets:
-            if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.80 and not m["closed"] and not m["resolved"]:
+            if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.75 and not m["closed"] and not m["resolved"]:
                 add_signal(db, ville, m, date_str)
                 new_signals += 1
             elif m["condition_id"] in pending_ids:
@@ -448,7 +448,7 @@ def run_ville(db, ville):
         if new_signals:
             log(f"   🎯 {new_signals} nouveau(x) signal(s) !", ville)
         else:
-            log("   Aucun nouveau signal (aucune option à 80%+)", ville)
+            log("   Aucun nouveau signal (aucune option à 75%+)", ville)
 
     # 5. Alerte divergence Open-Meteo
     if temp_actuel is not None:
@@ -490,7 +490,7 @@ def run_ville(db, ville):
 def run():
     log("🌡️  Agent Température Multi-Villes démarré (Railway + Supabase)")
     log(f"   Villes : {', '.join(v['label'] for v in VILLES)}")
-    log(f"   Seuil : 80% YES | Scan : toutes les 15 min")
+    log(f"   Seuil : 75% YES | Scan : toutes les 15 min")
     log("")
 
     while True:
