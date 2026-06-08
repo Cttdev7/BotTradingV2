@@ -339,6 +339,7 @@ function App() {
                           <window.BotGlyph bot={b} size={24} />
                           <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 550, color: 'var(--text)',
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+                          {b.flag && <span style={{ fontSize: 14, flexShrink: 0 }}>{b.flag}</span>}
                           <span style={{ width: 6, height: 6, borderRadius: 999, flexShrink: 0,
                             background: b.status === 'running' ? 'var(--green)' : 'var(--text-3)' }} />
                         </button>

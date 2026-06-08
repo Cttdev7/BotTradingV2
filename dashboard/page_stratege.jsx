@@ -7,18 +7,18 @@ function StratègePage({ onBack }) {
   const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
 
   const VILLES = [
-    { id: 'chengdu',   label: 'Chengdu',    glyph: '🌡️' },
-    { id: 'seoul',     label: 'Séoul',      glyph: '🏙️' },
-    { id: 'hong_kong', label: 'Hong Kong',  glyph: '🌆' },
-    { id: 'nyc',       label: 'NYC',        glyph: '🗽' },
-    { id: 'london',    label: 'Londres',    glyph: '🎡' },
-    { id: 'tokyo',     label: 'Tokyo',      glyph: '🗼' },
-    { id: 'atlanta',   label: 'Atlanta',    glyph: '🍑' },
-    { id: 'seattle',   label: 'Seattle',    glyph: '🌲' },
-    { id: 'miami',     label: 'Miami',      glyph: '🌴' },
-    { id: 'singapore', label: 'Singapour',  glyph: '🦁' },
-    { id: 'madrid',    label: 'Madrid',     glyph: '🐂' },
-    { id: 'shanghai',  label: 'Shanghai',   glyph: '🏮' },
+    { id: 'chengdu',   label: 'Chengdu',    glyph: '🌡️', flag: '🇨🇳' },
+    { id: 'seoul',     label: 'Séoul',      glyph: '🏙️', flag: '🇰🇷' },
+    { id: 'hong_kong', label: 'Hong Kong',  glyph: '🌆', flag: '🇭🇰' },
+    { id: 'nyc',       label: 'NYC',        glyph: '🗽', flag: '🇺🇸' },
+    { id: 'london',    label: 'Londres',    glyph: '🎡', flag: '🇬🇧' },
+    { id: 'tokyo',     label: 'Tokyo',      glyph: '🗼', flag: '🇯🇵' },
+    { id: 'atlanta',   label: 'Atlanta',    glyph: '🍑', flag: '🇺🇸' },
+    { id: 'seattle',   label: 'Seattle',    glyph: '🌲', flag: '🇺🇸' },
+    { id: 'miami',     label: 'Miami',      glyph: '🌴', flag: '🇺🇸' },
+    { id: 'singapore', label: 'Singapour',  glyph: '🦁', flag: '🇸🇬' },
+    { id: 'madrid',    label: 'Madrid',     glyph: '🐂', flag: '🇪🇸' },
+    { id: 'shanghai',  label: 'Shanghai',   glyph: '🏮', flag: '🇨🇳' },
   ];
 
   const [analyses, setAnalyses]     = React.useState([]);
@@ -249,7 +249,7 @@ function StratègePage({ onBack }) {
               <span style={{ fontSize: 20, flexShrink: 0 }}>{v.glyph}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{v.label}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{v.flag} {v.label}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
                     {s ? `${s.won}G / ${s.lost}P — ${s.total} signaux` : '—'}
                   </span>

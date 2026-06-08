@@ -68,7 +68,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'chengdu', name: 'Chengdu Temp', market: 'polymarket', glyph: '🌡️',
+    id: 'chengdu', name: 'Chengdu Temp', market: 'polymarket', glyph: '🌡️', flag: '🇨🇳',
     type: 'temperature', citySlug: 'chengdu',
     strategy: 'Température max Chengdu 80%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -77,7 +77,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'seoul', name: 'Séoul Temp', market: 'polymarket', glyph: '🏙️',
+    id: 'seoul', name: 'Séoul Temp', market: 'polymarket', glyph: '🏙️', flag: '🇰🇷',
     type: 'temperature', citySlug: 'seoul',
     strategy: 'Température max Séoul 80%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -86,7 +86,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'hong_kong', name: 'Hong Kong Temp', market: 'polymarket', glyph: '🌆',
+    id: 'hong_kong', name: 'Hong Kong Temp', market: 'polymarket', glyph: '🌆', flag: '🇭🇰',
     type: 'temperature', citySlug: 'hong-kong',
     strategy: 'Température max Hong Kong 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -95,7 +95,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'nyc', name: 'NYC Temp', market: 'polymarket', glyph: '🗽',
+    id: 'nyc', name: 'NYC Temp', market: 'polymarket', glyph: '🗽', flag: '🇺🇸',
     type: 'temperature', citySlug: 'nyc',
     strategy: 'Température max NYC 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -104,7 +104,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'london', name: 'Londres Temp', market: 'polymarket', glyph: '🎡',
+    id: 'london', name: 'Londres Temp', market: 'polymarket', glyph: '🎡', flag: '🇬🇧',
     type: 'temperature', citySlug: 'london',
     strategy: 'Température max Londres 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -113,7 +113,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'tokyo', name: 'Tokyo Temp', market: 'polymarket', glyph: '🗼',
+    id: 'tokyo', name: 'Tokyo Temp', market: 'polymarket', glyph: '🗼', flag: '🇯🇵',
     type: 'temperature', citySlug: 'tokyo',
     strategy: 'Température max Tokyo 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -122,7 +122,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'atlanta', name: 'Atlanta Temp', market: 'polymarket', glyph: '🍑',
+    id: 'atlanta', name: 'Atlanta Temp', market: 'polymarket', glyph: '🍑', flag: '🇺🇸',
     type: 'temperature', citySlug: 'atlanta',
     strategy: 'Température max Atlanta 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -131,7 +131,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'seattle', name: 'Seattle Temp', market: 'polymarket', glyph: '🌲',
+    id: 'seattle', name: 'Seattle Temp', market: 'polymarket', glyph: '🌲', flag: '🇺🇸',
     type: 'temperature', citySlug: 'seattle',
     strategy: 'Température max Seattle 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -140,7 +140,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'singapore', name: 'Singapour Temp', market: 'polymarket', glyph: '🦁',
+    id: 'singapore', name: 'Singapour Temp', market: 'polymarket', glyph: '🦁', flag: '🇸🇬',
     type: 'temperature', citySlug: 'singapore',
     strategy: 'Température max Singapour 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -149,7 +149,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'miami', name: 'Miami Temp', market: 'polymarket', glyph: '🌴',
+    id: 'miami', name: 'Miami Temp', market: 'polymarket', glyph: '🌴', flag: '🇺🇸',
     type: 'temperature', citySlug: 'miami',
     strategy: 'Température max Miami 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -158,7 +158,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'shanghai', name: 'Shanghai Temp', market: 'polymarket', glyph: '🏮',
+    id: 'shanghai', name: 'Shanghai Temp', market: 'polymarket', glyph: '🏮', flag: '🇨🇳',
     type: 'temperature', citySlug: 'shanghai',
     strategy: 'Température max Shanghai 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
@@ -167,7 +167,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'madrid', name: 'Madrid Temp', market: 'polymarket', glyph: '🐂',
+    id: 'madrid', name: 'Madrid Temp', market: 'polymarket', glyph: '🐂', flag: '🇪🇸',
     type: 'temperature', citySlug: 'madrid',
     strategy: 'Température max Madrid 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
