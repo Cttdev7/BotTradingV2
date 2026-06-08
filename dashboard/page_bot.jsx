@@ -407,184 +407,175 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
         return (
           <div style={{ maxWidth: 760 }}>
 
-            {/* ── Header : marché actif ── */}
-            {meteoRapport && (
-              <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
-                background:'linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)', padding:'18px 22px' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
-                  <div>
-                    <div style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.4)', letterSpacing:'.08em', marginBottom:6 }}>
-                      MARCHÉ EN SURVEILLANCE · RAILWAY · 15 MIN
-                    </div>
-                    <div style={{ fontSize:18, fontWeight:800, color:'#fff', letterSpacing:'-.01em' }}>
-                      🌡️ {slug_court || '…'}
-                    </div>
-                    <div style={{ fontSize:12, color:'rgba(255,255,255,.45)', marginTop:5 }}>
-                      Dernier cycle : {meteoRapport.heure}
+            {/* ── Header ville ── */}
+            <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
+              background:'linear-gradient(135deg,#0f2027,#203a43,#2c5364)', padding:'22px 24px' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12 }}>
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                    <span style={{ fontSize:28 }}>{bot.glyph}</span>
+                    <div>
+                      <div style={{ fontSize:20, fontWeight:900, color:'#fff', letterSpacing:'-.02em' }}>{bot.name}</div>
+                      <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginTop:1 }}>
+                        {meteoRapport ? `Dernier cycle : ${meteoRapport.heure}` : 'En attente du premier cycle…'}
+                      </div>
                     </div>
                   </div>
-                  <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                    <div style={{ textAlign:'center', padding:'10px 18px',
-                      background:'rgba(255,255,255,.08)', borderRadius:'var(--r-md)',
-                      border:'1px solid rgba(255,255,255,.12)' }}>
-                      <div style={{ fontSize:24, fontWeight:900, color:'#fff', lineHeight:1 }}>
-                        {meteoRapport.trackes ?? 0}
-                      </div>
-                      <div style={{ fontSize:10.5, color:'rgba(255,255,255,.45)', marginTop:3 }}>trackés</div>
-                    </div>
-                    <div style={{ textAlign:'center', padding:'10px 18px',
-                      background:'rgba(255,165,0,.15)', borderRadius:'var(--r-md)',
-                      border:'1px solid rgba(255,165,0,.25)' }}>
-                      <div style={{ fontSize:24, fontWeight:900, color:'#ffb74d', lineHeight:1 }}>
-                        {meteoRapport.en_attente ?? 0}
-                      </div>
-                      <div style={{ fontSize:10.5, color:'rgba(255,255,255,.45)', marginTop:3 }}>en attente</div>
-                    </div>
-                    <button onClick={refreshMeteo} className="tap"
-                      style={{ border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)',
-                        borderRadius:'var(--r-sm)', padding:'8px 14px', fontSize:13,
-                        fontWeight:700, cursor:'pointer', color:'#fff' }}>↻</button>
+                  <div style={{ fontSize:12, color:'rgba(255,255,255,.5)',
+                    background:'rgba(255,255,255,.08)', borderRadius:6, padding:'3px 10px', display:'inline-block' }}>
+                    🛰️ Railway · scan toutes les 15 min · seuil 75% YES
                   </div>
                 </div>
+                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                  {[
+                    { v: meteoTracking.length, l:'signaux', c:'rgba(255,255,255,.9)' },
+                    { v: pending.length,        l:'en cours', c:'#ffb74d' },
+                    { v: gainedLocal,            l:'gagnés',  c:'#4ade80' },
+                  ].map((chip,i) => (
+                    <div key={i} style={{ textAlign:'center', padding:'10px 16px',
+                      background:'rgba(255,255,255,.08)', borderRadius:'var(--r-md)',
+                      border:'1px solid rgba(255,255,255,.1)' }}>
+                      <div style={{ fontSize:22, fontWeight:900, color:chip.c, lineHeight:1 }}>{chip.v}</div>
+                      <div style={{ fontSize:10, color:'rgba(255,255,255,.4)', marginTop:3 }}>{chip.l}</div>
+                    </div>
+                  ))}
+                  <button onClick={refreshMeteo} className="tap"
+                    style={{ border:'1px solid rgba(255,255,255,.2)', background:'rgba(255,255,255,.08)',
+                      borderRadius:'var(--r-md)', width:40, height:40, display:'grid', placeItems:'center',
+                      cursor:'pointer', color:'rgba(255,255,255,.7)', fontSize:16 }}>↻</button>
+                </div>
               </div>
-            )}
+            </div>
 
-            {/* ── Signaux actifs (en attente de résolution) ── */}
+            {/* ── Taux de réussite ── */}
+            <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
+              background:'var(--bg-elev)', border:'1px solid var(--separator)' }}>
+              <div style={{ padding:'18px 24px', display:'flex', alignItems:'center', gap:24 }}>
+                {/* Grand taux */}
+                <div style={{ textAlign:'center', flexShrink:0 }}>
+                  <div style={{ fontSize:72, fontWeight:900, lineHeight:1,
+                    color: taux !== null ? col : 'var(--text-3)' }}>
+                    {taux !== null ? `${taux}%` : '—'}
+                  </div>
+                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)',
+                    textTransform:'uppercase', letterSpacing:'.06em', marginTop:4 }}>
+                    Taux de réussite
+                  </div>
+                </div>
+                {/* Séparateur */}
+                <div style={{ width:1, height:80, background:'var(--separator)', flexShrink:0 }} />
+                {/* Stats détail */}
+                <div style={{ flex:1 }}>
+                  {taux === null ? (
+                    <div style={{ fontSize:14, color:'var(--text-3)', lineHeight:1.6 }}>
+                      ⏳ En attente du premier résultat<br/>
+                      <span style={{ fontSize:12 }}>Les stats apparaîtront dès qu'un marché sera résolu</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:13, color:col, fontWeight:700, marginBottom:12 }}>
+                        {stats?.verdict || (taux>=60?'Stratégie rentable':taux>=50?'À surveiller':'Non rentable')}
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8 }}>
+                        {[
+                          { l:'Gagnés',  v:gainedLocal, c:'var(--green)', icon:'✅' },
+                          { l:'Perdus',  v:lostLocal,   c:'var(--red)',   icon:'❌' },
+                          { l:'Résolus', v:resolved.length, c:'var(--text-2)', icon:'📊' },
+                        ].map((s,j) => (
+                          <div key={j} style={{ padding:'10px 12px', background:'var(--fill)',
+                            borderRadius:'var(--r-md)', textAlign:'center' }}>
+                            <div style={{ fontSize:24, fontWeight:900, color:s.c }}>{s.v}</div>
+                            <div style={{ fontSize:11, color:'var(--text-3)', marginTop:2 }}>{s.icon} {s.l}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              {/* Barre visuelle */}
+              {taux !== null && (
+                <div style={{ padding:'0 24px 16px' }}>
+                  <div style={{ height:8, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
+                    <div style={{ height:'100%', borderRadius:999, width:`${taux}%`,
+                      background:`linear-gradient(90deg, ${col}, color-mix(in oklab,${col} 70%,#fff))`,
+                      transition:'width .6s ease' }} />
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:10,
+                    color:'var(--text-3)', marginTop:4 }}>
+                    <span>0%</span><span style={{ color:taux>=60?'var(--green)':'var(--text-3)' }}>Objectif 60%</span><span>100%</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Signaux en cours ── */}
             {pending.length > 0 && (
-              <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
-                <div style={{ padding:'13px 20px', background:'color-mix(in oklab,var(--orange) 8%,var(--fill))',
-                  borderBottom:'1px solid var(--separator)',
+              <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
+                border:'1px solid color-mix(in oklab,var(--orange) 30%,var(--separator))',
+                background:'var(--bg-elev)' }}>
+                <div style={{ padding:'12px 20px',
+                  background:'color-mix(in oklab,var(--orange) 8%,var(--fill))',
+                  borderBottom:'1px solid color-mix(in oklab,var(--orange) 20%,var(--separator))',
                   display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <span style={{ width:8, height:8, borderRadius:999, background:'var(--orange)',
                       boxShadow:'0 0 0 3px color-mix(in oklab,var(--orange) 30%,transparent)',
-                      animation:'pulse 2s infinite' }} />
-                    <span style={{ fontSize:14, fontWeight:700 }}>Paris en cours</span>
-                    <span style={{ fontSize:12, color:'var(--text-3)' }}>· résolution Polymarket en attente</span>
+                      animation:'pulse 2s infinite', flexShrink:0 }} />
+                    <span style={{ fontSize:14, fontWeight:700 }}>Signaux actifs</span>
                   </div>
                   <span style={{ fontSize:12, fontWeight:700, color:'var(--orange)',
                     background:'color-mix(in oklab,var(--orange) 15%,transparent)',
                     padding:'3px 10px', borderRadius:999 }}>
-                    {pending.length} actif{pending.length>1?'s':''}
+                    {pending.length} en attente
                   </span>
                 </div>
                 {pending.map((s, i) => {
-                  const temp   = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                  const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
                   const init   = s.yes_price_au_signal ?? 0;
                   const actuel = s.yes_price_actuel ?? init;
                   const delta  = actuel - init;
-                  const colAct = actuel >= 80 ? 'var(--green)' : actuel >= 50 ? 'var(--orange)' : 'var(--red)';
+                  const colAct = actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)';
                   const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
-                  const date_m = (s.detecte_le||'').split(' ')?.[0] || '';
                   return (
                     <div key={i} style={{ padding:'16px 20px',
-                      borderBottom:i<pending.length-1?'1px solid var(--separator)':'none',
-                      background:'color-mix(in oklab,var(--orange) 3%,transparent)' }}>
-                      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
-                            🎯 {s.question?.replace(/Will the highest temperature in .+ be /,'Temp. max = ')?.replace(/\?$/,'') || temp}
+                      borderBottom:i<pending.length-1?'1px solid var(--separator)':'none' }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:12 }}>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:15, fontWeight:800, color:'var(--text)', marginBottom:4 }}>
+                            {temp}
                           </div>
-                          <div style={{ fontSize:11.5, color:'var(--text-3)' }}>
-                            Détecté le {date_m} à {heure} · marché : {(s.date_marche||'').replace(/(\d+)\/(\d+)\/(\d+)/,'$1/$2/$3')}
+                          <div style={{ fontSize:12, color:'var(--text-3)' }}>
+                            Détecté à {heure} · marché du {s.date_marche || '?'}
                           </div>
                         </div>
                         <div style={{ textAlign:'right', flexShrink:0 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end', marginBottom:4 }}>
-                            <span style={{ fontSize:12, color:'var(--text-3)', textDecoration:'line-through' }}>{init}%</span>
-                            <span style={{ fontSize:11, color:'var(--text-3)' }}>→</span>
-                            <span style={{ fontSize:26, fontWeight:900, lineHeight:1, color:colAct }}>{actuel}%</span>
-                          </div>
-                          <div style={{ fontSize:12, fontWeight:700,
-                            color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-3)' }}>
-                            {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(1)} pts
+                          <div style={{ fontSize:36, fontWeight:900, lineHeight:1, color:colAct }}>{actuel}%</div>
+                          <div style={{ fontSize:12, fontWeight:700, marginTop:2,
+                            color:delta>0?'var(--green)':delta<0?'var(--red)':'var(--text-3)' }}>
+                            {delta>0?'▲':delta<0?'▼':'='} signal : {init}%
                           </div>
                         </div>
                       </div>
-                      <div style={{ marginTop:12 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5,
-                          color:'var(--text-3)', marginBottom:4 }}>
-                          <span>Confiance actuelle</span>
-                          <span style={{ color:colAct, fontWeight:700 }}>{actuel}% YES</span>
-                        </div>
-                        <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
-                          <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
-                            background: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)',
-                            transition:'width .4s ease' }} />
-                        </div>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5,
-                          color:'var(--text-3)', marginTop:3 }}>
-                          <span>0%</span><span>Seuil 75%</span><span>100%</span>
-                        </div>
-                      </div>
-                      <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
-                        <span style={{ fontSize:11, color:'var(--orange)', fontWeight:700,
-                          background:'color-mix(in oklab,var(--orange) 12%,transparent)',
-                          padding:'3px 12px', borderRadius:999,
-                          border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
-                          ⏳ En attente de clôture Polymarket
-                        </span>
+                      <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
+                          background:colAct, transition:'width .4s ease' }} />
                       </div>
                     </div>
                   );
                 })}
-              </Card>
-            )}
-
-            {/* ── Taux de réussite global ── */}
-            <Card style={{ marginBottom:'var(--gap)' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <div>
-                  <div style={{ fontSize:11, fontWeight:700, color:'var(--text-3)', letterSpacing:'.06em', marginBottom:8 }}>
-                    TAUX DE RÉUSSITE — STRATÉGIE 80%+
-                  </div>
-                  {taux !== null ? (
-                    <div style={{ fontSize:64, fontWeight:900, lineHeight:1, color:col }}>{taux}%</div>
-                  ) : (
-                    <div style={{ fontSize:32, fontWeight:800, lineHeight:1, color:'var(--text-3)' }}>—</div>
-                  )}
-                  <div style={{ fontSize:13, color:'var(--text-3)', marginTop:8 }}>
-                    {stats && stats.resolus > 0
-                      ? `${stats.gagnes ?? 0} gagnés · ${stats.perdus ?? 0} perdus · ${stats.resolus ?? 0} résolus`
-                      : resolved.length === 0
-                        ? '⏳ Premier résultat en attente — les stats s\'afficheront ici'
-                        : 'En attente de données…'}
-                  </div>
-                </div>
-                <div style={{ textAlign:'center' }}>
-                  <div style={{ fontSize:48, opacity: taux !== null ? .15 : .08 }}>
-                    {taux>=60?'✅':taux>=50?'⚠️':taux!==null?'❌':'⏳'}
-                  </div>
-                  {taux !== null && (
-                    <div style={{ fontSize:12, color:col, fontWeight:700, marginTop:4 }}>{stats?.verdict||''}</div>
-                  )}
-                </div>
               </div>
-              {/* Mini stats résolus */}
-              {(stats?.resolus > 0 || resolved.length > 0) && (
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginTop:16 }}>
-                  {[
-                    { l:'✅ Gagnés',  v: gainedLocal, c:'var(--green)' },
-                    { l:'❌ Perdus',  v: lostLocal,   c:'var(--red)' },
-                    { l:'📊 Résolus', v: resolved.length, c:'var(--text-2)' },
-                  ].map((s,j) => (
-                    <div key={j} style={{ textAlign:'center', padding:'10px 8px',
-                      background:'var(--fill)', borderRadius:'var(--r-md)' }}>
-                      <div style={{ fontSize:22, fontWeight:800, color:s.c, lineHeight:1 }}>{s.v}</div>
-                      <div style={{ fontSize:11, color:'var(--text-3)', marginTop:4 }}>{s.l}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
+            )}
 
             {/* ── Historique par jour ── */}
             {dates5.length > 0 && (
-              <Card style={{ marginBottom:'var(--gap)', padding:0, overflow:'hidden' }}>
+              <div style={{ borderRadius:'var(--r-card)', overflow:'hidden',
+                border:'1px solid var(--separator)', background:'var(--bg-elev)',
+                marginBottom:'var(--gap)' }}>
                 <div style={{ padding:'13px 20px', background:'var(--fill)',
                   borderBottom:'1px solid var(--separator)',
                   display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ fontSize:14, fontWeight:700 }}>📅 Historique par jour</span>
+                  <span style={{ fontSize:14, fontWeight:700 }}>📅 Historique</span>
                   <span style={{ fontSize:12, color:'var(--text-3)' }}>
                     {meteoTracking.length} signal{meteoTracking.length>1?'s':''}
                   </span>
@@ -599,84 +590,53 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   const col_j   = taux_j>=60?'var(--green)':taux_j>=50?'var(--orange)':taux_j!==null?'var(--red)':'var(--text-3)';
                   return (
                     <div key={date} style={{ borderBottom:di<dates5.length-1?'1px solid var(--separator)':'none' }}>
+                      {/* Ligne date */}
                       <div style={{ padding:'12px 20px', display:'flex',
                         justifyContent:'space-between', alignItems:'center',
-                        background: di===0?'color-mix(in oklab,var(--accent) 3%,transparent)':'transparent' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                          <span style={{ fontSize:14, fontWeight:700 }}>{date}</span>
-                          <span style={{ fontSize:11.5, color:'var(--text-3)' }}>
+                        background:di===0?'color-mix(in oklab,var(--accent) 4%,transparent)':'transparent' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <span style={{ fontSize:14, fontWeight:800, color:'var(--text)' }}>{date}</span>
+                          <span style={{ fontSize:11, color:'var(--text-3)',
+                            background:'var(--fill)', padding:'2px 8px', borderRadius:999 }}>
                             {sigs.length} signal{sigs.length>1?'s':''}
                           </span>
-                          {attente > 0 && (
-                            <span style={{ fontSize:11, color:'var(--orange)',
-                              background:'color-mix(in oklab,var(--orange) 15%,transparent)',
-                              padding:'2px 8px', borderRadius:999 }}>⏳ {attente} en attente</span>
-                          )}
-                          {resolus > 0 && gagnes === resolus && (
-                            <span style={{ fontSize:11, color:'var(--green)',
-                              background:'color-mix(in oklab,var(--green) 15%,transparent)',
-                              padding:'2px 8px', borderRadius:999 }}>✅ Parfait</span>
-                          )}
+                          {attente > 0 && <span style={{ fontSize:11, color:'var(--orange)',
+                            background:'color-mix(in oklab,var(--orange) 12%,transparent)',
+                            padding:'2px 8px', borderRadius:999 }}>⏳ {attente}</span>}
+                          {resolus>0 && gagnes===resolus && <span style={{ fontSize:11, color:'var(--green)',
+                            background:'color-mix(in oklab,var(--green) 12%,transparent)',
+                            padding:'2px 8px', borderRadius:999 }}>✅ Parfait</span>}
                         </div>
-                        <span style={{ fontSize:22, fontWeight:900, color:col_j }}>
-                          {taux_j !== null ? `${taux_j}%` : attente > 0 ? '⏳' : '—'}
+                        <span style={{ fontSize:20, fontWeight:900, color:col_j }}>
+                          {taux_j!==null ? `${taux_j}%` : attente>0 ? '⏳' : '—'}
                         </span>
                       </div>
+                      {/* Lignes signaux */}
                       {sigs.map((s, si) => {
-                        const temp   = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
-                        const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
+                        const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
                         const init   = s.yes_price_au_signal ?? 0;
                         const actuel = s.yes_price_actuel ?? init;
-                        const delta  = actuel - init;
+                        const gained = s.resultat === 'GAGNANT';
+                        const lost   = s.resultat === 'PERDANT';
                         return (
-                          <div key={si} style={{ display:'grid',
-                            gridTemplateColumns:'1fr 120px 80px 130px',
-                            padding:'10px 20px 10px 32px', alignItems:'center',
+                          <div key={si} style={{ padding:'10px 20px 10px 28px',
                             borderTop:'1px solid var(--separator)',
-                            background:'color-mix(in oklab,var(--fill) 50%,transparent)' }}>
-                            <div style={{ fontSize:13.5, color:'var(--text)', fontWeight:600 }}>
-                              🎯 {temp}
+                            background:'color-mix(in oklab,var(--fill) 40%,transparent)',
+                            display:'flex', alignItems:'center', gap:12 }}>
+                            {/* Badge résultat */}
+                            <div style={{ width:28, height:28, borderRadius:'var(--r-sm)', flexShrink:0,
+                              background: gained?'color-mix(in oklab,var(--green) 15%,transparent)'
+                                :lost?'color-mix(in oklab,var(--red) 15%,transparent)':'color-mix(in oklab,var(--orange) 12%,transparent)',
+                              display:'grid', placeItems:'center', fontSize:14 }}>
+                              {gained?'✅':lost?'❌':'⏳'}
                             </div>
-                            <div style={{ textAlign:'center', fontSize:12 }}>
-                              <span style={{ color:'var(--text-3)' }}>{init}%</span>
-                              <span style={{ color:'var(--text-3)', margin:'0 4px' }}>→</span>
-                              <span style={{ fontWeight:700,
-                                color: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)' }}>
+                            <div style={{ flex:1, fontSize:13.5, fontWeight:600, color:'var(--text)' }}>{temp}</div>
+                            <div style={{ fontSize:12, color:'var(--text-3)', flexShrink:0 }}>
+                              {init}% <span style={{ color:'var(--text-3)' }}>→</span>
+                              <span style={{ fontWeight:700, marginLeft:4,
+                                color:actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)' }}>
                                 {actuel}%
                               </span>
-                              {delta !== 0 && (
-                                <span style={{ fontSize:10, marginLeft:4,
-                                  color: delta>0?'var(--green)':'var(--red)' }}>
-                                  ({delta>0?'+':''}{delta.toFixed(0)})
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize:11.5, color:'var(--text-3)', textAlign:'center' }}>{heure}</div>
-                            <div style={{ textAlign:'right' }}>
-                              {s.resultat === 'GAGNANT' && (
-                                <span style={{ fontSize:12, fontWeight:700, color:'var(--green)',
-                                  background:'color-mix(in oklab,var(--green) 15%,transparent)',
-                                  padding:'3px 10px', borderRadius:999 }}>✅ Gagnant</span>
-                              )}
-                              {s.resultat === 'PERDANT' && (
-                                <span style={{ fontSize:12, fontWeight:700, color:'var(--red)',
-                                  background:'color-mix(in oklab,var(--red) 15%,transparent)',
-                                  padding:'3px 10px', borderRadius:999 }}>❌ Perdant</span>
-                              )}
-                              {s.resultat && s.resultat !== 'GAGNANT' && s.resultat !== 'PERDANT' && (
-                                <span style={{ fontSize:11, color:'var(--text-3)',
-                                  background:'var(--fill)', padding:'3px 8px', borderRadius:999 }}>
-                                  {s.resultat}
-                                </span>
-                              )}
-                              {!s.resultat && (
-                                <span style={{ fontSize:11, color:'var(--orange)',
-                                  background:'color-mix(in oklab,var(--orange) 12%,transparent)',
-                                  padding:'3px 10px', borderRadius:999,
-                                  border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
-                                  ⏳ En cours
-                                </span>
-                              )}
                             </div>
                           </div>
                         );
@@ -684,7 +644,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                     </div>
                   );
                 })}
-              </Card>
+              </div>
             )}
 
             {/* ── Logs bot ── */}
