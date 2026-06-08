@@ -594,12 +594,32 @@ def analyser_strategie(db, villes):
         for t in all_tracking[-60:]
     ])
 
-    prompt = f"""Tu es un expert en trading sur marchés de prédiction Polymarket, spécialisé dans les marchés météo température.
+    # Charger les analyses passées pour la mémoire de Mistral
+    past_analyses = []
+    try:
+        rows = db.table("strategie_analyses").select("date,nb_signaux,analyse_text") \
+            .order("created_at", desc=True).limit(7).execute().data or []
+        past_analyses = list(reversed(rows))  # chronologique
+    except Exception:
+        pass
 
-Le bot tracked les options YES >75% sur les marchés "highest temperature in [ville] on [date]".
-Objectif final : exécuter de vrais trades et être rentable.
+    memoire = ""
+    if past_analyses:
+        blocs = []
+        for a in past_analyses:
+            blocs.append(f"[{a['date']} — {a['nb_signaux']} signaux]\n{a['analyse_text'][:600]}…")
+        memoire = "\n\n---\n".join(blocs)
+    else:
+        memoire = "Aucune analyse précédente — c'est la première."
 
-DONNÉES ACTUELLES
+    prompt = f"""Tu es un stratège IA dédié à un bot de trading sur Polymarket, spécialisé marchés météo température.
+Le bot track les options YES >75% sur "highest temperature in [ville] on [date]".
+Objectif : devenir rentable et exécuter de vrais trades.
+
+════ MÉMOIRE — TES {len(past_analyses)} ANALYSES PRÉCÉDENTES ════
+{memoire}
+
+════ DONNÉES ACTUELLES ════
 - Signaux total : {len(all_tracking)} | Résolus : {len(resolus)} | En attente : {len(all_tracking)-len(resolus)}
 - Gagnés : {len(gagnes)} | Perdus : {len(perdus)} | Taux global : {taux_g}%
 - Villes actives : {', '.join(v['label'] for v in villes)}
@@ -611,18 +631,21 @@ PERFORMANCE PAR VILLE
 HISTORIQUE SIGNAUX (60 derniers)
 {details}
 
-Produis une analyse stratégique structurée en 3 parties :
+════ INSTRUCTIONS ════
+OBJECTIF ABSOLU : chaque analyse doit être meilleure que la précédente. Tu dois mesurer la progression et orienter toutes tes recommandations vers une amélioration concrète du taux de victoire.
+
+Produis une analyse structurée en 3 parties.
 
 1. BILAN DE PERFORMANCE
-Analyse ce qui marche et ce qui ne marche pas. Identifie les patterns : quelles villes sont les plus fiables, quels seuils gagnent vraiment, y a-t-il des patterns de timing ou de saison.
+Commence par : "Taux actuel : {taux_g}%". Compare avec le taux de tes analyses passées. Est-ce qu'on progresse ? Pourquoi ? Quelles recommandations précédentes ont été appliquées et avec quel résultat ? Identifie les patterns gagnants à amplifier et les patterns perdants à éliminer.
 
 2. RECOMMANDATIONS CONCRÈTES
-Sois précis et actionnable : quel seuil optimal recommandes-tu (ex: 80% au lieu de 75%), quelles villes prioriser ou surveiller, faut-il ajouter d'autres villes, comment améliorer la détection.
+Chaque recommandation doit viser à faire monter le taux au-dessus de {taux_g}%. Sois précis : quel seuil (ex: monter à 82%), quelles villes à prioriser/abandonner, quel timing (heure locale de détection), comment filtrer les faux signaux.
 
-3. FEUILLE DE ROUTE — 3 ACTIONS PRIORITAIRES
-Les 3 choses les plus importantes à faire pour que ce bot devienne rentable sur Polymarket météo. Priorise par impact.
+3. FEUILLE DE ROUTE — 3 PRIORITÉS POUR PROGRESSER
+Les 3 actions qui auront le plus d'impact sur le taux de victoire. Pour chaque action, indique l'impact attendu en points de % (ex: "+5% taux"). Si une priorité de la dernière analyse n'a pas été faite, rappelle-la en premier.
 
-Maximum 350 mots. Sois direct et factuel."""
+Maximum 400 mots. Direct, factuel. La progression est la seule métrique qui compte."""
 
     try:
         r = requests.post(
@@ -635,9 +658,12 @@ Maximum 350 mots. Sois direct et factuel."""
         analyse = r.json()["choices"][0]["message"]["content"]
         now = datetime.datetime.now(PARIS).strftime("%d/%m/%Y %H:%M")
         db.table("strategie_analyses").insert({
-            "date":        now,
-            "nb_signaux":  len(all_tracking),
-            "nb_villes":   len(villes),
+            "date":         now,
+            "nb_signaux":   len(all_tracking),
+            "nb_villes":    len(villes),
+            "nb_resolus":   len(resolus),
+            "nb_gagnes":    len(gagnes),
+            "taux_global":  taux_g,
             "analyse_text": analyse,
         }).execute()
         log(f"🧠 Analyse stratégique générée ({len(all_tracking)} signaux, {len(villes)} villes)")

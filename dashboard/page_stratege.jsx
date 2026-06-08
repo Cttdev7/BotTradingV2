@@ -29,7 +29,7 @@ function StratègePage({ onBack }) {
 
   // ─── fetch analyses Mistral ───────────────────────────────
   const fetchAnalyses = React.useCallback(() => {
-    fetch(`${SB_URL}/rest/v1/strategie_analyses?order=created_at.desc&limit=20`, {
+    fetch(`${SB_URL}/rest/v1/strategie_analyses?order=created_at.desc&limit=30&select=id,date,nb_signaux,nb_villes,nb_resolus,nb_gagnes,taux_global,analyse_text,created_at`, {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
     })
       .then(r => r.json())
@@ -133,6 +133,11 @@ function StratègePage({ onBack }) {
   const latest  = analyses[0];
   const history = analyses.slice(1);
 
+  // Courbe de progression du taux de victoire (chronologique)
+  const progression = [...analyses].reverse().filter(a => a.taux_global != null);
+  const tauxMax = progression.length ? Math.max(...progression.map(a => a.taux_global), 100) : 100;
+  const tauxMin = 0;
+
   return (
     <div style={{ maxWidth: 800, margin: '0 auto' }}>
 
@@ -195,6 +200,70 @@ function StratègePage({ onBack }) {
           </div>
         </div>
       </div>
+
+      {/* ── Courbe de progression ── */}
+      {progression.length >= 2 && (
+        <div style={{ borderRadius: 'var(--r-card)', marginBottom: 'var(--gap)',
+          background: 'var(--bg-elev)', border: '1px solid var(--separator)', padding: '16px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>📈 Progression du taux de victoire</span>
+            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{progression.length} analyses</span>
+          </div>
+          {/* Mini sparkline SVG */}
+          <svg width="100%" height="60" viewBox={`0 0 ${progression.length * 40} 60`} preserveAspectRatio="none"
+            style={{ display: 'block', overflow: 'visible' }}>
+            <defs>
+              <linearGradient id="prog-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--green)" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="var(--green)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {(() => {
+              const pts = progression.map((a, i) => {
+                const x = i * 40 + 20;
+                const y = 55 - ((a.taux_global - tauxMin) / (tauxMax - tauxMin)) * 50;
+                return `${x},${y}`;
+              }).join(' ');
+              const first = pts.split(' ')[0].split(',');
+              const last  = pts.split(' ').at(-1).split(',');
+              return <>
+                <polyline points={pts} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <polygon points={`${first[0]},55 ${pts} ${last[0]},55`} fill="url(#prog-grad)" />
+                {progression.map((a, i) => {
+                  const x = i * 40 + 20;
+                  const y = 55 - ((a.taux_global - tauxMin) / (tauxMax - tauxMin)) * 50;
+                  const prev = progression[i - 1];
+                  const up = !prev || a.taux_global >= prev.taux_global;
+                  return <g key={i}>
+                    <circle cx={x} cy={y} r="4" fill={up ? 'var(--green)' : 'var(--red)'} />
+                    <text x={x} y={y - 8} textAnchor="middle" fontSize="9" fill="var(--text-2)" fontWeight="600">
+                      {a.taux_global}%
+                    </text>
+                  </g>;
+                })}
+              </>;
+            })()}
+          </svg>
+          {/* Dates en bas */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 9, color: 'var(--text-3)' }}>{progression[0]?.date?.slice(0,10)}</span>
+            <span style={{ fontSize: 9, color: 'var(--text-3)' }}>{progression.at(-1)?.date?.slice(0,10)}</span>
+          </div>
+          {/* Delta */}
+          {progression.length >= 2 && (() => {
+            const delta = (progression.at(-1).taux_global - progression[0].taux_global).toFixed(1);
+            const up = delta >= 0;
+            return (
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6,
+                fontSize: 12, color: up ? 'var(--green)' : 'var(--red)' }}>
+                <span style={{ fontSize: 16 }}>{up ? '↗' : '↘'}</span>
+                <strong>{up ? '+' : ''}{delta}%</strong>
+                <span style={{ color: 'var(--text-3)' }}>depuis la 1ère analyse</span>
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {/* ── Tableau de bord des bots météo ── */}
       <div style={{ borderRadius: 'var(--r-card)', marginBottom: 'var(--gap)',
@@ -345,12 +414,23 @@ function StratègePage({ onBack }) {
                     className="tap" style={{ width: '100%', border: 'none', background: 'transparent',
                       cursor: 'pointer', padding: '12px 20px', display: 'flex',
                       justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{a.date}</span>
                       <span style={{ fontSize: 11, color: 'var(--text-3)', background: 'var(--fill)',
                         padding: '2px 8px', borderRadius: 999 }}>
                         {a.nb_signaux} signaux · {a.nb_villes} villes
                       </span>
+                      {a.taux_global != null && (() => {
+                        const idx = history.indexOf(a);
+                        const prev = history[idx + 1];
+                        const up = !prev?.taux_global || a.taux_global >= prev.taux_global;
+                        return (
+                          <span style={{ fontSize: 11, fontWeight: 700,
+                            color: up ? 'var(--green)' : 'var(--red)' }}>
+                            {up ? '↗' : '↘'} {a.taux_global}%
+                          </span>
+                        );
+                      })()}
                     </div>
                     <Icon name={expanded[a.id] ? 'chevron-up' : 'chevron-down'} size={14} stroke={2.2}
                       style={{ color: 'var(--text-3)', flexShrink: 0 }} />
