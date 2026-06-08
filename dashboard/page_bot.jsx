@@ -453,17 +453,21 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   </span>
                 </div>
                 {pending.map((s, i) => {
-                  const temp    = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
-                  const init    = s.yes_price_au_signal ?? 0;
-                  const actuel  = s.yes_price_actuel ?? init;
-                  const delta   = actuel - init;
-                  const colAct  = actuel >= 80 ? 'var(--green)' : actuel >= 50 ? 'var(--orange)' : 'var(--red)';
-                  const heure   = (s.detecte_le||'').split(' ')?.[1] || '';
-                  const date_m  = (s.detecte_le||'').split(' ')?.[0] || '';
+                  const temp       = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                  const init       = s.yes_price_au_signal ?? 0;
+                  const actuel     = s.yes_price_actuel ?? init;
+                  const delta      = actuel - init;
+                  const colAct     = actuel >= 80 ? 'var(--green)' : actuel >= 50 ? 'var(--orange)' : 'var(--red)';
+                  const heure      = (s.detecte_le||'').split(' ')?.[1] || '';
+                  const date_m     = (s.detecte_le||'').split(' ')?.[0] || '';
+                  // Marché "En cours de révision" : API retourne ~50% même si résultat acquis
+                  const enRevision = init >= 75 && actuel >= 45 && actuel <= 55;
                   return (
                     <div key={i} style={{ padding:'16px 20px',
                       borderBottom:i<pending.length-1?'1px solid var(--separator)':'none',
-                      background:'color-mix(in oklab,var(--orange) 3%,transparent)' }}>
+                      background: enRevision
+                        ? 'color-mix(in oklab,var(--green) 4%,transparent)'
+                        : 'color-mix(in oklab,var(--orange) 3%,transparent)' }}>
                       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
@@ -475,45 +479,65 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         </div>
                         {/* Prix */}
                         <div style={{ textAlign:'right', flexShrink:0 }}>
-                          <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end', marginBottom:4 }}>
-                            <span style={{ fontSize:12, color:'var(--text-3)', textDecoration:'line-through' }}>
-                              {init}%
-                            </span>
-                            <span style={{ fontSize:11, color:'var(--text-3)' }}>→</span>
-                            <span style={{ fontSize:26, fontWeight:900, lineHeight:1, color:colAct }}>
-                              {actuel}%
-                            </span>
-                          </div>
-                          <div style={{ fontSize:12, fontWeight:700,
-                            color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-3)' }}>
-                            {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(1)} pts
-                          </div>
+                          {enRevision ? (
+                            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                              <span style={{ fontSize:13, fontWeight:800, color:'var(--green)' }}>✅ ~100%</span>
+                              <span style={{ fontSize:11, color:'var(--text-3)', textDecoration:'line-through' }}>{init}% au signal</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end', marginBottom:4 }}>
+                                <span style={{ fontSize:12, color:'var(--text-3)', textDecoration:'line-through' }}>
+                                  {init}%
+                                </span>
+                                <span style={{ fontSize:11, color:'var(--text-3)' }}>→</span>
+                                <span style={{ fontSize:26, fontWeight:900, lineHeight:1, color:colAct }}>
+                                  {actuel}%
+                                </span>
+                              </div>
+                              <div style={{ fontSize:12, fontWeight:700,
+                                color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-3)' }}>
+                                {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(1)} pts
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                       {/* Barre de confiance */}
-                      <div style={{ marginTop:12 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5,
-                          color:'var(--text-3)', marginBottom:4 }}>
-                          <span>Confiance actuelle</span>
-                          <span style={{ color:colAct, fontWeight:700 }}>{actuel}% YES</span>
+                      {!enRevision && (
+                        <div style={{ marginTop:12 }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5,
+                            color:'var(--text-3)', marginBottom:4 }}>
+                            <span>Confiance actuelle</span>
+                            <span style={{ color:colAct, fontWeight:700 }}>{actuel}% YES</span>
+                          </div>
+                          <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
+                              background: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)',
+                              transition:'width .4s ease' }} />
+                          </div>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5,
+                            color:'var(--text-3)', marginTop:3 }}>
+                            <span>0%</span><span>Seuil 75%</span><span>100%</span>
+                          </div>
                         </div>
-                        <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
-                          <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
-                            background: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)',
-                            transition:'width .4s ease' }} />
-                        </div>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5,
-                          color:'var(--text-3)', marginTop:3 }}>
-                          <span>0%</span><span>Seuil 80%</span><span>100%</span>
-                        </div>
-                      </div>
+                      )}
                       <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
-                        <span style={{ fontSize:11, color:'var(--orange)', fontWeight:700,
-                          background:'color-mix(in oklab,var(--orange) 12%,transparent)',
-                          padding:'3px 12px', borderRadius:999,
-                          border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
-                          ⏳ En attente de clôture Polymarket
-                        </span>
+                        {enRevision ? (
+                          <span style={{ fontSize:11, color:'var(--green)', fontWeight:700,
+                            background:'color-mix(in oklab,var(--green) 12%,transparent)',
+                            padding:'3px 12px', borderRadius:999,
+                            border:'1px solid color-mix(in oklab,var(--green) 25%,transparent)' }}>
+                            📋 En cours de révision Polymarket
+                          </span>
+                        ) : (
+                          <span style={{ fontSize:11, color:'var(--orange)', fontWeight:700,
+                            background:'color-mix(in oklab,var(--orange) 12%,transparent)',
+                            padding:'3px 12px', borderRadius:999,
+                            border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
+                            ⏳ En attente de clôture Polymarket
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
