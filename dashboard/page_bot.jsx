@@ -372,16 +372,30 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       {/* ── onglet Analyse Temperature (Chengdu, Séoul, …) ── */}
       {tab === 'analyse' && bot.type === 'temperature' && (() => {
         const stats   = meteoStats;
-        const taux    = stats?.taux_victoire ?? null;
+
+        // Signaux "En cours de révision" Polymarket : API retourne ~50% même si gagné → on les traite comme GAGNANT
+        const tracking = meteoTracking.map(t => {
+          if (!t.resultat) {
+            const init = t.yes_price_au_signal ?? 0;
+            const act  = t.yes_price_actuel ?? init;
+            if (init >= 75 && act >= 45 && act <= 55) return { ...t, resultat: 'GAGNANT' };
+          }
+          return t;
+        });
+
+        const pending = tracking.filter(t => !t.resultat);
+        const resolved= tracking.filter(t => t.resultat);
+        const gainedLocal = resolved.filter(t => t.resultat === 'GAGNANT').length;
+        const lostLocal   = resolved.filter(t => t.resultat === 'PERDANT').length;
+        const tauxLocal   = resolved.length > 0 ? Math.round(gainedLocal / resolved.length * 100) : null;
+        const taux    = stats?.taux_victoire ?? tauxLocal;
         const col     = taux >= 60 ? 'var(--green)' : taux >= 50 ? 'var(--orange)' : taux !== null ? 'var(--red)' : 'var(--text-3)';
-        const pending = meteoTracking.filter(t => !t.resultat);
-        const resolved= meteoTracking.filter(t => t.resultat);
 
         const slug_court = (meteoRapport?.marche_slug||'').replace(`highest-temperature-in-${bot.citySlug}-on-`,'');
 
         // Grouper par date, 5 jours max
         const byDate = {};
-        meteoTracking.forEach(t => {
+        tracking.forEach(t => {
           const d = t.date_marche || '';
           if (d) { if (!byDate[d]) byDate[d] = []; byDate[d].push(t); }
         });
@@ -453,21 +467,17 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   </span>
                 </div>
                 {pending.map((s, i) => {
-                  const temp       = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
-                  const init       = s.yes_price_au_signal ?? 0;
-                  const actuel     = s.yes_price_actuel ?? init;
-                  const delta      = actuel - init;
-                  const colAct     = actuel >= 80 ? 'var(--green)' : actuel >= 50 ? 'var(--orange)' : 'var(--red)';
-                  const heure      = (s.detecte_le||'').split(' ')?.[1] || '';
-                  const date_m     = (s.detecte_le||'').split(' ')?.[0] || '';
-                  // Marché "En cours de révision" : API retourne ~50% même si résultat acquis
-                  const enRevision = init >= 75 && actuel >= 45 && actuel <= 55;
+                  const temp   = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                  const init   = s.yes_price_au_signal ?? 0;
+                  const actuel = s.yes_price_actuel ?? init;
+                  const delta  = actuel - init;
+                  const colAct = actuel >= 80 ? 'var(--green)' : actuel >= 50 ? 'var(--orange)' : 'var(--red)';
+                  const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
+                  const date_m = (s.detecte_le||'').split(' ')?.[0] || '';
                   return (
                     <div key={i} style={{ padding:'16px 20px',
                       borderBottom:i<pending.length-1?'1px solid var(--separator)':'none',
-                      background: enRevision
-                        ? 'color-mix(in oklab,var(--green) 4%,transparent)'
-                        : 'color-mix(in oklab,var(--orange) 3%,transparent)' }}>
+                      background:'color-mix(in oklab,var(--orange) 3%,transparent)' }}>
                       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
                         <div style={{ flex:1, minWidth:0 }}>
                           <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
@@ -477,67 +487,41 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                             Détecté le {date_m} à {heure} · marché : {(s.date_marche||'').replace(/(\d+)\/(\d+)\/(\d+)/,'$1/$2/$3')}
                           </div>
                         </div>
-                        {/* Prix */}
                         <div style={{ textAlign:'right', flexShrink:0 }}>
-                          {enRevision ? (
-                            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
-                              <span style={{ fontSize:13, fontWeight:800, color:'var(--green)' }}>✅ ~100%</span>
-                              <span style={{ fontSize:11, color:'var(--text-3)', textDecoration:'line-through' }}>{init}% au signal</span>
-                            </div>
-                          ) : (
-                            <>
-                              <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end', marginBottom:4 }}>
-                                <span style={{ fontSize:12, color:'var(--text-3)', textDecoration:'line-through' }}>
-                                  {init}%
-                                </span>
-                                <span style={{ fontSize:11, color:'var(--text-3)' }}>→</span>
-                                <span style={{ fontSize:26, fontWeight:900, lineHeight:1, color:colAct }}>
-                                  {actuel}%
-                                </span>
-                              </div>
-                              <div style={{ fontSize:12, fontWeight:700,
-                                color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-3)' }}>
-                                {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(1)} pts
-                              </div>
-                            </>
-                          )}
+                          <div style={{ display:'flex', alignItems:'center', gap:8, justifyContent:'flex-end', marginBottom:4 }}>
+                            <span style={{ fontSize:12, color:'var(--text-3)', textDecoration:'line-through' }}>{init}%</span>
+                            <span style={{ fontSize:11, color:'var(--text-3)' }}>→</span>
+                            <span style={{ fontSize:26, fontWeight:900, lineHeight:1, color:colAct }}>{actuel}%</span>
+                          </div>
+                          <div style={{ fontSize:12, fontWeight:700,
+                            color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text-3)' }}>
+                            {delta > 0 ? '▲' : delta < 0 ? '▼' : '='} {Math.abs(delta).toFixed(1)} pts
+                          </div>
                         </div>
                       </div>
-                      {/* Barre de confiance */}
-                      {!enRevision && (
-                        <div style={{ marginTop:12 }}>
-                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5,
-                            color:'var(--text-3)', marginBottom:4 }}>
-                            <span>Confiance actuelle</span>
-                            <span style={{ color:colAct, fontWeight:700 }}>{actuel}% YES</span>
-                          </div>
-                          <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
-                            <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
-                              background: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)',
-                              transition:'width .4s ease' }} />
-                          </div>
-                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5,
-                            color:'var(--text-3)', marginTop:3 }}>
-                            <span>0%</span><span>Seuil 75%</span><span>100%</span>
-                          </div>
+                      <div style={{ marginTop:12 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:10.5,
+                          color:'var(--text-3)', marginBottom:4 }}>
+                          <span>Confiance actuelle</span>
+                          <span style={{ color:colAct, fontWeight:700 }}>{actuel}% YES</span>
                         </div>
-                      )}
+                        <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
+                            background: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)',
+                            transition:'width .4s ease' }} />
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:9.5,
+                          color:'var(--text-3)', marginTop:3 }}>
+                          <span>0%</span><span>Seuil 75%</span><span>100%</span>
+                        </div>
+                      </div>
                       <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
-                        {enRevision ? (
-                          <span style={{ fontSize:11, color:'var(--green)', fontWeight:700,
-                            background:'color-mix(in oklab,var(--green) 12%,transparent)',
-                            padding:'3px 12px', borderRadius:999,
-                            border:'1px solid color-mix(in oklab,var(--green) 25%,transparent)' }}>
-                            📋 En cours de révision Polymarket
-                          </span>
-                        ) : (
-                          <span style={{ fontSize:11, color:'var(--orange)', fontWeight:700,
-                            background:'color-mix(in oklab,var(--orange) 12%,transparent)',
-                            padding:'3px 12px', borderRadius:999,
-                            border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
-                            ⏳ En attente de clôture Polymarket
-                          </span>
-                        )}
+                        <span style={{ fontSize:11, color:'var(--orange)', fontWeight:700,
+                          background:'color-mix(in oklab,var(--orange) 12%,transparent)',
+                          padding:'3px 12px', borderRadius:999,
+                          border:'1px solid color-mix(in oklab,var(--orange) 25%,transparent)' }}>
+                          ⏳ En attente de clôture Polymarket
+                        </span>
                       </div>
                     </div>
                   );
@@ -578,9 +562,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               {(stats?.resolus > 0 || resolved.length > 0) && (
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginTop:16 }}>
                   {[
-                    { l:'✅ Gagnés',  v: stats?.gagnes  ?? resolved.filter(t=>t.resultat==='GAGNANT').length, c:'var(--green)' },
-                    { l:'❌ Perdus',  v: stats?.perdus  ?? resolved.filter(t=>t.resultat==='PERDANT').length, c:'var(--red)' },
-                    { l:'📊 Résolus', v: stats?.resolus ?? resolved.length, c:'var(--text-2)' },
+                    { l:'✅ Gagnés',  v: gainedLocal, c:'var(--green)' },
+                    { l:'❌ Perdus',  v: lostLocal,   c:'var(--red)' },
+                    { l:'📊 Résolus', v: resolved.length, c:'var(--text-2)' },
                   ].map((s,j) => (
                     <div key={j} style={{ textAlign:'center', padding:'10px 8px',
                       background:'var(--fill)', borderRadius:'var(--r-md)' }}>
@@ -637,12 +621,11 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         </span>
                       </div>
                       {sigs.map((s, si) => {
-                        const temp       = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
-                        const heure      = (s.detecte_le||'').split(' ')?.[1] || '';
-                        const init       = s.yes_price_au_signal ?? 0;
-                        const actuel     = s.yes_price_actuel ?? init;
-                        const delta      = actuel - init;
-                        const enRevision = !s.resultat && init >= 75 && actuel >= 45 && actuel <= 55;
+                        const temp   = s.question?.split('be ')?.[1]?.split(' on')?.[0] || '?';
+                        const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
+                        const init   = s.yes_price_au_signal ?? 0;
+                        const actuel = s.yes_price_actuel ?? init;
+                        const delta  = actuel - init;
                         return (
                           <div key={si} style={{ display:'grid',
                             gridTemplateColumns:'1fr 120px 80px 130px',
@@ -655,21 +638,15 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                             <div style={{ textAlign:'center', fontSize:12 }}>
                               <span style={{ color:'var(--text-3)' }}>{init}%</span>
                               <span style={{ color:'var(--text-3)', margin:'0 4px' }}>→</span>
-                              {enRevision ? (
-                                <span style={{ fontWeight:700, color:'var(--green)' }}>~100%</span>
-                              ) : (
-                                <>
-                                  <span style={{ fontWeight:700,
-                                    color: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)' }}>
-                                    {actuel}%
-                                  </span>
-                                  {delta !== 0 && (
-                                    <span style={{ fontSize:10, marginLeft:4,
-                                      color: delta>0?'var(--green)':'var(--red)' }}>
-                                      ({delta>0?'+':''}{delta.toFixed(0)})
-                                    </span>
-                                  )}
-                                </>
+                              <span style={{ fontWeight:700,
+                                color: actuel>=80?'var(--green)':actuel>=50?'var(--orange)':'var(--red)' }}>
+                                {actuel}%
+                              </span>
+                              {delta !== 0 && (
+                                <span style={{ fontSize:10, marginLeft:4,
+                                  color: delta>0?'var(--green)':'var(--red)' }}>
+                                  ({delta>0?'+':''}{delta.toFixed(0)})
+                                </span>
                               )}
                             </div>
                             <div style={{ fontSize:11.5, color:'var(--text-3)', textAlign:'center' }}>{heure}</div>
@@ -690,15 +667,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                                   {s.resultat}
                                 </span>
                               )}
-                              {!s.resultat && enRevision && (
-                                <span style={{ fontSize:11, color:'var(--green)', fontWeight:700,
-                                  background:'color-mix(in oklab,var(--green) 12%,transparent)',
-                                  padding:'3px 10px', borderRadius:999,
-                                  border:'1px solid color-mix(in oklab,var(--green) 25%,transparent)' }}>
-                                  📋 En révision
-                                </span>
-                              )}
-                              {!s.resultat && !enRevision && (
+                              {!s.resultat && (
                                 <span style={{ fontSize:11, color:'var(--orange)',
                                   background:'color-mix(in oklab,var(--orange) 12%,transparent)',
                                   padding:'3px 10px', borderRadius:999,
