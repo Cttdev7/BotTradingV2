@@ -158,6 +158,15 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
+    id: 'shanghai', name: 'Shanghai Temp', market: 'polymarket', glyph: '🏮',
+    type: 'temperature', citySlug: 'shanghai',
+    strategy: 'Température max Shanghai 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
     id: 'madrid', name: 'Madrid Temp', market: 'polymarket', glyph: '🐂',
     type: 'temperature', citySlug: 'madrid',
     strategy: 'Température max Madrid 75%+', venue: 'Polymarket',

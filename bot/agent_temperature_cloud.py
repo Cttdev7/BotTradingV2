@@ -106,6 +106,14 @@ VILLES = [
         "lon":         -3.703,
         "tz":          ZoneInfo("Europe/Madrid"),
     },
+    {
+        "id":          "shanghai",
+        "label":       "Shanghai",
+        "slug_prefix": "highest-temperature-in-shanghai",
+        "lat":         31.230,
+        "lon":         121.473,
+        "tz":          ZoneInfo("Asia/Shanghai"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"
