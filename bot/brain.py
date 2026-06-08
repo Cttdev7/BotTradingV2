@@ -102,10 +102,11 @@ def _load_analysis_context() -> str:
             )
             if r.status_code == 200:
                 for sig in r.json():
-                    price = sig.get("yes_price_au_signal") or sig.get("yes_price_actuel") or 0
+                    price = float(sig.get("yes_price_au_signal") or sig.get("yes_price_actuel") or 0)
+                    price_pct = price if price > 1 else price * 100
                     signal_lines.append(
                         f"  [{ville}] {(sig.get('question') or '')[:70]}"
-                        f" → YES {float(price)*100:.0f}%"
+                        f" → YES {price_pct:.0f}%"
                         f" | détecté {(sig.get('detecte_le') or '')[:10]}"
                     )
         except Exception:
