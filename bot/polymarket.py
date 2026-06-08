@@ -150,60 +150,95 @@ def get_balance() -> dict:
     except requests.exceptions.Timeout:
         return {"usdc": 0.0}
 
-WEATHER_CITY_SLUGS = [
-    'chengdu', 'seoul', 'hong-kong', 'nyc', 'london', 'tokyo',
-    'atlanta', 'seattle', 'miami', 'singapore', 'madrid', 'shanghai',
+import datetime as _dt
+
+_WEATHER_VILLES = [
+    {'slug': 'chengdu',   'tz': 'Asia/Shanghai'},
+    {'slug': 'seoul',     'tz': 'Asia/Seoul'},
+    {'slug': 'hong-kong', 'tz': 'Asia/Hong_Kong'},
+    {'slug': 'nyc',       'tz': 'America/New_York'},
+    {'slug': 'london',    'tz': 'Europe/London'},
+    {'slug': 'tokyo',     'tz': 'Asia/Tokyo'},
+    {'slug': 'atlanta',   'tz': 'America/New_York'},
+    {'slug': 'seattle',   'tz': 'America/Los_Angeles'},
+    {'slug': 'miami',     'tz': 'America/New_York'},
+    {'slug': 'singapore', 'tz': 'Asia/Singapore'},
+    {'slug': 'madrid',    'tz': 'Europe/Madrid'},
+    {'slug': 'shanghai',  'tz': 'Asia/Shanghai'},
 ]
 
+def _event_slug(city_slug: str, date: _dt.date) -> str:
+    return f"highest-temperature-in-{city_slug}-on-{date.strftime('%B').lower()}-{date.day}-{date.year}"
+
 def get_weather_markets() -> list:
-    """Marchés température actifs pour les 12 villes suivies par les bots d'analyse."""
+    """Marchés température actifs — cherche J+0 et J+1 pour chaque ville via l'API events."""
     import json as _json
     try:
-        r = requests.get(
-            f"{GAMMA_API}/markets",
-            params={
-                "limit": 500,
-                "active": "true",
-                "closed": "false",
-                "order": "volume24hr",
-                "ascending": "false",
-            },
-            timeout=15,
-        )
-        r.raise_for_status()
-        all_markets = r.json()
-        if not isinstance(all_markets, list):
-            return []
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        ZoneInfo = None
 
-        result = []
-        for m in all_markets:
-            question = (m.get("question") or "").lower()
-            slug     = (m.get("groupSlug") or m.get("slug") or "").lower()
-            if "highest temperature" not in question and "highest-temperature" not in slug:
-                continue
-            if not any(city in slug or city in question for city in WEATHER_CITY_SLUGS):
-                continue
+    result = []
+    seen   = set()
 
-            raw_prices   = m.get("outcomePrices", [])
-            raw_outcomes = m.get("outcomes", [])
-            prices   = _json.loads(raw_prices)   if isinstance(raw_prices, str)   else raw_prices
-            outcomes = _json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
-            tokens   = [{"outcome": o, "price": float(p or 0)} for o, p in zip(outcomes, prices)]
+    for ville in _WEATHER_VILLES:
+        city = ville['slug']
+        if ZoneInfo:
+            try:
+                local_now  = _dt.datetime.now(_dt.timezone.utc).astimezone(ZoneInfo(ville['tz']))
+                local_date = local_now.date()
+            except Exception:
+                local_date = _dt.datetime.now(_dt.timezone.utc).date()
+        else:
+            local_date = _dt.datetime.now(_dt.timezone.utc).date()
 
-            result.append({
-                "condition_id": m.get("conditionId", ""),
-                "question":     m.get("question", ""),
-                "slug":         slug,
-                "volume":       float(m.get("volume24hr") or m.get("volume") or 0),
-                "active":       m.get("active", True),
-                "closed":       m.get("closed", False),
-                "tokens":       tokens,
-            })
+        for delta in (0, 1):
+            slug = _event_slug(city, local_date + _dt.timedelta(days=delta))
+            try:
+                r = requests.get(f"{GAMMA_API}/events", params={"slug": slug}, timeout=8)
+                if r.status_code != 200:
+                    continue
+                events = r.json()
+                if not events:
+                    continue
+                event = events[0]
+                if event.get("closed"):
+                    continue  # fermé → essaie J+1
 
-        return result
-    except Exception as e:
-        print(f"[weather_markets] Erreur: {e}")
-        return []
+                found_open = False
+                for m in event.get("markets", []):
+                    cid = m.get("conditionId", "")
+                    if not cid or cid in seen:
+                        continue
+                    if m.get("closed") or not m.get("acceptingOrders", True):
+                        continue
+
+                    raw_prices   = m.get("outcomePrices", [])
+                    raw_outcomes = m.get("outcomes", [])
+                    prices   = _json.loads(raw_prices)   if isinstance(raw_prices, str) else raw_prices
+                    outcomes = _json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
+                    tokens   = [{"outcome": o, "price": float(p or 0)} for o, p in zip(outcomes, prices)]
+
+                    result.append({
+                        "condition_id": cid,
+                        "question":     m.get("question", ""),
+                        "city":         city,
+                        "slug":         slug,
+                        "volume":       float(m.get("volume") or 0),
+                        "active":       True,
+                        "closed":       False,
+                        "tokens":       tokens,
+                    })
+                    seen.add(cid)
+                    found_open = True
+
+                if found_open:
+                    break  # J+0 a des marchés ouverts, pas besoin de J+1
+
+            except Exception as e:
+                print(f"[weather_markets] {city} J+{delta}: {e}")
+
+    return result
 
 
 def get_activity(limit: int = 50) -> list:
