@@ -147,6 +147,7 @@ function App() {
   const [nav, setNav] = useState({ page: 'dashboard', botId: null });
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState(null);
+  const [meteoOpen, setMeteoOpen] = useState(false);
 
   // apply theme tokens
   useEffect(() => {
@@ -202,6 +203,9 @@ function App() {
   const bot = bots.find((b) => b.id === nav.botId);
   const active = bots.filter((b) => b.status === 'running').length;
   const portfolio = useMemo(() => window.computePortfolio(bots), [bots]);
+  const tradingBots = bots.filter((b) => b.type !== 'temperature');
+  const meteoBots   = bots.filter((b) => b.type === 'temperature');
+  const meteoActive = meteoBots.filter((b) => b.status === 'running').length;
 
   let content;
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
@@ -243,7 +247,7 @@ function App() {
         <div style={{ padding: '18px 18px 8px', fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)',
           textTransform: 'uppercase', letterSpacing: '.05em' }}>Bots</div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {bots.map((b) => {
+          {tradingBots.map((b) => {
             const sel = nav.botId === b.id;
             const isRenaming = renaming?.id === b.id;
             return (
@@ -285,6 +289,44 @@ function App() {
               </div>
             );
           })}
+
+          {/* ── Section Météo dépliable ── */}
+          {meteoBots.length > 0 && (
+            <>
+              <button onClick={() => setMeteoOpen((o) => !o)} className="tap" style={{
+                display: 'flex', alignItems: 'center', gap: 7, width: '100%', border: 'none',
+                cursor: 'pointer', textAlign: 'left', padding: '9px 9px 7px', marginTop: 8,
+                background: 'transparent', borderRadius: 'var(--r-md)' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)',
+                  textTransform: 'uppercase', letterSpacing: '.05em', flex: 1 }}>🌡️ Météo</span>
+                {meteoActive > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)',
+                    background: 'color-mix(in oklab, var(--green) 15%, transparent)',
+                    padding: '1px 6px', borderRadius: 999 }}>{meteoActive}</span>
+                )}
+                <window.Icon name={meteoOpen ? 'chevron-down' : 'chevron-right'} size={13} stroke={2.2}
+                  style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+              </button>
+              {meteoOpen && meteoBots.map((b) => {
+                const sel = nav.botId === b.id;
+                return (
+                  <div key={b.id} className="bot-item"
+                    style={{ borderRadius: 'var(--r-md)', background: sel ? 'var(--fill)' : 'transparent', marginLeft: 8 }}>
+                    <button onClick={() => go('bot', b.id)} className="tap"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                        border: 'none', cursor: 'pointer', textAlign: 'left', padding: '6px 9px',
+                        borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
+                      <window.BotGlyph bot={b} size={24} />
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 550, color: 'var(--text)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+                      <span style={{ width: 6, height: 6, borderRadius: 999, flexShrink: 0,
+                        background: b.status === 'running' ? 'var(--green)' : 'var(--text-3)' }} />
+                    </button>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
         {/* Solde wallet Polygon */}
         <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 'var(--r-md)',
