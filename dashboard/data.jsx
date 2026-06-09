@@ -95,9 +95,9 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'nyc', name: 'NYC Temp', market: 'polymarket', glyph: '🗽', flag: '🇺🇸',
+    id: 'nyc', name: 'New-York Temp', market: 'polymarket', glyph: '🗽', flag: '🇺🇸',
     type: 'temperature', citySlug: 'nyc',
-    strategy: 'Température max NYC 75%+', venue: 'Polymarket',
+    strategy: 'Température max New-York 75%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
     pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,

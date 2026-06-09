@@ -506,21 +506,30 @@ def run_ville(db, ville):
             match = " ← Open-Meteo" if (temp_actuel is not None and t_int == temp_actuel) else ""
             log(f"   {flag} {m['yes_price']*100:5.1f}%  {temp}{match}", ville)
 
-        # 4. Nouveaux signaux + mise à jour prix
+        # 4. Signal dominant (1 seul par ville par jour)
         tracked_ids = {t["condition_id"] for t in tracking}
         pending_ids = {t["condition_id"] for t in tracking if t["resultat"] is None}
-        new_signals = 0
-        for m in markets:
-            if m["condition_id"] not in tracked_ids and m["yes_price"] >= 0.75 and not m["closed"] and not m["resolved"]:
-                add_signal(db, ville, m, date_str)
-                new_signals += 1
-            elif m["condition_id"] in pending_ids:
-                update_price(db, ville, m["condition_id"], m["yes_price"])
 
-        if new_signals:
-            log(f"   🎯 {new_signals} nouveau(x) signal(s) !", ville)
+        candidates = [m for m in markets if m["yes_price"] >= 0.75 and not m["closed"] and not m["resolved"]]
+        dominant   = max(candidates, key=lambda x: x["yes_price"]) if candidates else None
+
+        if dominant:
+            if dominant["condition_id"] not in tracked_ids:
+                # Nouveau dominant — annuler tout signal en attente
+                for old in [t for t in tracking if t["resultat"] is None]:
+                    temp_old = old["question"].split("be ")[-1].split(" on")[0]
+                    log(f"   🔄 {temp_old} → PERDANT (remplacé par {dominant['yes_price']*100:.0f}%)", ville)
+                    resolve_signal(db, ville, old["condition_id"], "PERDANT")
+                add_signal(db, ville, dominant, date_str)
+                log(f"   🎯 Nouveau signal dominant !", ville)
+            else:
+                update_price(db, ville, dominant["condition_id"], dominant["yes_price"])
+                log(f"   📊 Signal dominant inchangé ({dominant['yes_price']*100:.0f}%)", ville)
         else:
-            log("   Aucun nouveau signal (aucune option à 75%+)", ville)
+            for m in markets:
+                if m["condition_id"] in pending_ids:
+                    update_price(db, ville, m["condition_id"], m["yes_price"])
+            log("   Aucun signal dominant (aucune option à 75%+)", ville)
 
     # 5. Alerte divergence Open-Meteo
     if temp_actuel is not None:

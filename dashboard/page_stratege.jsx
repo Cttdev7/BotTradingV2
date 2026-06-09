@@ -10,7 +10,7 @@ function StratègePage({ onBack }) {
     { id: 'chengdu',   label: 'Chengdu',    glyph: '🌡️', flag: '🇨🇳' },
     { id: 'seoul',     label: 'Séoul',      glyph: '🏙️', flag: '🇰🇷' },
     { id: 'hong_kong', label: 'Hong Kong',  glyph: '🌆', flag: '🇭🇰' },
-    { id: 'nyc',       label: 'NYC',        glyph: '🗽', flag: '🇺🇸' },
+    { id: 'nyc',       label: 'New-York',   glyph: '🗽', flag: '🇺🇸' },
     { id: 'london',    label: 'Londres',    glyph: '🎡', flag: '🇬🇧' },
     { id: 'tokyo',     label: 'Tokyo',      glyph: '🗼', flag: '🇯🇵' },
     { id: 'atlanta',   label: 'Atlanta',    glyph: '🍑', flag: '🇺🇸' },
@@ -44,17 +44,9 @@ function StratègePage({ onBack }) {
         headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` }
       }).then(r => r.json()).then(rows => {
         const data = Array.isArray(rows) ? rows : [];
-        const remapped = data.map(t => {
-          if (!t.resultat) {
-            const init = t.yes_price_au_signal ?? 0;
-            const act  = t.yes_price_actuel ?? init;
-            if (init >= 75 && act >= 45 && act <= 55) return { ...t, resultat: 'GAGNANT' };
-          }
-          return t;
-        });
-        const resolved = remapped.filter(t => t.resultat);
+        const resolved = data.filter(t => t.resultat);
         const won = resolved.filter(t => t.resultat === 'GAGNANT').length;
-        const total = remapped.length;
+        const total = data.length;
         const taux = resolved.length > 0 ? Math.round(won / resolved.length * 100) : null;
         return { id: v.id, total, won, lost: resolved.filter(t => t.resultat === 'PERDANT').length,
           pending: total - resolved.length, taux };
@@ -209,41 +201,52 @@ function StratègePage({ onBack }) {
             <span style={{ fontSize: 13, fontWeight: 700 }}>📈 Progression du taux de victoire</span>
             <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{progression.length} analyses</span>
           </div>
-          {/* Mini sparkline SVG */}
-          <svg width="100%" height="60" viewBox={`0 0 ${progression.length * 40} 60`} preserveAspectRatio="none"
-            style={{ display: 'block', overflow: 'visible' }}>
-            <defs>
-              <linearGradient id="prog-grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--green)" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="var(--green)" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            {(() => {
-              const pts = progression.map((a, i) => {
-                const x = i * 40 + 20;
-                const y = 55 - ((a.taux_global - tauxMin) / (tauxMax - tauxMin)) * 50;
-                return `${x},${y}`;
-              }).join(' ');
-              const first = pts.split(' ')[0].split(',');
-              const last  = pts.split(' ').at(-1).split(',');
-              return <>
-                <polyline points={pts} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                <polygon points={`${first[0]},55 ${pts} ${last[0]},55`} fill="url(#prog-grad)" />
-                {progression.map((a, i) => {
-                  const x = i * 40 + 20;
-                  const y = 55 - ((a.taux_global - tauxMin) / (tauxMax - tauxMin)) * 50;
-                  const prev = progression[i - 1];
-                  const up = !prev || a.taux_global >= prev.taux_global;
-                  return <g key={i}>
-                    <circle cx={x} cy={y} r="4" fill={up ? 'var(--green)' : 'var(--red)'} />
-                    <text x={x} y={y - 8} textAnchor="middle" fontSize="9" fill="var(--text-2)" fontWeight="600">
-                      {a.taux_global}%
-                    </text>
-                  </g>;
-                })}
-              </>;
-            })()}
-          </svg>
+          {/* Mini sparkline SVG — labels en HTML pour éviter la distorsion */}
+          {(() => {
+            const n = progression.length;
+            const range = tauxMax - tauxMin || 1;
+            const pts = progression.map((a, i) => {
+              const x = n === 1 ? 20 : i * 40 + 20;
+              const y = 55 - ((a.taux_global - tauxMin) / range) * 50;
+              const prev = progression[i - 1];
+              return { x, y, taux: a.taux_global, up: !prev || a.taux_global >= prev.taux_global };
+            });
+            const lineStr = pts.map(p => `${p.x},${p.y}`).join(' ');
+            const areaStr = `${pts[0].x},55 ${lineStr} ${pts[pts.length - 1].x},55`;
+            return (
+              <div style={{ position: 'relative' }}>
+                <svg width="100%" height="60" viewBox={`0 0 ${n * 40} 60`} preserveAspectRatio="none"
+                  style={{ display: 'block', overflow: 'visible' }}>
+                  <defs>
+                    <linearGradient id="prog-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--green)" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="var(--green)" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <polyline points={lineStr} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <polygon points={areaStr} fill="url(#prog-grad)" />
+                  {pts.map((p, i) => (
+                    <circle key={i} cx={p.x} cy={p.y} r="4" fill={p.up ? 'var(--green)' : 'var(--red)'} />
+                  ))}
+                </svg>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none' }}>
+                  {pts.map((p, i) => (
+                    <div key={i} style={{
+                      position: 'absolute',
+                      left: n === 1 ? '50%' : `${(i / (n - 1)) * 100}%`,
+                      top: Math.max(0, p.y - 18) + 'px',
+                      transform: 'translateX(-50%)',
+                      fontSize: 9, fontWeight: 700,
+                      color: p.up ? 'var(--green)' : 'var(--red)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {p.taux}%
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* Dates en bas */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
             <span style={{ fontSize: 9, color: 'var(--text-3)' }}>{progression[0]?.date?.slice(0,10)}</span>
