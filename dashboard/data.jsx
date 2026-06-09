@@ -46,7 +46,7 @@ const BOTS = [
   {
     id: 'polyedge', name: 'ProfitWeather', market: 'polymarket', glyph: '🌦',
     strategy: 'Arbitrage météo 80%+', venue: 'Polymarket',
-    status: 'paused', capital: 0, allocPct: 50,
+    status: 'running', capital: 0, allocPct: 50,
     pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
     series: Array(90).fill(0),

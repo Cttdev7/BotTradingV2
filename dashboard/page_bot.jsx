@@ -752,8 +752,19 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               </div>
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
-                AUTO · {bot.type === 'temperature' ? 'Railway' : 'GitHub Actions'}
+                AUTO · {bot.type === 'temperature' || bot.id === 'polyedge' ? 'Railway' : 'GitHub Actions'}
               </span>
+              {bot.id === 'polyedge' && (
+                <a href="https://railway.app" target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize:11, fontWeight:700, color:'#4ade80',
+                    background:'rgba(74,222,128,.15)', padding:'3px 10px', borderRadius:999,
+                    border:'1px solid rgba(74,222,128,.3)', textDecoration:'none',
+                    display:'flex', alignItems:'center', gap:5 }}>
+                  <span style={{ width:6, height:6, borderRadius:999, background:'#4ade80',
+                    boxShadow:'0 0 0 2px rgba(74,222,128,.3)', animation:'pulse 2s infinite' }} />
+                  ONLINE · blissful-integrity
+                </a>
+              )}
               <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,.5)',
                 background:'rgba(255,255,255,.1)', padding:'3px 10px', borderRadius:999 }}>
                 🤖 {agentLabel}

@@ -68,13 +68,13 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 
 ## État actuel
 - ✅ Dashboard iOS complet — Vercel, auto-deploy GitHub
-- ✅ **12 villes actives** : Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳
-- ✅ **ProfitWeather** (id: `polyedge`) — bot de trading météo, prêt pour simulation
+- ✅ **16 villes actives** : Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳, Los Angeles 🇺🇸, Guangzhou 🇨🇳, Mexico City 🇲🇽, Amsterdam 🇳🇱
+- ✅ **ProfitWeather** (id: `polyedge`) — bot de trading Railway (blissful-integrity), DRY_RUN=true
+- ✅ **Mistral Stratège** — analyse cross-ville toutes les 15 min (Railway)
 - ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_SECRET, API_PASSPHRASE), SUPABASE
 - ✅ `can_trade: True` — clés Polymarket valides
 - ✅ `DRY_RUN=true` — simulation, aucun ordre réel
-- ✅ Stratège Mistral — analyses croisées, mémoire des 7 dernières analyses
-- ⏳ Attendre signaux bots d'analyse sur marchés J+1 avant première simulation
+- ✅ Résolution marchés : lit `/events` pour vrai prix (fix CLOB bloqué à 51%), fallback Open-Meteo
 - ⏳ Wallet PUSD à $0 via data-api (à vérifier / déposer pour trading réel)
 
 ## ProfitWeather — Bot de trading (local)
