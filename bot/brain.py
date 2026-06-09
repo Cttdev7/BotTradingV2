@@ -29,6 +29,7 @@ _WEATHER_VILLES = [
     "chengdu", "seoul", "hong_kong", "nyc", "london", "tokyo",
     "atlanta", "seattle", "miami", "singapore", "madrid", "shanghai",
     "los_angeles", "guangzhou", "mexico_city", "amsterdam",
+    "paris", "toronto", "chicago", "denver", "houston",
 ]
 
 def _load_analysis_context() -> str:

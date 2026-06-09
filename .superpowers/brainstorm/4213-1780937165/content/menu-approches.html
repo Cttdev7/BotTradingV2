@@ -1,0 +1,112 @@
+<h2>Nouvelle catégorie Météo dans le menu</h2>
+<p class="subtitle">3 façons d'intégrer les bots température dans le dashboard. Clique pour choisir.</p>
+
+<div class="cards">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:12px;height:260px">
+        <!-- Sidebar mockup -->
+        <div style="width:160px;background:#1a1a1f;border-radius:10px;padding:10px;font-size:11px;color:#aaa;display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <div style="color:#fff;font-weight:700;font-size:12px;margin-bottom:6px">🤖 TradingBot</div>
+          <div style="padding:5px 8px;background:#2a2a33;border-radius:6px;color:#fff">⊞ Bots</div>
+          <div style="padding:5px 8px;border-radius:6px">💼 Portefeuille</div>
+          <div style="padding:5px 8px;border-radius:6px">🕐 Historique</div>
+          <div style="margin-top:8px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#555">Bots trading</div>
+          <div style="padding:5px 8px;border-radius:6px;display:flex;align-items:center;gap:6px"><span>🔵</span> Polyedge<span style="margin-left:auto;width:6px;height:6px;background:#22c55e;border-radius:50%"></span></div>
+          <div style="margin-top:8px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#4ade80">🌡️ Météo</div>
+          <div style="padding:5px 8px;border-radius:6px;background:#16231a;border:1px solid #22c55e33;display:flex;align-items:center;gap:6px"><span>🌡️</span> Chengdu<span style="margin-left:auto;width:6px;height:6px;background:#22c55e;border-radius:50%"></span></div>
+          <div style="padding:5px 8px;border-radius:6px;background:#16231a;border:1px solid #22c55e33;display:flex;align-items:center;gap:6px"><span>🏙️</span> Séoul<span style="margin-left:auto;width:6px;height:6px;background:#22c55e;border-radius:50%"></span></div>
+          <div style="padding:5px 8px;border-radius:6px;background:#16231a;border:1px solid #22c55e33;display:flex;align-items:center;gap:6px"><span>🌆</span> HK<span style="margin-left:auto;width:6px;height:6px;background:#22c55e;border-radius:50%"></span></div>
+        </div>
+        <!-- Page -->
+        <div style="flex:1;background:#13131a;border-radius:10px;padding:10px;font-size:10px;color:#aaa">
+          <div style="color:#fff;font-weight:700;margin-bottom:8px">Vue normale — bots séparés dans sidebar</div>
+          <div style="background:#1a1a1f;border-radius:6px;padding:8px;color:#aaa">Cliquer sur un bot ouvre sa page individuelle</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Sections séparées dans la sidebar</h3>
+      <p>Deux sections distinctes : "Bots trading" et "🌡️ Météo". Les bots météo ont leur propre couleur/style dans la liste. On clique sur chaque ville individuellement pour voir son analyse.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:12px;height:260px">
+        <div style="width:160px;background:#1a1a1f;border-radius:10px;padding:10px;font-size:11px;color:#aaa;display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <div style="color:#fff;font-weight:700;font-size:12px;margin-bottom:6px">🤖 TradingBot</div>
+          <div style="padding:5px 8px;border-radius:6px">⊞ Bots</div>
+          <div style="padding:5px 8px;border-radius:6px">💼 Portefeuille</div>
+          <div style="padding:5px 8px;border-radius:6px">🕐 Historique</div>
+          <div style="padding:5px 8px;background:#1e2433;border-radius:6px;color:#60a5fa;font-weight:600;border:1px solid #3b82f633">🌡️ Météo</div>
+          <div style="margin-top:8px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#555">Bots</div>
+          <div style="padding:5px 8px;border-radius:6px;display:flex;align-items:center;gap:6px"><span>🔵</span> Polyedge<span style="margin-left:auto;width:6px;height:6px;background:#22c55e;border-radius:50%"></span></div>
+        </div>
+        <div style="flex:1;background:#13131a;border-radius:10px;padding:10px;font-size:10px;color:#aaa">
+          <div style="color:#fff;font-weight:700;margin-bottom:8px">Page Météo dédiée</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <div style="background:#1a1a1f;border-radius:6px;padding:8px">
+              <div style="color:#4ade80;font-size:9px">🌡️ CHENGDU</div>
+              <div style="font-size:16px;color:#fff;font-weight:700;margin:4px 0">100%</div>
+              <div style="font-size:9px">2 signaux · 2 gagnés</div>
+            </div>
+            <div style="background:#1a1a1f;border-radius:6px;padding:8px">
+              <div style="color:#4ade80;font-size:9px">🏙️ SÉOUL</div>
+              <div style="font-size:16px;color:#fff;font-weight:700;margin:4px 0">100%</div>
+              <div style="font-size:9px">1 signal · 1 gagné</div>
+            </div>
+            <div style="background:#1a1a1f;border-radius:6px;padding:8px">
+              <div style="color:#4ade80;font-size:9px">🌆 HONG KONG</div>
+              <div style="font-size:16px;color:#fff;font-weight:700;margin:4px 0">100%</div>
+              <div style="font-size:9px">1 signal · 1 gagné</div>
+            </div>
+            <div style="background:#1a1a1f;border-radius:6px;padding:8px;border:1px dashed #333;display:flex;align-items:center;justify-content:center;color:#555">
+              <div style="text-align:center;font-size:9px">+ Ajouter ville</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Entrée "Météo" dans la nav principale → page dédiée</h3>
+      <p>Un nouvel onglet "🌡️ Météo" dans la nav. Il ouvre une page qui affiche toutes les villes en grille avec leurs stats. On clique sur une ville pour voir le détail. Extensible facilement.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:12px;height:260px">
+        <div style="width:160px;background:#1a1a1f;border-radius:10px;padding:10px;font-size:11px;color:#aaa;display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+          <div style="color:#fff;font-weight:700;font-size:12px;margin-bottom:6px">🤖 TradingBot</div>
+          <div style="padding:5px 8px;border-radius:6px">⊞ Bots</div>
+          <div style="padding:5px 8px;border-radius:6px">💼 Portefeuille</div>
+          <div style="padding:5px 8px;border-radius:6px">🕐 Historique</div>
+          <div style="margin-top:8px;font-size:9px;text-transform:uppercase;letter-spacing:.05em;color:#555">Bots</div>
+          <div style="padding:5px 8px;border-radius:6px;display:flex;align-items:center;gap:6px"><span>🔵</span> Polyedge<span style="margin-left:auto;width:6px;height:6px;background:#22c55e;border-radius:50%"></span></div>
+          <div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:#1e2433;border:1px solid #3b82f633;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <span>🌡️</span>
+            <span style="color:#60a5fa;font-weight:600">Météo ▾</span>
+            <span style="margin-left:auto;font-size:9px;background:#22c55e22;color:#4ade80;padding:1px 4px;border-radius:3px">3</span>
+          </div>
+          <div style="padding:4px 8px 4px 24px;border-radius:6px;font-size:10px;display:flex;align-items:center;gap:5px"><span>🌡️</span> Chengdu<span style="margin-left:auto;width:5px;height:5px;background:#22c55e;border-radius:50%"></span></div>
+          <div style="padding:4px 8px 4px 24px;border-radius:6px;font-size:10px;display:flex;align-items:center;gap:5px"><span>🏙️</span> Séoul<span style="margin-left:auto;width:5px;height:5px;background:#22c55e;border-radius:50%"></span></div>
+          <div style="padding:4px 8px 4px 24px;border-radius:6px;font-size:10px;display:flex;align-items:center;gap:5px"><span>🌆</span> HK<span style="margin-left:auto;width:5px;height:5px;background:#22c55e;border-radius:50%"></span></div>
+        </div>
+        <div style="flex:1;background:#13131a;border-radius:10px;padding:10px;font-size:10px;color:#aaa">
+          <div style="color:#fff;font-weight:700;margin-bottom:8px">Section "Météo" dépliable dans la sidebar</div>
+          <div style="background:#1a1a1f;border-radius:6px;padding:8px">Cliquer "Météo ▾" déplie les villes. Cliquer une ville ouvre sa page. Tout reste dans la sidebar.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Section dépliable "Météo ▾" dans la sidebar</h3>
+      <p>Un groupe "Météo" dépliable dans la sidebar, avec badge comptant les villes actives. Les villes apparaissent en retrait. Navigation identique à aujourd'hui — pas de nouvelle page.</p>
+    </div>
+  </div>
+
+</div>

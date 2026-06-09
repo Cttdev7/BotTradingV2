@@ -146,6 +146,46 @@ VILLES = [
         "lon":         4.898,
         "tz":          ZoneInfo("Europe/Amsterdam"),
     },
+    {
+        "id":          "paris",
+        "label":       "Paris",
+        "slug_prefix": "highest-temperature-in-paris",
+        "lat":         48.856,
+        "lon":         2.352,
+        "tz":          ZoneInfo("Europe/Paris"),
+    },
+    {
+        "id":          "toronto",
+        "label":       "Toronto",
+        "slug_prefix": "highest-temperature-in-toronto",
+        "lat":         43.653,
+        "lon":         -79.383,
+        "tz":          ZoneInfo("America/Toronto"),
+    },
+    {
+        "id":          "chicago",
+        "label":       "Chicago",
+        "slug_prefix": "highest-temperature-in-chicago",
+        "lat":         41.878,
+        "lon":         -87.629,
+        "tz":          ZoneInfo("America/Chicago"),
+    },
+    {
+        "id":          "denver",
+        "label":       "Denver",
+        "slug_prefix": "highest-temperature-in-denver",
+        "lat":         39.739,
+        "lon":         -104.984,
+        "tz":          ZoneInfo("America/Denver"),
+    },
+    {
+        "id":          "houston",
+        "label":       "Houston",
+        "slug_prefix": "highest-temperature-in-houston",
+        "lat":         29.760,
+        "lon":         -95.369,
+        "tz":          ZoneInfo("America/Chicago"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"

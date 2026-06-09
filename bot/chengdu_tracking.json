@@ -1,0 +1,12 @@
+[
+  {
+    "condition_id": "0x9d99fa5b88ce3cd19e4f3426ec9759a0fb48d28049021f08604125e64e7bcc0a",
+    "question": "Will the highest temperature in Chengdu be 36°C on June 6?",
+    "yes_price_au_signal": 99.4,
+    "volume": 7414.0,
+    "detecte_le": "06/06/2026 12:00",
+    "date_marche": "06/06/2026",
+    "resultat": "GAGNE",
+    "resolu_le": "07/06/2026 10:55"
+  }
+]
