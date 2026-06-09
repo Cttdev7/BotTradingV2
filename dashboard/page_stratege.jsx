@@ -163,7 +163,7 @@ function StratègePage({ onBack }) {
                 {[
                   { label: 'Dernière analyse', val: latest.date },
                   { label: 'Signaux analysés', val: latest.nb_signaux },
-                  { label: 'Villes', val: latest.nb_villes },
+                  { label: 'Villes', val: VILLES.length },
                 ].map((s, i) => (
                   <div key={i} style={{ background: 'rgba(255,255,255,.12)', borderRadius: 8,
                     padding: '5px 12px', backdropFilter: 'blur(8px)' }}>
@@ -240,7 +240,7 @@ function StratègePage({ onBack }) {
                       left: n === 1 ? '50%' : `${(i / (n - 1)) * 100}%`,
                       top: Math.max(0, p.y - 18) + 'px',
                       transform: 'translateX(-50%)',
-                      fontSize: 9, fontWeight: 700,
+                      fontSize: 11, fontWeight: 700, fontStyle: 'normal',
                       color: p.up ? 'var(--green)' : 'var(--red)',
                       whiteSpace: 'nowrap',
                     }}>
