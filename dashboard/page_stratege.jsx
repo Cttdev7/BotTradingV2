@@ -175,17 +175,17 @@ function StratègePage({ onBack }) {
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-            <button onClick={triggerAnalyse} disabled={triggering} className="tap" style={{
-              border: 'none', cursor: triggering ? 'default' : 'pointer',
-              background: triggering ? 'rgba(255,255,255,.1)' : 'rgba(255,255,255,.95)',
-              color: triggering ? 'rgba(255,255,255,.5)' : '#312e81',
-              borderRadius: 'var(--r-md)', padding: '9px 16px',
-              fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'all .2s', whiteSpace: 'nowrap' }}>
-              <Icon name={triggering ? 'clock' : 'sparkles'} size={15} stroke={2} />
-              {triggering ? 'En cours… (~15 min)' : 'Analyser maintenant'}
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0, alignItems: 'flex-end' }}>
+            <div style={{ background: 'rgba(52,199,89,.15)', border: '1px solid rgba(52,199,89,.4)',
+              borderRadius: 'var(--r-md)', padding: '9px 14px',
+              display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#34C759',
+                boxShadow: '0 0 6px #34C759', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#34C759', whiteSpace: 'nowrap' }}>Railway actif</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)', whiteSpace: 'nowrap' }}>Analyse · toutes les 15 min</div>
+              </div>
+            </div>
             <button onClick={() => { fetchAnalyses(); fetchCityStats(); }} className="tap" style={{
               border: '1px solid rgba(255,255,255,.2)', background: 'transparent',
               color: 'rgba(255,255,255,.7)', borderRadius: 'var(--r-md)', padding: '8px 16px',
