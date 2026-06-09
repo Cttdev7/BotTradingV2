@@ -25,12 +25,14 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 
 def validate():
     """Vérifie que les clés minimales sont présentes."""
-    missing = [k for k, v in {
-        "API_KEY": API_KEY,
-        "WALLET_ADDRESS": WALLET_ADDRESS,
-    }.items() if not v]
-    if missing:
-        raise ValueError(f"Clés manquantes dans .env : {', '.join(missing)}")
+    dry_run = os.getenv("DRY_RUN", "true").lower() in ("true", "1", "yes")
+    if not dry_run:
+        missing = [k for k, v in {
+            "API_KEY": API_KEY,
+            "WALLET_ADDRESS": WALLET_ADDRESS,
+        }.items() if not v]
+        if missing:
+            raise ValueError(f"Clés manquantes dans .env : {', '.join(missing)}")
 
 def can_trade():
     """Retourne True si on a les clés complètes pour passer des ordres."""
