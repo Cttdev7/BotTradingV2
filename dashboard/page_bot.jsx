@@ -375,15 +375,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       {tab === 'analyse' && bot.type === 'temperature' && (() => {
         const stats   = meteoStats;
 
-        // Signaux "En cours de révision" Polymarket : API retourne ~50% même si gagné → on les traite comme GAGNANT
-        const tracking = meteoTracking.map(t => {
-          if (!t.resultat) {
-            const init = t.yes_price_au_signal ?? 0;
-            const act  = t.yes_price_actuel ?? init;
-            if (init >= 75 && act >= 45 && act <= 55) return { ...t, resultat: 'GAGNANT' };
-          }
-          return t;
-        });
+        const tracking = meteoTracking;
 
         const pending = tracking.filter(t => !t.resultat);
         const resolved= tracking.filter(t => t.resultat);
