@@ -344,10 +344,11 @@ def update_price(db, ville, condition_id, yes_price):
 
 def resolve_signal(db, ville, condition_id, resultat):
     now = datetime.datetime.now(PARIS).strftime("%d/%m/%Y %H:%M")
-    db.table(f"{ville['id']}_tracking").update({
-        "resultat":  resultat,
-        "resolu_le": now,
-    }).eq("condition_id", condition_id).execute()
+    final_price = 100 if resultat == "GAGNANT" else 0 if resultat == "PERDANT" else None
+    update = {"resultat": resultat, "resolu_le": now}
+    if final_price is not None:
+        update["yes_price_actuel"] = final_price
+    db.table(f"{ville['id']}_tracking").update(update).eq("condition_id", condition_id).execute()
     icon = "✅" if resultat == "GAGNANT" else "❌" if resultat == "PERDANT" else "🔚"
     log(f"  {icon} {resultat}", ville)
 
