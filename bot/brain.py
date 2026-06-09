@@ -28,6 +28,7 @@ def get_client():
 _WEATHER_VILLES = [
     "chengdu", "seoul", "hong_kong", "nyc", "london", "tokyo",
     "atlanta", "seattle", "miami", "singapore", "madrid", "shanghai",
+    "los_angeles", "guangzhou", "mexico_city", "amsterdam",
 ]
 
 def _load_analysis_context() -> str:
@@ -196,7 +197,7 @@ def decide(strategy: dict, markets: list, history: list, balance_usdc: float) ->
         return []
 
     system_prompt = """Tu es ProfitWeather, un bot de trading spécialisé sur les marchés météo Polymarket.
-Tu trades UNIQUEMENT les marchés "highest temperature in {ville}" sur les 12 villes suivies par les bots d'analyse.
+Tu trades UNIQUEMENT les marchés "highest temperature in {ville}" sur les 16 villes suivies par les bots d'analyse.
 
 Tu as accès :
 1. Aux données des bots d'analyse météo (signaux actifs + taux de réussite par ville)
@@ -391,7 +392,7 @@ def check_market_outcomes(trades: list) -> list:
             for tok in tokens:
                 if tok.get("outcome", "").lower() == outcome.lower():
                     price = float(tok.get("price", -1))
-                    if price <= 0.01 or price >= 0.99:  # marché résolu
+                    if price <= 0.02 or price >= 0.98:  # marché résolu
                         amount = float(t.get("amount_usdc", 0))
                         entry  = float(t.get("price", 0.5))
                         if entry > 0:
