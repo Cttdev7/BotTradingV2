@@ -186,6 +186,38 @@ VILLES = [
         "lon":         -95.369,
         "tz":          ZoneInfo("America/Chicago"),
     },
+    {
+        "id":          "taipei",
+        "label":       "Taipei",
+        "slug_prefix": "highest-temperature-in-taipei",
+        "lat":         25.033,
+        "lon":         121.565,
+        "tz":          ZoneInfo("Asia/Taipei"),
+    },
+    {
+        "id":          "beijing",
+        "label":       "Beijing",
+        "slug_prefix": "highest-temperature-in-beijing",
+        "lat":         39.909,
+        "lon":         116.397,
+        "tz":          ZoneInfo("Asia/Shanghai"),
+    },
+    {
+        "id":          "san_francisco",
+        "label":       "San Francisco",
+        "slug_prefix": "highest-temperature-in-san-francisco",
+        "lat":         37.774,
+        "lon":         -122.419,
+        "tz":          ZoneInfo("America/Los_Angeles"),
+    },
+    {
+        "id":          "dallas",
+        "label":       "Dallas",
+        "slug_prefix": "highest-temperature-in-dallas",
+        "lat":         32.776,
+        "lon":         -96.796,
+        "tz":          ZoneInfo("America/Chicago"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"

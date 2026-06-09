@@ -256,6 +256,42 @@ const BOTS = [
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
     series: Array(90).fill(0),
   },
+  {
+    id: 'taipei', name: 'Taipei Temp', market: 'polymarket', glyph: '🧋', flag: '🇹🇼',
+    type: 'temperature', citySlug: 'taipei',
+    strategy: 'Température max Taipei 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
+    id: 'beijing', name: 'Beijing Temp', market: 'polymarket', glyph: '🏯', flag: '🇨🇳',
+    type: 'temperature', citySlug: 'beijing',
+    strategy: 'Température max Beijing 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
+    id: 'san_francisco', name: 'San Francisco Temp', market: 'polymarket', glyph: '🌉', flag: '🇺🇸',
+    type: 'temperature', citySlug: 'san-francisco',
+    strategy: 'Température max San Francisco 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
+    id: 'dallas', name: 'Dallas Temp', market: 'polymarket', glyph: '🤠', flag: '🇺🇸',
+    type: 'temperature', citySlug: 'dallas',
+    strategy: 'Température max Dallas 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
 ];
 
 // TODO: API — positions mises à jour en temps réel par api.jsx
