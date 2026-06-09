@@ -184,6 +184,33 @@ const BOTS = [
     winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
     series: Array(90).fill(0),
   },
+  {
+    id: 'guangzhou', name: 'Guangzhou Temp', market: 'polymarket', glyph: '🌸', flag: '🇨🇳',
+    type: 'temperature', citySlug: 'guangzhou',
+    strategy: 'Température max Guangzhou 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
+    id: 'mexico_city', name: 'Mexico City Temp', market: 'polymarket', glyph: '🌮', flag: '🇲🇽',
+    type: 'temperature', citySlug: 'mexico-city',
+    strategy: 'Température max Mexico City 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
+    id: 'amsterdam', name: 'Amsterdam Temp', market: 'polymarket', glyph: '🌷', flag: '🇳🇱',
+    type: 'temperature', citySlug: 'amsterdam',
+    strategy: 'Température max Amsterdam 75%+', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
 ];
 
 // TODO: API — positions mises à jour en temps réel par api.jsx

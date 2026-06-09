@@ -122,6 +122,30 @@ VILLES = [
         "lon":         -118.244,
         "tz":          ZoneInfo("America/Los_Angeles"),
     },
+    {
+        "id":          "guangzhou",
+        "label":       "Guangzhou",
+        "slug_prefix": "highest-temperature-in-guangzhou",
+        "lat":         23.129,
+        "lon":         113.264,
+        "tz":          ZoneInfo("Asia/Shanghai"),
+    },
+    {
+        "id":          "mexico_city",
+        "label":       "Mexico City",
+        "slug_prefix": "highest-temperature-in-mexico-city",
+        "lat":         19.433,
+        "lon":         -99.133,
+        "tz":          ZoneInfo("America/Mexico_City"),
+    },
+    {
+        "id":          "amsterdam",
+        "label":       "Amsterdam",
+        "slug_prefix": "highest-temperature-in-amsterdam",
+        "lat":         52.374,
+        "lon":         4.898,
+        "tz":          ZoneInfo("Europe/Amsterdam"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"

@@ -20,6 +20,9 @@ function StratègePage({ onBack }) {
     { id: 'madrid',      label: 'Madrid',      glyph: '🐂', flag: '🇪🇸' },
     { id: 'shanghai',    label: 'Shanghai',    glyph: '🏮', flag: '🇨🇳' },
     { id: 'los_angeles', label: 'Los Angeles', glyph: '🎬', flag: '🇺🇸' },
+    { id: 'guangzhou',   label: 'Guangzhou',   glyph: '🌸', flag: '🇨🇳' },
+    { id: 'mexico_city', label: 'Mexico City', glyph: '🌮', flag: '🇲🇽' },
+    { id: 'amsterdam',   label: 'Amsterdam',   glyph: '🌷', flag: '🇳🇱' },
   ];
 
   const [analyses, setAnalyses]     = React.useState([]);
