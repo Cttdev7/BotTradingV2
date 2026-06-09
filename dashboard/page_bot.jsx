@@ -377,7 +377,10 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
         const tracking = meteoTracking;
 
-        const pending = tracking.filter(t => !t.resultat);
+        const today = new Date(); today.setHours(0,0,0,0);
+        const parseDate = s => { const [d,m,y] = (s||'').split('/'); return new Date(y,m-1,d); };
+        const pending = tracking.filter(t => !t.resultat && parseDate(t.date_marche) >= today);
+        const expired = tracking.filter(t => !t.resultat && parseDate(t.date_marche) < today);
         const resolved= tracking.filter(t => t.resultat);
         const gainedLocal = resolved.filter(t => t.resultat === 'GAGNANT').length;
         const lostLocal   = resolved.filter(t => t.resultat === 'PERDANT').length;
@@ -501,6 +504,35 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               )}
             </div>
 
+            {/* ── Signaux expirés (date passée, pas encore résolus) ── */}
+            {expired.length > 0 && (
+              <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
+                border:'1px solid color-mix(in oklab,var(--text-3) 25%,var(--separator))',
+                background:'var(--bg-elev)' }}>
+                <div style={{ padding:'10px 20px', background:'var(--fill)',
+                  borderBottom:'1px solid var(--separator)',
+                  display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:13, fontWeight:700, color:'var(--text-3)' }}>⏰ En attente de résolution</span>
+                  <span style={{ fontSize:11, color:'var(--text-3)' }}>marché terminé · résolution Railway en cours</span>
+                </div>
+                {expired.map((s, i) => {
+                  const temp = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
+                  const init = s.yes_price_au_signal ?? 0;
+                  return (
+                    <div key={i} style={{ padding:'12px 20px', borderBottom:i<expired.length-1?'1px solid var(--separator)':'none',
+                      display:'flex', alignItems:'center', gap:12, opacity:0.6 }}>
+                      <span style={{ fontSize:16 }}>🔒</span>
+                      <div style={{ flex:1, fontSize:13, fontWeight:600, color:'var(--text-2)' }}>{temp}</div>
+                      <span style={{ fontSize:11, color:'var(--text-3)' }}>signal initial : {init}%</span>
+                      <span style={{ fontSize:11, fontWeight:600, color:'var(--text-3)',
+                        background:'var(--fill)', padding:'3px 8px', borderRadius:999,
+                        border:'1px solid var(--separator)' }}>marché du {s.date_marche}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* ── Signaux en cours ── */}
             {pending.length > 0 && (
               <div style={{ marginBottom:'var(--gap)', borderRadius:'var(--r-card)', overflow:'hidden',
@@ -610,6 +642,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                         const actuel = s.yes_price_actuel ?? init;
                         const gained = s.resultat === 'GAGNANT';
                         const lost   = s.resultat === 'PERDANT';
+                        const finalPrice = gained ? 100 : lost ? 0 : actuel;
+                        const finalColor = gained ? 'var(--green)' : lost ? 'var(--red)' : actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)';
                         return (
                           <div key={si} style={{ padding:'10px 20px 10px 28px',
                             borderTop:'1px solid var(--separator)',
@@ -625,9 +659,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                             <div style={{ flex:1, fontSize:13.5, fontWeight:600, color:'var(--text)' }}>{temp}</div>
                             <div style={{ fontSize:12, color:'var(--text-3)', flexShrink:0 }}>
                               {init}% <span style={{ color:'var(--text-3)' }}>→</span>
-                              <span style={{ fontWeight:700, marginLeft:4,
-                                color:actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)' }}>
-                                {actuel}%
+                              <span style={{ fontWeight:700, marginLeft:4, color:finalColor }}>
+                                {finalPrice}%
                               </span>
                             </div>
                           </div>
