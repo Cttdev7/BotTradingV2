@@ -721,13 +721,15 @@ def check_strategie_trigger(db):
     except Exception:
         return False
 
-def already_have_strategie_today(db):
-    """Évite de générer 2 fois la même analyse dans la même heure."""
+def already_have_strategie_recently(db, minutes=10):
+    """Évite de relancer si une analyse a été générée il y a moins de N minutes."""
     try:
-        now = datetime.datetime.now(PARIS)
-        prefix = now.strftime("%d/%m/%Y %H:")
-        rows = db.table("strategie_analyses").select("date").order("created_at", desc=True).limit(1).execute().data
-        return bool(rows and rows[0]["date"].startswith(prefix))
+        rows = db.table("strategie_analyses").select("created_at").order("created_at", desc=True).limit(1).execute().data
+        if not rows:
+            return False
+        last = datetime.datetime.fromisoformat(rows[0]["created_at"].replace("Z", "+00:00"))
+        now  = datetime.datetime.now(datetime.timezone.utc)
+        return (now - last).total_seconds() < minutes * 60
     except Exception:
         return False
 
@@ -793,14 +795,10 @@ def run():
                 log(f"❌ Erreur cycle: {e}", ville)
             log("")
 
-        # Analyse stratégique : 18h auto + trigger on-demand
-        now_p = datetime.datetime.now(PARIS)
+        # Analyse stratégique : toutes les 15 min (juste avant que ProfitWeather lise)
         try:
-            on_demand = check_strategie_trigger(db)
-            run_strategie = on_demand or (now_p.hour == 18 and now_p.minute < 15)
-            if run_strategie and not already_have_strategie_today(db):
-                source = "on-demand" if on_demand else "18h auto"
-                log(f"🧠 Lancement analyse stratégique ({source})…")
+            if not already_have_strategie_recently(db):
+                log(f"🧠 Lancement analyse stratégique…")
                 analyser_strategie(db, VILLES)
         except Exception as e:
             log(f"⚠️  Analyse stratégique: {e}")
