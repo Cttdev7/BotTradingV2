@@ -219,11 +219,37 @@ def fetch_market_by_id(condition_id):
             yes_price = next((float(p) for o, p in zip(outcomes, prices) if o.lower() == "yes"), None)
             if yes_price is None:
                 return None
+            closed   = m.get("closed", False)
+            resolved = m.get("resolved", False)
+
+            # Si fermé et prix ambigu (CLOB bloqué) → lire le vrai prix depuis /events
+            if (closed or resolved) and 0.1 < yes_price < 0.9:
+                event_slug = m.get("groupSlug") or m.get("slug", "")
+                if event_slug:
+                    try:
+                        re2 = requests.get(f"{GAMMA_API}/events",
+                                           params={"slug": event_slug},
+                                           timeout=TIMEOUT)
+                        if re2.status_code == 200:
+                            events = re2.json()
+                            if isinstance(events, list) and events:
+                                for em in events[0].get("markets", []):
+                                    if em.get("conditionId") == condition_id:
+                                        raw_p2 = em.get("outcomePrices", [])
+                                        raw_o2 = em.get("outcomes", [])
+                                        p2 = json.loads(raw_p2) if isinstance(raw_p2, str) else raw_p2
+                                        o2 = json.loads(raw_o2) if isinstance(raw_o2, str) else raw_o2
+                                        yp2 = next((float(x) for oo, x in zip(o2, p2) if oo.lower() == "yes"), None)
+                                        if yp2 is not None:
+                                            yes_price = yp2
+                    except Exception:
+                        pass
+
             return {
                 "condition_id": m.get("conditionId", ""),
                 "yes_price":    yes_price,
-                "closed":       m.get("closed", False),
-                "resolved":     m.get("resolved", False),
+                "closed":       closed,
+                "resolved":     resolved,
             }
     except Exception as e:
         log(f"⚠️  Fetch {condition_id[:16]}: {e}")
