@@ -114,6 +114,14 @@ VILLES = [
         "lon":         121.473,
         "tz":          ZoneInfo("Asia/Shanghai"),
     },
+    {
+        "id":          "los_angeles",
+        "label":       "Los Angeles",
+        "slug_prefix": "highest-temperature-in-los-angeles",
+        "lat":         34.052,
+        "lon":         -118.244,
+        "tz":          ZoneInfo("America/Los_Angeles"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"

@@ -17,8 +17,9 @@ function StratègePage({ onBack }) {
     { id: 'seattle',   label: 'Seattle',    glyph: '🌲', flag: '🇺🇸' },
     { id: 'miami',     label: 'Miami',      glyph: '🌴', flag: '🇺🇸' },
     { id: 'singapore', label: 'Singapour',  glyph: '🦁', flag: '🇸🇬' },
-    { id: 'madrid',    label: 'Madrid',     glyph: '🐂', flag: '🇪🇸' },
-    { id: 'shanghai',  label: 'Shanghai',   glyph: '🏮', flag: '🇨🇳' },
+    { id: 'madrid',      label: 'Madrid',      glyph: '🐂', flag: '🇪🇸' },
+    { id: 'shanghai',    label: 'Shanghai',    glyph: '🏮', flag: '🇨🇳' },
+    { id: 'los_angeles', label: 'Los Angeles', glyph: '🎬', flag: '🇺🇸' },
   ];
 
   const [analyses, setAnalyses]     = React.useState([]);
