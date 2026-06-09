@@ -89,9 +89,44 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       })
       .catch(() => {});
     refreshMeteo();
-    const id = setInterval(refreshMeteo, 30 * 60 * 1000);
+    const id = setInterval(refreshMeteo, 3 * 60 * 1000);
     return () => clearInterval(id);
   }, [bot.id, refreshMeteo]);
+
+  // Auto-résolution des signaux gelés à ~51% (CLOB bloqué = marché fermé)
+  React.useEffect(() => {
+    if (!meteoTracking.length || !bot.citySlug) return;
+    const MONTHS = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    const frozen = meteoTracking.filter(t => {
+      if (t.resultat) return false;
+      const p = parseFloat(t.yes_price_actuel ?? t.yes_price_au_signal ?? 0);
+      return p > 47 && p < 54;
+    });
+    if (!frozen.length) return;
+    frozen.forEach(async (sig) => {
+      try {
+        const [d,m,y] = (sig.date_marche||'').split('/');
+        if (!d || !m || !y) return;
+        const slug = `highest-temperature-in-${bot.citySlug}-on-${MONTHS[parseInt(m,10)-1]}-${parseInt(d,10)}-${y}`;
+        const r = await fetch(`https://gamma-api.polymarket.com/events?slug=${slug}`);
+        if (!r.ok) return;
+        const events = await r.json();
+        if (!events?.length) return;
+        const markets = events[0].markets || [];
+        const mk = markets.find(mk => (mk.conditionId||'').toLowerCase() === (sig.condition_id||'').toLowerCase());
+        if (!mk) return;
+        const yesPrice = parseFloat((mk.outcomePrices||[])[0] || 0.51);
+        const resultat = yesPrice >= 0.95 ? 'GAGNANT' : yesPrice <= 0.05 ? 'PERDANT' : null;
+        if (!resultat) return;
+        await fetch(`${SB_URL}/rest/v1/${bot.id}_tracking?condition_id=eq.${sig.condition_id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resultat, yes_price_actuel: resultat === 'GAGNANT' ? 100 : 0 })
+        });
+        refreshMeteo();
+      } catch (e) {}
+    });
+  }, [meteoTracking]);
 
   // ── P&L horaire ──
   const [pnlHoraire, setPnlHoraire] = React.useState([]);
@@ -558,8 +593,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
                   const init   = s.yes_price_au_signal ?? 0;
                   const actuel = s.yes_price_actuel ?? init;
+                  const frozen = actuel > 47 && actuel < 54;
                   const delta  = actuel - init;
-                  const colAct = actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)';
+                  const colAct = frozen ? 'var(--text-3)' : actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)';
                   const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
                   return (
                     <div key={i} style={{ padding:'16px 20px',
@@ -574,16 +610,30 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                           </div>
                         </div>
                         <div style={{ textAlign:'right', flexShrink:0 }}>
-                          <div style={{ fontSize:36, fontWeight:900, lineHeight:1, color:colAct }}>{actuel}%</div>
-                          <div style={{ fontSize:12, fontWeight:700, marginTop:2,
-                            color:delta>0?'var(--green)':delta<0?'var(--red)':'var(--text-3)' }}>
-                            {delta>0?'▲':delta<0?'▼':'='} signal : {init}%
-                          </div>
+                          {frozen ? (
+                            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                              <div style={{ fontSize:13, fontWeight:700, color:'var(--text-3)',
+                                background:'var(--fill)', padding:'6px 12px', borderRadius:999,
+                                border:'1px solid var(--separator)' }}>
+                                🔍 Résolution…
+                              </div>
+                              <div style={{ fontSize:11, color:'var(--text-3)' }}>signal : {init}%</div>
+                            </div>
+                          ) : (
+                            <>
+                              <div style={{ fontSize:36, fontWeight:900, lineHeight:1, color:colAct }}>{actuel}%</div>
+                              <div style={{ fontSize:12, fontWeight:700, marginTop:2,
+                                color:delta>0?'var(--green)':delta<0?'var(--red)':'var(--text-3)' }}>
+                                {delta>0?'▲':delta<0?'▼':'='} signal : {init}%
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div style={{ height:6, borderRadius:999, background:'var(--fill)', overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${actuel}%`, borderRadius:999,
-                          background:colAct, transition:'width .4s ease' }} />
+                        <div style={{ height:'100%', width:`${frozen ? init : actuel}%`, borderRadius:999,
+                          background: frozen ? 'var(--text-3)' : colAct, transition:'width .4s ease',
+                          opacity: frozen ? 0.4 : 1 }} />
                       </div>
                     </div>
                   );
@@ -659,8 +709,8 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                             <div style={{ flex:1, fontSize:13.5, fontWeight:600, color:'var(--text)' }}>{temp}</div>
                             <div style={{ fontSize:12, color:'var(--text-3)', flexShrink:0 }}>
                               {init}% <span style={{ color:'var(--text-3)' }}>→</span>
-                              <span style={{ fontWeight:700, marginLeft:4, color:finalColor }}>
-                                {finalPrice}%
+                              <span style={{ fontWeight:700, marginLeft:4, color: (finalPrice>47&&finalPrice<54&&!s.resultat) ? 'var(--text-3)' : finalColor }}>
+                                {(finalPrice>47&&finalPrice<54&&!s.resultat) ? '🔍' : `${finalPrice}%`}
                               </span>
                             </div>
                           </div>
