@@ -273,6 +273,21 @@ def temp_from_question(question):
     m = re.search(r'be (\d+)°C', question)
     return int(m.group(1)) if m else None
 
+def temp_range_from_question_celsius(question):
+    """Retourne (low_c, high_c) en Celsius, ou None."""
+    # Fahrenheit range: "between 60-61°F" ou "60 and 61°F"
+    m = re.search(r'between (\d+)[-–and ]+(\d+)[°\s]*F', question, re.IGNORECASE)
+    if m:
+        low_c  = (int(m.group(1)) - 32) * 5 / 9
+        high_c = (int(m.group(2)) - 32) * 5 / 9
+        return low_c, high_c
+    # Celsius exact: "be 25°C" → plage ±0.5
+    m = re.search(r'be (\d+)°C', question)
+    if m:
+        t = int(m.group(1))
+        return t - 0.5, t + 0.5
+    return None
+
 # ── Tracking Supabase ─────────────────────────────────────────────────────────
 
 def load_tracking(db, ville):
@@ -358,33 +373,31 @@ def check_resolved(db, ville, tracking):
             log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip", ville)
             continue
         final = m["yes_price"]
-        # Résolution officielle OU prix quasi-certain (marché "En cours de révision")
-        if m["closed"] or m["resolved"] or final >= 0.99 or final <= 0.01:
+        if m["closed"] or m["resolved"] or final >= 0.98 or final <= 0.02:
             if final >= 0.95:
                 resultat = "GAGNANT"
             elif final <= 0.05:
                 resultat = "PERDANT"
             else:
-                resultat = f"TERMINÉ: {round(final * 100, 1)}%"
-            if not (m["closed"] or m["resolved"]):
-                log(f"  🔍 Prix={round(final*100,1)}% → résolution anticipée ({resultat})", ville)
-            resolve_signal(db, ville, t["condition_id"], resultat)
-
-            temp_marche = temp_from_question(t["question"])
-            if temp_marche is not None and resultat in ("GAGNANT", "PERDANT"):
+                # Zone ambiguë (ex: 51%) — utiliser Open-Meteo pour trancher
+                resultat = None
                 try:
                     d = datetime.datetime.strptime(t["date_marche"], "%d/%m/%Y")
                     date_dt = d.replace(tzinfo=ville["tz"])
+                    temp_range = temp_range_from_question_celsius(t["question"])
                     temp_om = fetch_temp(ville, date_dt)
-                    if temp_om is not None:
-                        if temp_om == temp_marche and resultat == "GAGNANT":
-                            log(f"  📡 Open-Meteo {temp_om}°C → GAGNANT {temp_marche}°C ✅ CORRECT", ville)
-                        elif temp_om == temp_marche and resultat == "PERDANT":
-                            log(f"  📡 Open-Meteo {temp_om}°C → PERDANT {temp_marche}°C ⚠️ RATÉ", ville)
-                        else:
-                            log(f"  📡 Open-Meteo {temp_om}°C → {resultat} {temp_marche}°C ❌ INCORRECT", ville)
+                    if temp_range and temp_om is not None:
+                        low_c, high_c = temp_range
+                        resultat = "GAGNANT" if low_c <= temp_om <= high_c else "PERDANT"
+                        log(f"  📡 Open-Meteo {temp_om}°C — plage [{low_c:.1f}-{high_c:.1f}°C] → {resultat}", ville)
                 except Exception as e:
-                    log(f"  ⚠️ Erreur parsing date/Open-Meteo : {e}", ville)
+                    log(f"  ⚠️ Open-Meteo ambiguïté : {e}", ville)
+                # Fallback sur le prix si Open-Meteo indisponible
+                if resultat is None:
+                    resultat = "GAGNANT" if final >= 0.5 else "PERDANT"
+                    log(f"  ⚠️  Fallback prix {round(final*100)}% → {resultat}", ville)
+
+            resolve_signal(db, ville, t["condition_id"], resultat)
         else:
             update_price(db, ville, t["condition_id"], m["yes_price"])
 
