@@ -659,11 +659,8 @@ def run_ville(db, ville):
 
         if dominant:
             if dominant["condition_id"] not in tracked_ids:
-                # Nouveau dominant — annuler tout signal en attente
-                for old in [t for t in tracking if t["resultat"] is None]:
-                    temp_old = old["question"].split("be ")[-1].split(" on")[0]
-                    log(f"   🔄 {temp_old} → PERDANT (remplacé par {dominant['yes_price']*100:.0f}%)", ville)
-                    resolve_signal(db, ville, old["condition_id"], "PERDANT")
+                # Nouveau dominant — on le tracke sans toucher aux anciens signaux
+                # (les anciens se résoudront naturellement via check_resolved quand le marché ferme)
                 add_signal(db, ville, dominant, date_str)
                 log(f"   🎯 Nouveau signal dominant !", ville)
             else:
