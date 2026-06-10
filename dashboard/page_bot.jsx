@@ -551,7 +551,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 </div>
                 {expired.map((s, i) => {
                   const temp = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
-                  const init = s.yes_price_au_signal ?? 0;
+                  const init = s.yes_price_au_signal || s.yes_price_actuel || 0;
                   return (
                     <div key={i} style={{ padding:'12px 20px', borderBottom:i<expired.length-1?'1px solid var(--separator)':'none',
                       display:'flex', alignItems:'center', gap:12, opacity:0.6 }}>
@@ -590,7 +590,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 </div>
                 {pending.map((s, i) => {
                   const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
-                  const init   = s.yes_price_au_signal ?? 0;
+                  const init   = s.yes_price_au_signal || s.yes_price_actuel || 0;
                   const actuel = s.yes_price_actuel ?? init;
                   const frozen = actuel > 47 && actuel < 54;
                   const delta  = actuel - init;
@@ -687,7 +687,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                       {/* Lignes signaux */}
                       {sigs.map((s, si) => {
                         const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
-                        const init   = s.yes_price_au_signal ?? 0;
+                        const init   = s.yes_price_au_signal || s.yes_price_actuel || 0;
                         const actuel = s.yes_price_actuel ?? init;
                         const gained = s.resultat === 'GAGNANT';
                         const lost   = s.resultat === 'PERDANT';
