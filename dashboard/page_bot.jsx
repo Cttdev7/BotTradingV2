@@ -37,7 +37,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
   const sbFetch = (table, limit = 100) =>
-    fetch(`${SB_URL}/rest/v1/${table}?order=created_at.desc&limit=${limit}`, {
+    fetch(`${SB_URL}/rest/v1/${table}?order=id.desc&limit=${limit}`, {
       headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
     }).then(r => r.json());
 
