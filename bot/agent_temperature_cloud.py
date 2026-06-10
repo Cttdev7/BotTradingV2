@@ -462,32 +462,35 @@ def update_stats(db, ville, tracking):
 
 # ── Résolution des marchés en attente ─────────────────────────────────────────
 
-def find_winner_in_event(condition_id):
-    """
-    Cherche dans l'événement quel option de température a gagné.
-    Stratégie : lit toutes les options via /events et retourne le condition_id
-    de celle qui a le YES price le plus élevé (>55% pour éviter le bug CLOB 51%).
-    Retourne None si les prix sont encore ambigus.
-    """
-    try:
-        r = requests.get(f"{GAMMA_API}/markets",
-                         params={"conditionId": condition_id},
-                         timeout=TIMEOUT)
-        r.raise_for_status()
-        data = r.json()
-        if not (isinstance(data, list) and data):
-            return None
-        m = data[0]
-        event_slug = m.get("groupSlug") or m.get("slug", "")
-        if not event_slug:
-            return None
+MONTHS_EN = ["january","february","march","april","may","june",
+             "july","august","september","october","november","december"]
 
-        re2 = requests.get(f"{GAMMA_API}/events",
-                           params={"slug": event_slug},
-                           timeout=TIMEOUT)
-        if re2.status_code != 200:
+def build_event_slug(slug_prefix, date_marche):
+    """Construit le slug événement depuis le préfixe ville + date_marche (dd/mm/yyyy)."""
+    try:
+        d, m, y = date_marche.split("/")
+        month_name = MONTHS_EN[int(m) - 1]
+        day = str(int(d))  # supprime le zéro initial
+        return f"{slug_prefix}-on-{month_name}-{day}-{y}"
+    except Exception:
+        return None
+
+
+def find_winner_in_event(event_slug):
+    """
+    Cherche le condition_id gagnant dans un événement Polymarket via /events.
+    Retourne le condition_id avec YES > 0.55, ou None si pas encore résolu.
+    N'utilise PAS le CLOB (bug: groupSlug retourne des slugs aléatoires).
+    """
+    if not event_slug:
+        return None
+    try:
+        r = requests.get(f"{GAMMA_API}/events",
+                         params={"slug": event_slug},
+                         timeout=TIMEOUT)
+        if r.status_code != 200:
             return None
-        events = re2.json()
+        events = r.json()
         if not (isinstance(events, list) and events):
             return None
 
@@ -513,36 +516,28 @@ def find_winner_in_event(condition_id):
 
 def check_resolved(db, ville, tracking):
     """
-    Nouvelle stratégie de résolution :
-    - Marché ouvert  → mise à jour yes_price_actuel (last known price when open)
-    - Marché fermé   → cherche le vrai gagnant parmi toutes les options de l'événement
-                       via /events (évite le bug CLOB bloqué à 51%)
-                       Notre option = gagnante → GAGNANT, sinon → PERDANT
+    Résolution via /events uniquement — ignore le bug CLOB (closed=False sur marchés résolus).
+    1. Cherche le gagnant via /events (prix 0 ou 1 = marché résolu)
+    2. Si trouvé → compare condition_id → GAGNANT ou PERDANT
+    3. Si pas encore résolu (prix ~51%) → mise à jour du prix CLOB
     """
     pending = [t for t in tracking if t["resultat"] is None]
     if not pending:
         return
     for t in pending:
-        m = fetch_market_by_id(t["condition_id"])
-        if m is None:
-            log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip", ville)
-            continue
-
-        if not (m["closed"] or m["resolved"]):
-            # Toujours ouvert — noter le dernier prix connu
-            update_price(db, ville, t["condition_id"], m["yes_price"])
-            continue
-
-        # Marché fermé — trouver le vrai gagnant parmi toutes les options
-        winner_cid = find_winner_in_event(t["condition_id"])
+        # Construire le slug depuis le préfixe ville + date_marche (CLOB retourne des slugs faux)
+        event_slug = build_event_slug(ville["slug_prefix"], t.get("date_marche", ""))
+        winner_cid = find_winner_in_event(event_slug)
 
         if winner_cid is None:
-            # Prix encore ambigus (CLOB bloqué) — réessai au prochain cycle
-            log(f"  ⏳ {t['condition_id'][:14]}… fermé, gagnant pas encore déterminé", ville)
+            # Pas encore résolu — mettre à jour le prix depuis le CLOB
+            m = fetch_market_by_id(t["condition_id"])
+            if m is not None:
+                update_price(db, ville, t["condition_id"], m["yes_price"])
             continue
 
         resultat = "GAGNANT" if winner_cid.lower() == t["condition_id"].lower() else "PERDANT"
-        log(f"  {'✅' if resultat == 'GAGNANT' else '❌'} {resultat} — notre option vs gagnante: {winner_cid[:14]}…", ville)
+        log(f"  {'✅' if resultat == 'GAGNANT' else '❌'} {resultat} — gagnant: {winner_cid[:14]}…", ville)
         resolve_signal(db, ville, t["condition_id"], resultat)
 
 # ── Rapport cycle ─────────────────────────────────────────────────────────────
