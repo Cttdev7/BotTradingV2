@@ -23,7 +23,7 @@ import brain
 import trader
 import config
 
-INTERVAL_MINUTES = int(os.getenv("BOT_INTERVAL", "15"))
+INTERVAL_MINUTES = int(os.getenv("BOT_INTERVAL", "5"))
 IMPROVE_HOURS    = int(os.getenv("BOT_IMPROVE_HOURS", "6"))
 IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
 
