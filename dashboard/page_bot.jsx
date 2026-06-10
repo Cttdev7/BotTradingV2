@@ -552,12 +552,13 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 {expired.map((s, i) => {
                   const temp = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
                   const init = s.yes_price_au_signal || s.yes_price_actuel || 0;
+                  const initLabel = init > 0 ? `${init}%` : '≥75%';
                   return (
                     <div key={i} style={{ padding:'12px 20px', borderBottom:i<expired.length-1?'1px solid var(--separator)':'none',
                       display:'flex', alignItems:'center', gap:12, opacity:0.6 }}>
                       <span style={{ fontSize:16 }}>🔒</span>
                       <div style={{ flex:1, fontSize:13, fontWeight:600, color:'var(--text-2)' }}>{temp}</div>
-                      <span style={{ fontSize:11, color:'var(--text-3)' }}>signal initial : {init}%</span>
+                      <span style={{ fontSize:11, color:'var(--text-3)' }}>signal initial : {initLabel}</span>
                       <span style={{ fontSize:11, fontWeight:600, color:'var(--text-3)',
                         background:'var(--fill)', padding:'3px 8px', borderRadius:999,
                         border:'1px solid var(--separator)' }}>marché du {s.date_marche}</span>
@@ -589,10 +590,11 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                   </span>
                 </div>
                 {pending.map((s, i) => {
-                  const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
-                  const init   = s.yes_price_au_signal || s.yes_price_actuel || 0;
-                  const actuel = s.yes_price_actuel ?? init;
-                  const frozen = actuel > 47 && actuel < 54;
+                  const temp    = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
+                  const initRaw = s.yes_price_au_signal || s.yes_price_actuel || 0;
+                  const init    = initRaw;
+                  const actuel  = s.yes_price_actuel ?? init;
+                  const frozen  = actuel > 47 && actuel < 54;
                   const delta  = actuel - init;
                   const colAct = frozen ? 'var(--text-3)' : actuel>=80?'var(--green)':actuel>=60?'var(--orange)':'var(--red)';
                   const heure  = (s.detecte_le||'').split(' ')?.[1] || '';
@@ -687,8 +689,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                       {/* Lignes signaux */}
                       {sigs.map((s, si) => {
                         const temp   = s.question?.replace(/Will the highest temperature in .+ be /,'')?.replace(/\?.*$/,'')?.trim() || '?';
-                        const init   = s.yes_price_au_signal || s.yes_price_actuel || 0;
-                        const actuel = s.yes_price_actuel ?? init;
+                        const initRaw = s.yes_price_au_signal || (!s.resultat ? s.yes_price_actuel : null);
+                        const initLabel = initRaw > 0 ? `${initRaw}%` : '≥75%';
+                        const actuel = s.yes_price_actuel ?? initRaw ?? 0;
                         const gained = s.resultat === 'GAGNANT';
                         const lost   = s.resultat === 'PERDANT';
                         const finalPrice = gained ? 100 : lost ? 0 : actuel;
@@ -707,7 +710,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                             </div>
                             <div style={{ flex:1, fontSize:13.5, fontWeight:600, color:'var(--text)' }}>{temp}</div>
                             <div style={{ fontSize:12, color:'var(--text-3)', flexShrink:0 }}>
-                              {init}% <span style={{ color:'var(--text-3)' }}>→</span>
+                              {initLabel} <span style={{ color:'var(--text-3)' }}>→</span>
                               <span style={{ fontWeight:700, marginLeft:4, color: (finalPrice>47&&finalPrice<54&&!s.resultat) ? 'var(--text-3)' : finalColor }}>
                                 {(finalPrice>47&&finalPrice<54&&!s.resultat) ? '🔍' : `${finalPrice}%`}
                               </span>
