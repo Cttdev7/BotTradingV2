@@ -431,7 +431,6 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
           const d = t.date_marche || '';
           if (d) { if (!byDate[d]) byDate[d] = []; byDate[d].push(t); }
         });
-        const parseDate = s => { const [d,m,y] = (s||'').split('/'); return new Date(y,m-1,d); };
         const dates5 = Object.keys(byDate).sort((a,b) => parseDate(b)-parseDate(a)).slice(0,5);
 
         return (
