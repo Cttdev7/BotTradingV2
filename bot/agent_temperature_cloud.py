@@ -462,7 +462,63 @@ def update_stats(db, ville, tracking):
 
 # ── Résolution des marchés en attente ─────────────────────────────────────────
 
+def find_winner_in_event(condition_id):
+    """
+    Cherche dans l'événement quel option de température a gagné.
+    Stratégie : lit toutes les options via /events et retourne le condition_id
+    de celle qui a le YES price le plus élevé (>55% pour éviter le bug CLOB 51%).
+    Retourne None si les prix sont encore ambigus.
+    """
+    try:
+        r = requests.get(f"{GAMMA_API}/markets",
+                         params={"conditionId": condition_id},
+                         timeout=TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
+        if not (isinstance(data, list) and data):
+            return None
+        m = data[0]
+        event_slug = m.get("groupSlug") or m.get("slug", "")
+        if not event_slug:
+            return None
+
+        re2 = requests.get(f"{GAMMA_API}/events",
+                           params={"slug": event_slug},
+                           timeout=TIMEOUT)
+        if re2.status_code != 200:
+            return None
+        events = re2.json()
+        if not (isinstance(events, list) and events):
+            return None
+
+        best_cid   = None
+        best_price = 0.0
+        for em in events[0].get("markets", []):
+            raw_p    = em.get("outcomePrices", [])
+            raw_o    = em.get("outcomes", [])
+            prices   = json.loads(raw_p) if isinstance(raw_p, str) else raw_p
+            outcomes = json.loads(raw_o) if isinstance(raw_o, str) else raw_o
+            yp = next((float(p) for o, p in zip(outcomes, prices) if o.lower() == "yes"), None)
+            if yp is not None and yp > best_price:
+                best_price = yp
+                best_cid   = em.get("conditionId", "")
+
+        # Doit être clairement au-dessus du bruit CLOB bloqué à 51%
+        if best_cid and best_price > 0.55:
+            return best_cid
+        return None
+    except Exception:
+        return None
+
+
 def check_resolved(db, ville, tracking):
+    """
+    Nouvelle stratégie de résolution :
+    - Marché ouvert  → mise à jour yes_price_actuel (last known price when open)
+    - Marché fermé   → cherche le vrai gagnant parmi toutes les options de l'événement
+                       via /events (évite le bug CLOB bloqué à 51%)
+                       Notre option = gagnante → GAGNANT, sinon → PERDANT
+    """
     pending = [t for t in tracking if t["resultat"] is None]
     if not pending:
         return
@@ -471,34 +527,23 @@ def check_resolved(db, ville, tracking):
         if m is None:
             log(f"  ⚠️  API indisponible pour {t['condition_id'][:16]}, skip", ville)
             continue
-        final = m["yes_price"]
-        if m["closed"] or m["resolved"] or final >= 0.98 or final <= 0.02:
-            if final >= 0.95:
-                resultat = "GAGNANT"
-            elif final <= 0.05:
-                resultat = "PERDANT"
-            else:
-                # Zone ambiguë (ex: 51%) — utiliser Open-Meteo pour trancher
-                resultat = None
-                try:
-                    d = datetime.datetime.strptime(t["date_marche"], "%d/%m/%Y")
-                    date_dt = d.replace(tzinfo=ville["tz"])
-                    temp_range = temp_range_from_question_celsius(t["question"])
-                    temp_om = fetch_temp(ville, date_dt)
-                    if temp_range and temp_om is not None:
-                        low_c, high_c = temp_range
-                        resultat = "GAGNANT" if low_c <= temp_om <= high_c else "PERDANT"
-                        log(f"  📡 Open-Meteo {temp_om}°C — plage [{low_c:.1f}-{high_c:.1f}°C] → {resultat}", ville)
-                except Exception as e:
-                    log(f"  ⚠️ Open-Meteo ambiguïté : {e}", ville)
-                # Fallback sur le prix si Open-Meteo indisponible
-                if resultat is None:
-                    resultat = "GAGNANT" if final >= 0.5 else "PERDANT"
-                    log(f"  ⚠️  Fallback prix {round(final*100)}% → {resultat}", ville)
 
-            resolve_signal(db, ville, t["condition_id"], resultat)
-        else:
+        if not (m["closed"] or m["resolved"]):
+            # Toujours ouvert — noter le dernier prix connu
             update_price(db, ville, t["condition_id"], m["yes_price"])
+            continue
+
+        # Marché fermé — trouver le vrai gagnant parmi toutes les options
+        winner_cid = find_winner_in_event(t["condition_id"])
+
+        if winner_cid is None:
+            # Prix encore ambigus (CLOB bloqué) — réessai au prochain cycle
+            log(f"  ⏳ {t['condition_id'][:14]}… fermé, gagnant pas encore déterminé", ville)
+            continue
+
+        resultat = "GAGNANT" if winner_cid.lower() == t["condition_id"].lower() else "PERDANT"
+        log(f"  {'✅' if resultat == 'GAGNANT' else '❌'} {resultat} — notre option vs gagnante: {winner_cid[:14]}…", ville)
+        resolve_signal(db, ville, t["condition_id"], resultat)
 
 # ── Rapport cycle ─────────────────────────────────────────────────────────────
 
