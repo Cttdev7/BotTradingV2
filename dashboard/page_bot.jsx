@@ -59,10 +59,14 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       : bot.id === 'polycrypto' ? 'crypto_tracking' : bot.id === 'polycrypto4h' ? 'crypto_4h_tracking' : 'meteo_tracking';
     const tableResumes  = bot.type === 'temperature' ? `${bot.id}_resumes`
       : bot.id === 'polycrypto' ? 'crypto_resumes'  : bot.id === 'polycrypto4h' ? 'crypto_4h_resumes'  : 'meteo_resumes';
-    const statsTable    = bot.type === 'temperature' ? `${bot.id}_stats?id=eq.${bot.id}`
-      : agentPrefix === 'meteo' ? 'meteo_stats?id=eq.meteo'
-      : agentPrefix === 'crypto_4h' ? 'crypto_4h_stats?id=eq.crypto_4h'
-      : 'crypto_stats?id=eq.crypto';
+    const statsName = bot.type === 'temperature' ? `${bot.id}_stats`
+      : agentPrefix === 'meteo' ? 'meteo_stats'
+      : agentPrefix === 'crypto_4h' ? 'crypto_4h_stats'
+      : 'crypto_stats';
+    const statsId = bot.type === 'temperature' ? bot.id
+      : agentPrefix === 'meteo' ? 'meteo'
+      : agentPrefix === 'crypto_4h' ? 'crypto_4h'
+      : 'crypto';
 
     sbFetch(tableRapports, 48).then(d => {
       if (Array.isArray(d) && d.length) { setMeteoRapports(d); setMeteoRapport(d[0]); setMeteoLastSync(new Date()); }
@@ -73,7 +77,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     sbFetch(tableResumes, 90).then(d => {
       if (Array.isArray(d)) setMeteoResumes(d);
     }).catch(() => {});
-    sbFetch(statsTable, 1).then(d => {
+    fetch(`${SB_URL}/rest/v1/${statsName}?id=eq.${statsId}&limit=1`, {
+      headers: { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}` }
+    }).then(r => r.json()).then(d => {
       if (Array.isArray(d) && d[0]) setMeteoStats(d[0]);
     }).catch(() => {});
   }, [agentPrefix, bot.type, bot.id, isLocal]);
