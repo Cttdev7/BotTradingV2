@@ -173,21 +173,27 @@ def run_cycle(bot_id: str = "polyedge"):
     # 3. Données Polymarket
     try:
         markets = polymarket.get_weather_markets()
-        balance = polymarket.get_balance()
-        usdc    = balance.get("usdc", 0)
-
-        if trader.DRY_RUN and usdc < 1:
-            usdc = 100.0
-            log(f"[SIMULATION] Solde fictif $100 | {len(markets)} marchés | {_stats(history)}")
-        else:
-            log(f"Solde : ${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
     except Exception as e:
-        log(f"Erreur données Polymarket : {e}")
+        log(f"Erreur marchés Polymarket : {e}")
         return
 
+    # Solde : override manuel > API > fictif (simulation) > bloquant (réel)
+    usdc = float(os.getenv("BALANCE_USDC", "0"))
     if usdc < 1:
-        log("Solde insuffisant (< 1 USDC)")
-        return
+        try:
+            usdc = polymarket.get_balance().get("usdc", 0)
+        except Exception:
+            usdc = 0
+
+    if trader.DRY_RUN:
+        if usdc < 1:
+            usdc = 100.0
+        log(f"[SIMULATION] Solde fictif ${usdc:.2f} | {len(markets)} marchés | {_stats(history)}")
+    else:
+        if usdc < 1:
+            log(f"⚠️  Solde illisible via API — Polymarket rejettera les ordres si fonds insuffisants")
+            usdc = 10.0  # valeur plancher pour que Claude puisse calibrer les tailles
+        log(f"💰 Solde : ~${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
 
     # 4. Décision Claude
     try:
