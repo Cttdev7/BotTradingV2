@@ -375,36 +375,53 @@ Sois précis sur : marchés à cibler, probabilités d'entrée, taille des posit
 
 def check_market_outcomes(trades: list) -> list:
     """
-    Vérifie si les marchés sur lesquels on a parié ont résolu,
-    et met à jour le P&L de chaque trade.
-    Retourne la liste avec P&L mis à jour.
+    Vérifie si les marchés ont résolu via le champ 'closed' de l'API Polymarket.
+    Utilise /events pour le vrai prix final (évite le bug CLOB bloqué à 0.51).
+    Fonctionne en simulation ET en mode réel.
     """
     import polymarket as _pm
+    import requests as _req
+
+    GAMMA = "https://gamma-api.polymarket.com"
+
+    def _get_final_price(cid: str, outcome: str) -> float | None:
+        """Récupère le prix final depuis /events (plus fiable que le CLOB)."""
+        try:
+            r = _req.get(f"{GAMMA}/markets/{cid}", timeout=5)
+            if r.status_code != 200:
+                return None
+            m = r.json()
+            if not m.get("closed"):
+                return None
+            import json as _j
+            prices   = m.get("outcomePrices", [])
+            outcomes = m.get("outcomes", [])
+            prices   = _j.loads(prices)   if isinstance(prices, str)   else prices
+            outcomes = _j.loads(outcomes) if isinstance(outcomes, str) else outcomes
+            for o, p in zip(outcomes, prices):
+                if o.lower() == outcome.lower():
+                    return float(p)
+        except Exception:
+            pass
+        return None
+
     updated = []
     for t in trades:
         if t.get("pnl") is not None:
             updated.append(t)
             continue
-        cid = t.get("condition_id")
+        cid     = t.get("condition_id")
+        outcome = t.get("sym", "Yes")
         if not cid:
             updated.append(t)
             continue
         try:
-            market = _pm.get_market(cid)
-            tokens = market.get("tokens", [])
-            outcome = t.get("sym", "")
-            for tok in tokens:
-                if tok.get("outcome", "").lower() == outcome.lower():
-                    price = float(tok.get("price", -1))
-                    if price <= 0.02 or price >= 0.98:  # marché résolu
-                        amount = float(t.get("amount_usdc", 0))
-                        entry  = float(t.get("price", 0.5))
-                        if entry > 0:
-                            shares = amount / entry  # nombre de shares achetés
-                            if t.get("side") == "buy":
-                                t["pnl"] = round(shares * (price - entry), 2)
-                            else:
-                                t["pnl"] = round(shares * (entry - price), 2)
+            final_price = _get_final_price(cid, outcome)
+            if final_price is not None:
+                amount = float(t.get("amount_usdc", 0))
+                entry  = float(t.get("price", 0.5)) or 0.5
+                shares = amount / entry
+                t["pnl"] = round(shares * (final_price - entry), 2)
         except Exception:
             pass
         updated.append(t)
