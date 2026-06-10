@@ -50,6 +50,38 @@ def load_strategy(bot_id: str = "polyedge") -> dict:
             return r.json()[0]
     except Exception as e:
         log(f"⚠️  load_strategy : {e}")
+    # Fallback 1 : fichier local strategy.json
+    local_path = os.path.join(os.path.dirname(__file__), "strategy.json")
+    try:
+        with open(local_path) as f:
+            data = __import__("json").load(f)
+            if bot_id in data:
+                log(f"📂 Stratégie chargée depuis strategy.json local")
+                return data[bot_id]
+    except Exception:
+        pass
+    # Fallback 2 : stratégie embarquée (Railway sans fichier local ni Supabase)
+    if bot_id == "polyedge":
+        log("📦 Stratégie par défaut embarquée (Railway fallback)")
+        return {
+            "bot_id":  "polyedge",
+            "enabled": True,
+            "version": 1,
+            "prompt": (
+                "STRATÉGIE : acheter YES sur les marchés température où les bots d'analyse "
+                "ont détecté un signal fort.\n\n"
+                "Règle d'entrée :\n"
+                "- Un signal actif d'un bot d'analyse (YES ≥ 75%) EST une opportunité à trader\n"
+                "- Trouver dans les marchés disponibles le marché qui correspond à ce signal\n"
+                "- Le prix YES actuel doit être entre 0.75 et 0.97\n"
+                "- Volume minimum du marché : 500 USDC\n"
+                "- Favoriser les villes avec un taux de victoire historique > 60%\n\n"
+                "Taille des positions :\n"
+                "- 10 USDC par trade maximum tant que le bot est en phase de test\n"
+                "- Jamais plus de 20% du solde disponible sur un seul marché\n\n"
+                "Ne rien trader si aucun signal actif des bots ne correspond à un marché disponible."
+            ),
+        }
     return {}
 
 def save_strategy(bot_id: str, strategy: dict):
