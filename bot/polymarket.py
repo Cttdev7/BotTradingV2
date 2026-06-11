@@ -84,9 +84,10 @@ def get_order_book(token_id: str) -> dict:
 
 # ── Wallet Polygon (RPC) ──────────────────────────────────────────────────────
 
-POLYGON_RPC   = "https://polygon-bor-rpc.publicnode.com"
-USDC_CONTRACT = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"   # USDC natif
-USDCE_CONTRACT= "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"   # USDC.e bridgé
+POLYGON_RPC    = "https://polygon-bor-rpc.publicnode.com"
+USDC_CONTRACT  = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"   # USDC natif
+USDCE_CONTRACT = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"   # USDC.e bridgé
+PUSD_CONTRACT  = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb"   # pUSD Polymarket (6 décimales)
 
 def _rpc_call(method: str, params: list, id: int = 1) -> str:
     r = requests.post(POLYGON_RPC,
@@ -96,21 +97,23 @@ def _rpc_call(method: str, params: list, id: int = 1) -> str:
     return r.json().get("result", "0x0")
 
 def get_polygon_balance() -> dict:
-    """Solde POL natif + USDC sur le wallet Polygon."""
+    """Solde POL natif + USDC + pUSD sur le wallet Polygon."""
     wallet = config.WALLET_ADDRESS
     data   = "0x70a08231" + wallet[2:].lower().zfill(64)
     try:
         pol_hex   = _rpc_call("eth_getBalance", [wallet, "latest"], 1)
         usdc_hex  = _rpc_call("eth_call", [{"to": USDC_CONTRACT,  "data": data}, "latest"], 2)
         usdce_hex = _rpc_call("eth_call", [{"to": USDCE_CONTRACT, "data": data}, "latest"], 3)
+        pusd_hex  = _rpc_call("eth_call", [{"to": PUSD_CONTRACT,  "data": data}, "latest"], 4)
         return {
-            "pol":   round(int(pol_hex,   16) / 1e18, 4),
-            "usdc":  round(int(usdc_hex,  16) / 1e6,  2),
-            "usdce": round(int(usdce_hex, 16) / 1e6,  2),
+            "pol":    round(int(pol_hex,   16) / 1e18, 4),
+            "usdc":   round(int(usdc_hex,  16) / 1e6,  2),
+            "usdce":  round(int(usdce_hex, 16) / 1e6,  2),
+            "pusd":   round(int(pusd_hex,  16) / 1e6,  2),
             "wallet": wallet,
         }
     except Exception as e:
-        return {"pol": 0, "usdc": 0, "usdce": 0, "wallet": wallet, "error": str(e)}
+        return {"pol": 0, "usdc": 0, "usdce": 0, "pusd": 0, "wallet": wallet, "error": str(e)}
 
 # ── Compte — data-api (lecture par adresse) ───────────────────────────────────
 
@@ -134,21 +137,25 @@ def get_positions() -> list:
         return []
 
 def get_balance() -> dict:
-    """Valeur totale du portefeuille — retourne 0 si wallet vide ou timeout."""
+    """Solde disponible — data-api en priorité, fallback pUSD on-chain."""
     try:
         r = requests.get(
             f"{DATA_API}/value",
             params={"user": _addr()},
             timeout=TIMEOUT,
         )
-        if r.status_code in (408, 504):
-            return {"usdc": 0.0}
-        r.raise_for_status()
-        data = r.json()
-        value = float(data[0]["value"]) if data and isinstance(data, list) and len(data) > 0 else 0.0
-        return {"usdc": value}
-    except requests.exceptions.Timeout:
-        return {"usdc": 0.0}
+        if r.status_code not in (408, 504):
+            r.raise_for_status()
+            data = r.json()
+            value = float(data[0]["value"]) if data and isinstance(data, list) else 0.0
+            if value > 0:
+                return {"usdc": value}
+    except Exception:
+        pass
+    # Fallback : lire le solde pUSD directement on-chain
+    bal = get_polygon_balance()
+    total = bal.get("pusd", 0) + bal.get("usdc", 0) + bal.get("usdce", 0)
+    return {"usdc": round(total, 2)}
 
 import datetime as _dt
 

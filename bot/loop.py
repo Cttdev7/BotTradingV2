@@ -216,6 +216,8 @@ def run_cycle(bot_id: str = "polyedge"):
 
     # 5. Exécution + sauvegarde dans Supabase
     for d in decisions:
+        if d.get("action") != "buy":
+            continue
         try:
             log(f"→ {d['action'].upper()} {d['outcome']} | {d['condition_id'][:12]}… | ${d['amount_usdc']:.2f} | {d['reason']}")
             result = trader.place_market_order(
@@ -312,7 +314,9 @@ if __name__ == "__main__":
             log("Bot arrêté")
             break
         except Exception as e:
+            import traceback
             log(f"Erreur inattendue : {e}")
+            log(traceback.format_exc())
 
         log(f"Prochain cycle dans {INTERVAL_MINUTES} min…")
         time.sleep(INTERVAL_MINUTES * 60)

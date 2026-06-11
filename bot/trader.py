@@ -20,7 +20,7 @@ DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"  # sécurité par défa
 
 # ── Infos marché ──────────────────────────────────────────────────────────────
 
-def get_token_id(condition_id: str, outcome: str) -> str | None:
+def get_token_id(condition_id: str, outcome: str) -> "str | None":
     """Récupère le token_id d'un marché pour un outcome donné."""
     r = requests.get(f"{CLOB}/markets/{condition_id}", timeout=TIMEOUT)
     r.raise_for_status()
@@ -30,7 +30,7 @@ def get_token_id(condition_id: str, outcome: str) -> str | None:
             return token.get("token_id")
     return None
 
-def get_best_price(token_id: str, side: str) -> float | None:
+def get_best_price(token_id: str, side: str) -> "float | None":
     """Récupère le meilleur prix disponible (bid pour sell, ask pour buy)."""
     r = requests.get(f"{CLOB}/book", params={"token_id": token_id}, timeout=TIMEOUT)
     r.raise_for_status()

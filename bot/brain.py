@@ -7,6 +7,7 @@ Retourne : liste de décisions (acheter/vendre/ignorer)
 La clé ANTHROPIC_API_KEY doit être dans .env.
 """
 
+from __future__ import annotations
 import json
 import os
 import requests
@@ -270,7 +271,7 @@ Croise les signaux actifs des bots d'analyse avec les marchés disponibles et re
         decisions = json.loads(raw[start:end])
     except json.JSONDecodeError:
         return []
-    return [d for d in decisions if d.get("action") in ("buy", "sell")]
+    return [d for d in decisions if d.get("action") == "buy"]
 
 
 def reflect(strategy: dict, recent_trades: list) -> str:
@@ -384,7 +385,7 @@ def check_market_outcomes(trades: list) -> list:
 
     GAMMA = "https://gamma-api.polymarket.com"
 
-    def _get_final_price(cid: str, outcome: str) -> float | None:
+    def _get_final_price(cid: str, outcome: str):
         """Récupère le prix final depuis /events (plus fiable que le CLOB)."""
         try:
             r = _req.get(f"{GAMMA}/markets/{cid}", timeout=5)
