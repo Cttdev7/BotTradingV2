@@ -69,26 +69,37 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 ## État actuel
 - ✅ Dashboard iOS complet — Vercel, auto-deploy GitHub
 - ✅ **25 villes actives** : Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳, Los Angeles 🇺🇸, Guangzhou 🇨🇳, Mexico City 🇲🇽, Amsterdam 🇳🇱, Paris 🇫🇷, Toronto 🇨🇦, Chicago 🇺🇸, Denver 🇺🇸, Houston 🇺🇸, Taipei 🇹🇼, Beijing 🇨🇳, San Francisco 🇺🇸, Dallas 🇺🇸
-- ✅ **ProfitWeather** (id: `polyedge`) — bot de trading Railway (blissful-integrity), DRY_RUN=true
+- ✅ **ProfitWeather** (id: `polyedge`) — bot de trading local, **DRY_RUN=false (TRADING RÉEL)**
 - ✅ **Mistral Stratège** — analyse cross-ville toutes les 15 min (Railway)
-- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_SECRET, API_PASSPHRASE), SUPABASE
-- ✅ `can_trade: True` — clés Polymarket valides
-- ✅ `DRY_RUN=true` — simulation, aucun ordre réel
+- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE
+- ✅ `can_trade: True` — clés Polymarket valides (API_KEY régénéré avec nonce=1 en juin 2026)
+- ✅ **DRY_RUN=false** — trading réel activé (premier ordre Toronto 31°C le 2026-06-11)
 - ✅ Résolution marchés : lit `/events` pour vrai prix (fix CLOB bloqué à 51%), fallback Open-Meteo
-- ⏳ Wallet PUSD à $0 via data-api (à vérifier / déposer pour trading réel)
+- ✅ **Python 3.11.9** via pyenv installé (`~/.pyenv/versions/3.11.9/`) — requis pour trader.py
+- ✅ **trader.py** utilise le nouveau SDK `polymarket-client` (SecureClient) — CTF Exchange V2
 
 ## ProfitWeather — Bot de trading (local)
 - **Script** : `bot/loop.py` (lancé via `scripts/Lancer la stratégie.command`)
+- **Python** : `~/.pyenv/versions/3.11.9/bin/python3` — OBLIGATOIRE (trader.py exige Python 3.11+)
 - **Cerveau** : Claude Haiku (`brain.py`) — lit les signaux Supabase + décide
+- **Exécution ordres** : `trader.py` → `polymarket-client` SecureClient (CTF Exchange V2)
 - **Stratégie** : acheter YES sur marchés météo où les bots d'analyse ont détecté signal ≥75%
-- **Marchés** : `polymarket.get_weather_markets()` — construit les slugs J+0/J+1 par ville, interroge l'API events Polymarket (132 marchés pour 12 villes)
+- **Marchés** : `polymarket.get_weather_markets()` — construit les slugs J+0/J+1 par ville, interroge l'API events Polymarket
 - **Contexte Claude** : `_load_analysis_context()` lit depuis Supabase :
   - `strategie_analyses` — dernière analyse Mistral cross-ville
   - `{ville}_stats` — taux de réussite par ville
   - `{ville}_tracking` WHERE resultat IS NULL — signaux actifs
-- **Cycle** : toutes les 15 min, auto-amélioration de stratégie toutes les 6h
+- **Cycle** : toutes les 5 min, auto-amélioration de stratégie toutes les 6h
 - **Persistance** : `strategy.json` + `history.json` (fichiers locaux, ignorés par git)
-- **Pour passer en réel** : `DRY_RUN=false` dans `bot/.env` (clés déjà en place)
+- **DRY_RUN=false** — trading réel actif depuis le 2026-06-11
+
+## Architecture Polymarket SDK (important — a changé en 2026)
+- **Ancien SDK** : `py-clob-client` (archivé mai 2026) — ne fonctionne plus (CTF Exchange V2 incompatible)
+- **Nouveau SDK** : `polymarket-client` (SecureClient) — exige Python 3.10+
+- **trader.py** utilise `SecureClient.create(private_key, wallet, credentials)` pour placer les ordres
+- **wallet** = adresse proxy Safe Polymarket : `0xb53bbf2D1D5e0d2fEec24c31F2BF03C7B1E5168d` (WALLET_ADDRESS dans .env)
+- **credentials** = ApiKeyCreds(apiKey, secret, passphrase) — API_KEY régénéré avec nonce=1
+- **derive_api_key.py** : script pour régénérer les credentials via EIP-712 L1 auth si expirés
 
 ## Bot Température Multi-Villes (actif sur Railway 24/7)
 - **Script** : `bot/agent_temperature_cloud.py` (lancé via `Procfile`)
@@ -110,10 +121,15 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 4. Ajouter ville dans `VILLES` de `dashboard/page_stratege.jsx`
 5. Créer 4 tables Supabase avec le bon schéma (voir tables ci-dessus)
 
-## Pour activer le trading réel
-1. Vérifier que le wallet a du PUSD sur Polymarket
-2. `DRY_RUN=false` dans `bot/.env` (toutes les autres clés sont déjà en place)
-3. Double-cliquer sur `scripts/Lancer la stratégie.command`
+## Trading réel — ACTIF ✅
+- `DRY_RUN=false` dans `bot/.env`
+- Double-cliquer sur `scripts/Lancer la stratégie.command` (utilise Python 3.11.9)
+- Premier ordre réel : Toronto 31°C YES — 10 USDC → 10.64 tokens, tx `0xdfb26ab1...` (2026-06-11)
+
+## Si les credentials API Polymarket expirent
+Lancer : `~/.pyenv/versions/3.11.9/bin/python3 bot/derive_api_key.py`
+→ Affiche les nouvelles valeurs API_KEY / API_SECRET / API_PASSPHRASE à coller dans `.env`
+(utilise EIP-712 L1 auth + nonces 0→4 pour trouver un slot libre)
 
 ## Préférences utilisateur
 - L'utilisateur ne code pas — expliquer simplement

@@ -1,28 +1,45 @@
 """
-trader.py — Exécution des ordres sur Polymarket
-
-Place les ordres de marché (buy/sell) via le CLOB API.
-Nécessite PRIVATE_KEY + API_SECRET + API_PASSPHRASE dans .env.
-
+trader.py — Exécution des ordres sur Polymarket via le nouveau polymarket-client SDK.
 En mode simulation (DRY_RUN=true), les ordres sont loggés sans être envoyés.
 """
 
 from __future__ import annotations
-import json
-import requests
+import sys
 import os
 import config
-from auth import create_auth_headers
 
-CLOB    = "https://clob.polymarket.com"
+# Python 3.11 requis pour polymarket-client
+_PYTHON311 = os.path.expanduser("~/.pyenv/versions/3.11.9/lib/python3.11/site-packages")
+if os.path.exists(_PYTHON311) and _PYTHON311 not in sys.path:
+    sys.path.insert(0, _PYTHON311)
+
 TIMEOUT = 15
-DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"  # sécurité par défaut
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        from polymarket.clients.secure import SecureClient
+        from polymarket.models.clob.api_key import ApiKeyCreds
+        creds = ApiKeyCreds(
+            apiKey=config.API_KEY,
+            secret=config.API_SECRET,
+            passphrase=config.API_PASSPHRASE,
+        )
+        _client = SecureClient.create(
+            private_key=config.PRIVATE_KEY,
+            wallet=config.WALLET_ADDRESS,
+            credentials=creds,
+        )
+    return _client
 
 # ── Infos marché ──────────────────────────────────────────────────────────────
 
 def get_token_id(condition_id: str, outcome: str) -> "str | None":
-    """Récupère le token_id d'un marché pour un outcome donné."""
-    r = requests.get(f"{CLOB}/markets/{condition_id}", timeout=TIMEOUT)
+    import requests
+    r = requests.get(f"https://clob.polymarket.com/markets/{condition_id}", timeout=TIMEOUT)
     r.raise_for_status()
     market = r.json()
     for token in market.get("tokens", []):
@@ -30,31 +47,14 @@ def get_token_id(condition_id: str, outcome: str) -> "str | None":
             return token.get("token_id")
     return None
 
-def get_best_price(token_id: str, side: str) -> "float | None":
-    """Récupère le meilleur prix disponible (bid pour sell, ask pour buy)."""
-    r = requests.get(f"{CLOB}/book", params={"token_id": token_id}, timeout=TIMEOUT)
-    r.raise_for_status()
-    book = r.json()
-    if side == "buy":
-        asks = book.get("asks", [])
-        if asks:
-            return float(sorted(asks, key=lambda x: float(x["price"]))[0]["price"])
-    else:
-        bids = book.get("bids", [])
-        if bids:
-            return float(sorted(bids, key=lambda x: float(x["price"]), reverse=True)[0]["price"])
-    return None
-
 # ── Placement d'ordres ────────────────────────────────────────────────────────
 
 def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: float) -> dict:
     """
-    Place un ordre de marché.
+    Place un ordre de marché via le nouveau polymarket-client SDK.
     side    : "buy" ou "sell"
     outcome : "Yes" ou "No"
     amount_usdc : montant en USDC à engager
-
-    Retourne un dict avec le résultat ou l'erreur.
     """
     if DRY_RUN:
         result = {
@@ -71,52 +71,30 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
     if not config.can_trade():
         raise ValueError("Clés incomplètes — PRIVATE_KEY, API_SECRET et API_PASSPHRASE requis pour trader")
 
-    # Récupère le token_id
     token_id = get_token_id(condition_id, outcome)
     if not token_id:
         raise ValueError(f"Token introuvable : {condition_id} / {outcome}")
 
-    # Récupère le meilleur prix
-    price = get_best_price(token_id, side)
-    if not price:
-        raise ValueError(f"Carnet d'ordres vide pour {token_id}")
-
-    # Calcule la quantité de shares
-    size = round(amount_usdc / price, 2)
-    if size < 1:
-        raise ValueError(f"Montant trop faible : {size} shares (minimum 1). Augmente amount_usdc.")
-
-    order = {
-        "token_id":   token_id,
-        "price":      price,
-        "side":       side.upper(),
-        "size":       size,
-        "type":       "FOK",   # Fill or Kill — s'exécute immédiatement ou annulé
-        "fee_rate_bps": 0,
-    }
-    body = json.dumps(order)
-    path = "/order"
-
-    r = requests.post(
-        f"{CLOB}{path}",
-        headers=create_auth_headers("POST", path, body),
-        data=body,
-        timeout=TIMEOUT,
+    client = _get_client()
+    resp = client.place_market_order(
+        token_id=token_id,
+        side="BUY" if side.lower() == "buy" else "SELL",
+        amount=amount_usdc,
     )
-    r.raise_for_status()
-    return r.json()
+    return {
+        "ok":           resp.ok,
+        "order_id":     resp.order_id,
+        "status":       resp.status,
+        "making_amount": float(resp.making_amount or 0),
+        "taking_amount": float(resp.taking_amount or 0),
+        "price":        float(resp.making_amount or 0) / float(resp.taking_amount or 1),
+    }
 
 
 def cancel_all_orders() -> dict:
-    """Annule tous les ordres ouverts."""
     if DRY_RUN:
         print("[DRY RUN] Annulation de tous les ordres")
         return {"dry_run": True}
-    path = "/orders"
-    r = requests.delete(
-        f"{CLOB}{path}",
-        headers=create_auth_headers("DELETE", path),
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    return r.json()
+    client = _get_client()
+    resp = client.cancel_all()
+    return {"status": str(resp)}

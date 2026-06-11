@@ -14,7 +14,7 @@ def create_auth_headers(method: str, path: str, body: str = "") -> dict:
     """Headers d'authentification L2 pour les endpoints Polymarket sécurisés."""
     if not config.API_SECRET:
         raise ValueError("API_SECRET manquant dans .env — impossible de signer les requêtes")
-    ts = str(int(time.time() * 1000))
+    ts = str(int(time.time()))
     message = ts + method + path + body
     try:
         raw_key = base64.b64decode(config.API_SECRET)

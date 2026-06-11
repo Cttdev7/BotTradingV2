@@ -4,4 +4,4 @@ echo "🧠 Démarrage de la boucle de trading..."
 echo "   Mode simulation (DRY_RUN=true)"
 echo "   Pour arrêter : Ctrl+C"
 echo ""
-python3 bot/loop.py
+~/.pyenv/versions/3.11.9/bin/python3 bot/loop.py

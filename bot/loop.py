@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 loop.py — Boucle principale ProfitWeather (Railway-ready)
 
