@@ -81,13 +81,16 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
         side="BUY" if side.lower() == "buy" else "SELL",
         amount=amount_usdc,
     )
+    making = float(resp.making_amount or 0)
+    taking = float(resp.taking_amount or 0)
+    price  = (making / taking) if taking > 0 else 0.0  # 0 → loop.py utilisera yes_price comme fallback
     return {
-        "ok":           resp.ok,
-        "order_id":     resp.order_id,
-        "status":       resp.status,
-        "making_amount": float(resp.making_amount or 0),
-        "taking_amount": float(resp.taking_amount or 0),
-        "price":        float(resp.making_amount or 0) / float(resp.taking_amount or 1),
+        "ok":            resp.ok,
+        "order_id":      resp.order_id,
+        "status":        resp.status,
+        "making_amount": making,
+        "taking_amount": taking,
+        "price":         price,
     }
 
 

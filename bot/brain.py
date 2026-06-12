@@ -13,6 +13,7 @@ import os
 import requests
 import anthropic
 import config
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _client = None
 
@@ -69,35 +70,21 @@ def _load_analysis_context() -> str:
     except Exception:
         pass
 
-    # 2. Performance par ville (taux de réussite des signaux passés)
-    stats_lines = []
-    for ville in _WEATHER_VILLES:
+    # 2+3. Performance et signaux actifs par ville — requêtes parallèles
+    def _fetch_ville(ville):
+        stat_line   = None
+        ville_sigs  = []
         try:
-            r = requests.get(
-                f"{base}/{ville}_stats",
-                params={"limit": "1"},
-                headers=headers, timeout=3,
-            )
+            r = requests.get(f"{base}/{ville}_stats", params={"limit": "1"}, headers=headers, timeout=3)
             if r.status_code == 200 and r.json():
-                s = r.json()[0]
+                s      = r.json()[0]
                 resolus = int(s.get("resolus") or 0)
                 gagnes  = int(s.get("gagnes") or 0)
                 taux    = s.get("taux_victoire")
                 if resolus > 0:
-                    stats_lines.append(
-                        f"  {ville}: {taux}% victoire ({gagnes}/{resolus} résolus)"
-                    )
+                    stat_line = f"  {ville}: {taux}% victoire ({gagnes}/{resolus} résolus)"
         except Exception:
             pass
-    if stats_lines:
-        sections.append(
-            "=== PERFORMANCE DES BOTS D'ANALYSE PAR VILLE ===\n"
-            + "\n".join(stats_lines)
-        )
-
-    # 3. Signaux actifs non résolus = opportunités identifiées maintenant
-    signal_lines = []
-    for ville in _WEATHER_VILLES:
         try:
             r = requests.get(
                 f"{base}/{ville}_tracking",
@@ -106,17 +93,30 @@ def _load_analysis_context() -> str:
             )
             if r.status_code == 200:
                 for sig in r.json():
-                    price = float(sig.get("yes_price_actuel") or sig.get("yes_price_au_signal") or 0)
+                    price     = float(sig.get("yes_price_actuel") or sig.get("yes_price_au_signal") or 0)
                     price_pct = price if price > 1 else price * 100
-                    if price_pct < 70:  # signal dégradé — ignorer
+                    if price_pct < 75:  # seuil cohérent avec la stratégie
                         continue
-                    signal_lines.append(
+                    ville_sigs.append(
                         f"  [{ville}] {(sig.get('question') or '')[:70]}"
                         f" → YES {price_pct:.0f}%"
                         f" | détecté {(sig.get('detecte_le') or '')[:10]}"
                     )
         except Exception:
             pass
+        return ville, stat_line, ville_sigs
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        results = list(pool.map(_fetch_ville, _WEATHER_VILLES))
+
+    stats_lines  = [sl  for _, sl, _  in results if sl]
+    signal_lines = [sig for _, _,  sv in results for sig in sv]
+
+    if stats_lines:
+        sections.append(
+            "=== PERFORMANCE DES BOTS D'ANALYSE PAR VILLE ===\n"
+            + "\n".join(stats_lines)
+        )
     if signal_lines:
         sections.append(
             "=== SIGNAUX ACTIFS DES BOTS D'ANALYSE (opportunités non résolues) ===\n"
@@ -157,7 +157,7 @@ def _format_markets(markets: list) -> str:
             current_city = city
 
         lines.append(
-            f"  [{m.get('condition_id','?')[:14]}] {m.get('question','?')[:75]}\n"
+            f"  [{m.get('condition_id','?')}] {m.get('question','?')[:75]}\n"
             f"    YES={yes_price:.2f} | NO={no_price:.2f} | Vol=${volume:,.0f}"
         )
         count += 1
@@ -202,7 +202,7 @@ def decide(strategy: dict, markets: list, history: list, balance_usdc: float) ->
         return []
 
     system_prompt = """Tu es ProfitWeather, un bot de trading agressif sur les marchés météo Polymarket.
-Tu trades les marchés "highest temperature in {ville}" sur les 16 villes suivies par les bots d'analyse.
+Tu trades les marchés "highest temperature in {ville}" sur les 25 villes suivies par les bots d'analyse.
 
 MISSION : maximiser le P&L. Trader chaque signal qualifié sans hésitation.
 
@@ -380,7 +380,6 @@ def check_market_outcomes(trades: list) -> list:
     Utilise /events pour le vrai prix final (évite le bug CLOB bloqué à 0.51).
     Fonctionne en simulation ET en mode réel.
     """
-    import polymarket as _pm
     import requests as _req
 
     GAMMA = "https://gamma-api.polymarket.com"

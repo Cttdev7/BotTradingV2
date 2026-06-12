@@ -17,6 +17,7 @@ Toutes les IMPROVE_HOURS heures :
 
 import time
 import os
+import json
 import uuid
 import datetime
 import requests
@@ -30,7 +31,7 @@ IMPROVE_HOURS    = int(os.getenv("BOT_IMPROVE_HOURS", "6"))
 IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
 
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
-SB_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728")
+SB_KEY = os.getenv("SUPABASE_KEY", "")
 
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ def load_strategy(bot_id: str = "polyedge") -> dict:
     local_path = os.path.join(os.path.dirname(__file__), "strategy.json")
     try:
         with open(local_path) as f:
-            data = __import__("json").load(f)
+            data = json.load(f)
             if bot_id in data:
                 log(f"📂 Stratégie chargée depuis strategy.json local")
                 return data[bot_id]
@@ -193,8 +194,8 @@ def run_cycle(bot_id: str = "polyedge"):
         log(f"[SIMULATION] Solde fictif ${usdc:.2f} | {len(markets)} marchés | {_stats(history)}")
     else:
         if usdc < 1:
-            log(f"⚠️  Solde illisible via API — Polymarket rejettera les ordres si fonds insuffisants")
-            usdc = 10.0  # valeur plancher pour que Claude puisse calibrer les tailles
+            log(f"⚠️  Solde illisible (API inaccessible, BALANCE_USDC non défini) — cycle annulé pour éviter des ordres sans fonds")
+            return
         log(f"💰 Solde : ~${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
 
     # 4. Décision Claude
@@ -228,6 +229,9 @@ def run_cycle(bot_id: str = "polyedge"):
                 side=d["action"],
                 amount_usdc=d["amount_usdc"],
             )
+            if not result.get("ok") and not result.get("dry_run"):
+                log(f"  ⚠️  Ordre rejeté par Polymarket (ok=False) — non enregistré")
+                continue
             trade = {
                 "id":           str(uuid.uuid4()),
                 "bot_id":       bot_id,
