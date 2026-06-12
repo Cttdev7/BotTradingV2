@@ -6,7 +6,7 @@ Lance avec : python3 bot/server.py
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import polymarket
+import pm_api as polymarket
 import mistral
 import config
 import json

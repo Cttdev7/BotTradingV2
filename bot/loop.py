@@ -21,7 +21,7 @@ import json
 import uuid
 import datetime
 import requests
-import polymarket
+import pm_api as polymarket
 import brain
 import trader
 import config
