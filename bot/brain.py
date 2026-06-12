@@ -126,12 +126,15 @@ def _load_analysis_context() -> str:
     return "\n\n".join(sections) if sections else "Aucune donnée d'analyse disponible."
 
 
-def _format_markets(markets: list) -> str:
-    """Formate les marchés météo pour Claude — priorise les YES >70%, groupe par ville."""
+def _format_markets(markets: list) -> tuple:
+    """
+    Formate les marchés météo pour Claude.
+    Retourne (texte, index_map) où index_map[N] = condition_id réel.
+    Claude retourne un index numérique — jamais la chaîne hex brute.
+    """
     if not markets:
-        return "Aucun marché météo disponible."
+        return "Aucun marché météo disponible.", {}
 
-    # Trie : YES > 0.70 en premier (les plus probables = ceux qui correspondent aux signaux)
     def sort_key(m):
         tokens = m.get("tokens", [])
         yes = next((t.get("price", 0) for t in tokens if t.get("outcome") == "Yes"), 0)
@@ -139,11 +142,13 @@ def _format_markets(markets: list) -> str:
 
     sorted_markets = sorted(markets, key=sort_key)
 
-    lines = []
+    lines      = []
+    index_map  = {}
     current_city = None
-    count = 0
+    idx        = 0
+
     for m in sorted_markets:
-        if count >= 60:  # max 60 marchés pour ne pas saturer le contexte
+        if idx >= 60:
             break
         tokens    = m.get("tokens", [])
         yes_price = next((t.get("price", 0) for t in tokens if t.get("outcome") == "Yes"), 0)
@@ -151,18 +156,18 @@ def _format_markets(markets: list) -> str:
         volume    = float(m.get("volume") or 0)
         city      = m.get("city", "?")
 
-        # En-tête de ville
         if city != current_city:
             lines.append(f"\n[{city.upper()}]")
             current_city = city
 
+        index_map[idx] = m.get("condition_id", "")
         lines.append(
-            f"  [{m.get('condition_id','?')}] {m.get('question','?')[:75]}\n"
+            f"  [#{idx}] {m.get('question','?')[:75]}\n"
             f"    YES={yes_price:.2f} | NO={no_price:.2f} | Vol=${volume:,.0f}"
         )
-        count += 1
+        idx += 1
 
-    return "\n".join(lines)
+    return "\n".join(lines), index_map
 
 
 def _format_history(history: list) -> str:
@@ -223,16 +228,18 @@ Tu réponds UNIQUEMENT en JSON valide, sans texte autour :
 [
   {
     "action": "buy",
-    "condition_id": "identifiant_du_marche",
+    "market_index": 3,
     "outcome": "Yes",
     "amount_usdc": 25.0,
     "yes_price": 0.85,
     "reason": "ville + prix signal + taux historique"
   }
 ]
+"market_index" est le numéro #N du marché dans la liste ci-dessous. Ne recopie jamais le condition_id hex.
 Si aucun signal qualifié → retourner []"""
 
-    analysis_ctx = _load_analysis_context()
+    analysis_ctx      = _load_analysis_context()
+    markets_text, index_map = _format_markets(markets)
 
     user_message = f"""STRATÉGIE :
 {prompt_text}
@@ -242,8 +249,8 @@ SOLDE DISPONIBLE : ${balance_usdc:.2f} USDC
 DONNÉES DES BOTS D'ANALYSE MÉTÉO (signaux actifs, performance par ville, analyse Mistral) :
 {analysis_ctx}
 
-MARCHÉS MÉTÉO DISPONIBLES :
-{_format_markets(markets)}
+MARCHÉS MÉTÉO DISPONIBLES (utilise le numéro #N dans market_index) :
+{markets_text}
 
 HISTORIQUE DES TRADES (apprends de tes erreurs) :
 {_format_history(history)}
@@ -271,7 +278,18 @@ Croise les signaux actifs des bots d'analyse avec les marchés disponibles et re
         decisions = json.loads(raw[start:end])
     except json.JSONDecodeError:
         return []
-    return [d for d in decisions if d.get("action") == "buy"]
+
+    # Résout market_index → condition_id réel (évite que Claude recopie la chaîne hex)
+    resolved = []
+    for d in decisions:
+        if d.get("action") != "buy":
+            continue
+        idx = d.get("market_index")
+        if idx is None or idx not in index_map:
+            continue
+        d["condition_id"] = index_map[idx]
+        resolved.append(d)
+    return resolved
 
 
 def reflect(strategy: dict, recent_trades: list) -> str:
