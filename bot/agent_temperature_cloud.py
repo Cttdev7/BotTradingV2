@@ -566,7 +566,20 @@ def update_stats(db, ville, tracking):
     resolus = [t for t in tracking if t["resultat"] is not None]
     gagnes  = [t for t in resolus  if t["resultat"] == "GAGNANT"]
     perdus  = [t for t in resolus  if t["resultat"] == "PERDANT"]
-    taux    = round(len(gagnes) / len(resolus) * 100, 1) if resolus else None
+
+    # Charger stats actuelles pour ne jamais faire reculer les compteurs (protection purge tracking)
+    try:
+        cur = db.table(f"{ville['id']}_stats").select("gagnes,perdus,total_signaux").eq("id", ville["id"]).limit(1).execute().data
+        cur = cur[0] if cur else {}
+    except Exception:
+        cur = {}
+
+    final_gagnes  = max(len(gagnes),  cur.get("gagnes")         or 0)
+    final_perdus  = max(len(perdus),  cur.get("perdus")         or 0)
+    final_total   = max(len(tracking),cur.get("total_signaux")  or 0)
+    final_resolus = final_gagnes + final_perdus
+    taux          = round(final_gagnes / final_resolus * 100, 1) if final_resolus else None
+    en_attente    = len([t for t in tracking if t["resultat"] is None])
 
     by_date = {}
     for t in tracking:
@@ -580,11 +593,11 @@ def update_stats(db, ville, tracking):
 
     db.table(f"{ville['id']}_stats").upsert({
         "id":            ville["id"],
-        "total_signaux": len(tracking),
-        "en_attente":    len(tracking) - len(resolus),
-        "resolus":       len(resolus),
-        "gagnes":        len(gagnes),
-        "perdus":        len(perdus),
+        "total_signaux": final_total,
+        "en_attente":    en_attente,
+        "resolus":       final_resolus,
+        "gagnes":        final_gagnes,
+        "perdus":        final_perdus,
         "taux_victoire": taux,
         "par_date":      by_date,
         "updated_at":    datetime.datetime.now(PARIS).isoformat(),
@@ -702,13 +715,34 @@ def save_rapport(db, ville, tracking, slug, temp_actuel=None):
 
 def purge_old_rapports(db, ville):
     try:
-        res = db.table(f"{ville['id']}_rapports").select("id").order("created_at", desc=True).offset(2880).limit(200).execute()
+        res = db.table(f"{ville['id']}_rapports").select("id").order("created_at", desc=True).offset(288).limit(500).execute()
         ids = [r["id"] for r in (res.data or [])]
         if ids:
             db.table(f"{ville['id']}_rapports").delete().in_("id", ids).execute()
-            log(f"  🧹 Purge: {len(ids)} anciens rapports supprimés", ville)
+            log(f"  🧹 Rapports: {len(ids)} entrées supprimées", ville)
     except Exception as e:
-        log(f"  ⚠️  Purge: {e}", ville)
+        log(f"  ⚠️  Purge rapports: {e}", ville)
+
+def purge_old_tracking(db, ville):
+    """Supprime les signaux résolus de plus de 30 jours — les totaux sont déjà dans _stats."""
+    try:
+        cutoff = datetime.datetime.now(PARIS) - datetime.timedelta(days=30)
+        rows = db.table(f"{ville['id']}_tracking").select("id,detecte_le,resultat").execute().data or []
+        old_ids = []
+        for r in rows:
+            if not r.get("resultat"):
+                continue
+            d = (r.get("detecte_le") or "")[:10]
+            try:
+                if datetime.datetime.strptime(d, "%d/%m/%Y") < cutoff:
+                    old_ids.append(r["id"])
+            except Exception:
+                pass
+        if old_ids:
+            db.table(f"{ville['id']}_tracking").delete().in_("id", old_ids).execute()
+            log(f"  🧹 Tracking: {len(old_ids)} signaux anciens purgés", ville)
+    except Exception as e:
+        log(f"  ⚠️  Purge tracking: {e}", ville)
 
 # ── Résumé quotidien 17h ──────────────────────────────────────────────────────
 
@@ -869,10 +903,10 @@ def run_ville(db, ville):
 
     try:
         save_rapport(db, ville, tracking, slug, temp_actuel)
-        if now_p.hour == 4 and now_p.minute < 15:
-            purge_old_rapports(db, ville)
+        purge_old_rapports(db, ville)
+        purge_old_tracking(db, ville)
     except Exception as e:
-        log(f"⚠️  Rapport: {e}", ville)
+        log(f"⚠️  Rapport/purge: {e}", ville)
 
 
 # ── Agent Stratège Mistral (cross-ville) ─────────────────────────────────────
