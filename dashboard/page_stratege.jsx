@@ -32,6 +32,23 @@ function StratègePage({ onBack }) {
     { id: 'beijing',       label: 'Beijing',       glyph: '🏯', flag: '🇨🇳' },
     { id: 'san_francisco', label: 'San Francisco', glyph: '🌉', flag: '🇺🇸' },
     { id: 'dallas',        label: 'Dallas',        glyph: '🤠', flag: '🇺🇸' },
+    { id: 'wellington',    label: 'Wellington',    glyph: '🌊', flag: '🇳🇿' },
+    { id: 'chongqing',     label: 'Chongqing',     glyph: '🏙️', flag: '🇨🇳' },
+    { id: 'wuhan',         label: 'Wuhan',         glyph: '🌉', flag: '🇨🇳' },
+    { id: 'ankara',        label: 'Ankara',        glyph: '🕌', flag: '🇹🇷' },
+    { id: 'moscow',        label: 'Moscou',        glyph: '❄️', flag: '🇷🇺' },
+    { id: 'lucknow',       label: 'Lucknow',       glyph: '🕌', flag: '🇮🇳' },
+    { id: 'istanbul',      label: 'Istanbul',      glyph: '🌉', flag: '🇹🇷' },
+    { id: 'warsaw',        label: 'Varsovie',      glyph: '🏰', flag: '🇵🇱' },
+    { id: 'milan',         label: 'Milan',         glyph: '🏛️', flag: '🇮🇹' },
+    { id: 'helsinki',      label: 'Helsinki',      glyph: '🌲', flag: '🇫🇮' },
+    { id: 'karachi',       label: 'Karachi',       glyph: '🌊', flag: '🇵🇰' },
+    { id: 'cape_town',     label: 'Cape Town',     glyph: '⛰️', flag: '🇿🇦' },
+    { id: 'jeddah',        label: 'Jeddah',        glyph: '🕌', flag: '🇸🇦' },
+    { id: 'shenzhen',      label: 'Shenzhen',      glyph: '🏗️', flag: '🇨🇳' },
+    { id: 'busan',         label: 'Busan',         glyph: '⚓', flag: '🇰🇷' },
+    { id: 'qingdao',       label: 'Qingdao',       glyph: '⛵', flag: '🇨🇳' },
+    { id: 'kuala_lumpur',  label: 'Kuala Lumpur',  glyph: '🏙️', flag: '🇲🇾' },
   ];
 
   const [analyses, setAnalyses]     = React.useState([]);

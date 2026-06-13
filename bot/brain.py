@@ -33,6 +33,9 @@ _WEATHER_VILLES = [
     "los_angeles", "guangzhou", "mexico_city", "amsterdam",
     "paris", "toronto", "chicago", "denver", "houston",
     "taipei", "beijing", "san_francisco", "dallas",
+    "wellington", "chongqing", "wuhan", "ankara", "moscow", "lucknow",
+    "istanbul", "warsaw", "milan", "helsinki", "karachi", "cape_town",
+    "jeddah", "shenzhen", "busan", "qingdao", "kuala_lumpur",
 ]
 
 def _load_analysis_context() -> str:
@@ -206,23 +209,25 @@ def decide(strategy: dict, markets: list, history: list, balance_usdc: float) ->
     if not prompt_text:
         return []
 
-    system_prompt = """Tu es ProfitWeather, un bot de trading agressif sur les marchés météo Polymarket.
+    system_prompt = """Tu es ProfitWeather, un bot de trading sur les marchés météo Polymarket.
 Tu trades les marchés "highest temperature in {ville}" sur les 25 villes suivies par les bots d'analyse.
 
-MISSION : maximiser le P&L. Trader chaque signal qualifié sans hésitation.
+MISSION : faire croître le portefeuille sur le long terme. Être sélectif plutôt qu'actif.
+Un bon trade vaut mieux que trois trades médiocres. Ne pas trader si les conditions ne sont pas réunies.
 
 Processus de décision :
-1. Regarde les signaux actifs des bots d'analyse (YES ≥ 75%)
-2. Trouve le marché correspondant dans la liste des marchés disponibles
-3. Si le marché est disponible et le signal actif → TRADER
-4. Applique la taille selon la stratégie fournie (conviction = taille)
-5. Surpondère les villes avec bon historique, sous-pondère celles avec mauvais historique
+1. Identifie les signaux actifs des bots d'analyse (YES ≥ 75%)
+2. Filtre : uniquement les marchés dans la zone idéale (YES 0.76-0.87) ou acceptable (0.87-0.92 Tier 1 seulement)
+3. Calcule la taille de position selon la formule de la stratégie (12% du solde, min 5, max 15 USDC)
+4. Vérifie les limites de risque : max 4 positions ouvertes, max 40% du solde total engagé, max 2 positions par région
+5. Si les conditions ne sont pas réunies → retourner [] et attendre le prochain cycle
 
 Règles non-négociables :
-- Volume minimum : 500 USDC (marché trop illiquide sinon)
-- Maximum 20% du solde par trade
-- Ne pas re-trader une position déjà ouverte sur le même condition_id
-- Si signal > 97% : ignorer (plus de valeur à capturer)
+- INTERDIT si prix YES ≥ 0.93 : frais Polymarket > marge restante, perte garantie même si signal fort
+- INTERDIT si YES < 0.76 : signal insuffisant
+- Volume minimum : 500 USDC sur le marché
+- Ne pas re-trader un condition_id déjà en position ouverte
+- Mieux vaut rater une opportunité que prendre un trade risqué
 
 Tu réponds UNIQUEMENT en JSON valide, sans texte autour :
 [
@@ -230,9 +235,9 @@ Tu réponds UNIQUEMENT en JSON valide, sans texte autour :
     "action": "buy",
     "market_index": 3,
     "outcome": "Yes",
-    "amount_usdc": 25.0,
-    "yes_price": 0.85,
-    "reason": "ville + prix signal + taux historique"
+    "amount_usdc": 6.0,
+    "yes_price": 0.82,
+    "reason": "ville Tier1, zone idéale 0.82, signal bot 78%, bon historique"
   }
 ]
 "market_index" est le numéro #N du marché dans la liste ci-dessous. Ne recopie jamais le condition_id hex.
