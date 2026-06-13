@@ -679,8 +679,8 @@ def find_winner_in_event(event_slug):
                 best_price = yp
                 best_cid   = em.get("conditionId", "")
 
-        # Doit être clairement au-dessus du bruit CLOB bloqué à 51%
-        if best_cid and best_price > 0.55:
+        # Seuil 0.99 : élimine le CLOB bloqué à 51% ET les prix pré-résolution (75-98%)
+        if best_cid and best_price > 0.99:
             return best_cid
         return None
     except Exception:
