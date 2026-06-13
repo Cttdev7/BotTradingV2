@@ -76,10 +76,12 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
         raise ValueError(f"Token introuvable : {condition_id} / {outcome}")
 
     client = _get_client()
+    is_sell = side.lower() == "sell"
     resp = client.place_market_order(
         token_id=token_id,
-        side="BUY" if side.lower() == "buy" else "SELL",
-        amount=amount_usdc,
+        side="SELL" if is_sell else "BUY",
+        # BUY  : amount en USDC | SELL : shares = nombre de tokens à vendre
+        **{"shares": amount_usdc} if is_sell else {"amount": amount_usdc},
     )
     making = float(resp.making_amount or 0)
     taking = float(resp.taking_amount or 0)

@@ -149,6 +149,73 @@ def _stats(history: list) -> str:
     pnl    = sum(t.get("pnl") or 0 for t in history)
     return f"{wins}W / {losses}L / P&L total ${pnl:.2f}"
 
+# ── Stop-loss automatique ─────────────────────────────────────────────────────
+
+STOP_LOSS_PCT = -0.15  # -15% → vente automatique
+
+def _get_current_yes_price(condition_id: str) -> float | None:
+    """Récupère le prix YES actuel depuis le CLOB."""
+    try:
+        r = requests.get(
+            f"https://clob.polymarket.com/markets/{condition_id}",
+            timeout=8,
+        )
+        if r.status_code != 200:
+            return None
+        for token in r.json().get("tokens", []):
+            if token.get("outcome", "").lower() == "yes":
+                return float(token.get("price", 0))
+    except Exception:
+        pass
+    return None
+
+def check_stop_loss(history: list, bot_id: str = "polyedge"):
+    """
+    Pour chaque position ouverte, vérifie si le prix a chuté de plus de STOP_LOSS_PCT.
+    Si oui, vend immédiatement et enregistre le P&L.
+    """
+    open_trades = [t for t in history if t.get("pnl") is None]
+    if not open_trades:
+        return
+
+    for t in open_trades:
+        entry_price = float(t.get("price") or 0)
+        if entry_price <= 0:
+            continue
+
+        current_price = _get_current_yes_price(t.get("condition_id", ""))
+        if current_price is None:
+            continue
+
+        pnl_pct = (current_price - entry_price) / entry_price
+        if pnl_pct >= STOP_LOSS_PCT:
+            continue
+
+        # Stop-loss déclenché
+        amount_usdc = float(t.get("amount_usdc") or 0)
+        tokens_held = amount_usdc / entry_price
+        pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
+
+        log(f"  🛑 STOP-LOSS {t.get('sym','Yes')} {t.get('condition_id','')[:12]}… "
+            f"| entrée {entry_price:.3f} → actuel {current_price:.3f} "
+            f"({pnl_pct*100:+.1f}%) | P&L estimé ${pnl_usd:.2f}")
+        try:
+            result = trader.place_market_order(
+                condition_id=t["condition_id"],
+                outcome=t.get("sym", "Yes"),
+                side="sell",
+                amount_usdc=tokens_held,
+            )
+            if result.get("ok") or result.get("dry_run"):
+                taking = float(result.get("taking_amount") or 0)
+                real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
+                update_trade_pnl(t["id"], real_pnl)
+                log(f"    ✅ Vendu — P&L réel ${real_pnl:.2f}")
+            else:
+                log(f"    ⚠️  Vente rejetée par Polymarket")
+        except Exception as e:
+            log(f"    ❌ Erreur vente stop-loss : {e}")
+
 # ── Cycle principal ───────────────────────────────────────────────────────────
 
 def run_cycle(bot_id: str = "polyedge"):
@@ -175,6 +242,11 @@ def run_cycle(bot_id: str = "polyedge"):
                 update_trade_pnl(t_new["id"], t_new["pnl"])
                 log(f"  ✅ Trade {t_new['id'][:8]}… résolu — P&L ${t_new['pnl']:.2f}")
         history = updated
+
+    # 2b. Stop-loss automatique (-15%)
+    log(f"🛡️  Vérification stop-loss ({STOP_LOSS_PCT*100:.0f}%)…")
+    check_stop_loss(history, bot_id)
+    history = load_history(bot_id)  # Recharge après éventuelles ventes
 
     # 3. Données Polymarket
     try:
@@ -225,9 +297,22 @@ def run_cycle(bot_id: str = "polyedge"):
         return
 
     # 5. Exécution + sauvegarde dans Supabase
+    MIN_TRADE  = 10.0
+    MIN_PRICE  = 0.76
+    MAX_PRICE  = 0.95  # Jamais acheter ≥ 0.95, peu importe ce que Claude dit
     for d in decisions:
         if d.get("action") != "buy":
             continue
+        yes_price = float(d.get("yes_price", 0) or 0)
+        if yes_price >= MAX_PRICE:
+            log(f"  🚫 Bloqué (prix {yes_price:.3f} ≥ {MAX_PRICE}) — règle hard-coded")
+            continue
+        if yes_price > 0 and yes_price < MIN_PRICE:
+            log(f"  🚫 Bloqué (prix {yes_price:.3f} < {MIN_PRICE}) — signal insuffisant")
+            continue
+        # Enforce minimum absolu
+        if d.get("amount_usdc", 0) < MIN_TRADE:
+            d["amount_usdc"] = MIN_TRADE
         try:
             log(f"→ {d['action'].upper()} {d['outcome']} | {d['condition_id'][:12]}… | ${d['amount_usdc']:.2f} | {d['reason']}")
             result = trader.place_market_order(
