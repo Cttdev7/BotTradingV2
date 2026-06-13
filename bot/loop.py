@@ -72,17 +72,20 @@ def load_strategy(bot_id: str = "polyedge") -> dict:
             "version": 1,
             "prompt": (
                 "STRATÉGIE : acheter YES sur les marchés température où les bots d'analyse "
-                "ont détecté un signal fort.\n\n"
+                "ont détecté un signal fort. Qualité > quantité — max 3 positions ouvertes.\n\n"
                 "Règle d'entrée :\n"
-                "- Un signal actif d'un bot d'analyse (YES ≥ 75%) EST une opportunité à trader\n"
-                "- Trouver dans les marchés disponibles le marché qui correspond à ce signal\n"
-                "- Le prix YES actuel doit être entre 0.75 et 0.97\n"
-                "- Volume minimum du marché : 500 USDC\n"
+                "- Un signal actif d'un bot d'analyse (YES ≥ 75%) EST une opportunité à évaluer\n"
+                "- Le prix YES actuel doit être entre 0.76 et 0.92\n"
+                "- Zone idéale : YES 0.76-0.87 (meilleur rapport valeur/risque)\n"
+                "- Volume minimum du marché : 1 000 USDC\n"
                 "- Favoriser les villes avec un taux de victoire historique > 60%\n\n"
-                "Taille des positions :\n"
-                "- 10 USDC par trade maximum tant que le bot est en phase de test\n"
-                "- Jamais plus de 20% du solde disponible sur un seul marché\n\n"
-                "Ne rien trader si aucun signal actif des bots ne correspond à un marché disponible."
+                "Taille des positions (jamais en dessous de 10 USDC) :\n"
+                "- Signal standard : 15% du solde, min 10 USDC\n"
+                "- Signal fort (ville Tier 1, win rate >65%) : 20% du solde\n"
+                "- Signal exceptionnel (convergence bots + Mistral) : 25% du solde\n"
+                "- Max 55% du solde total engagé simultanément\n\n"
+                "Villes Tier 1 prioritaires : toronto, miami, houston, singapore, tokyo, seoul, shanghai, dubai.\n\n"
+                "Ne rien trader si aucun signal qualifié. Mieux vaut attendre le prochain cycle."
             ),
         }
     return {}
@@ -199,6 +202,10 @@ def run_cycle(bot_id: str = "polyedge"):
         log(f"💰 Solde : ~${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
 
     # 4. Décision Claude
+    if usdc < 10:
+        log(f"💤 Solde insuffisant (${usdc:.2f} < $10) — aucun achat, en attente de résolution des trades")
+        return
+
     try:
         decisions = brain.decide(strategy, markets, history, usdc)
         log(f"Claude : {len(decisions)} décision(s)")
