@@ -49,6 +49,9 @@ function StratègePage({ onBack }) {
     { id: 'busan',         label: 'Busan',         glyph: '⚓', flag: '🇰🇷' },
     { id: 'qingdao',       label: 'Qingdao',       glyph: '⛵', flag: '🇨🇳' },
     { id: 'kuala_lumpur',  label: 'Kuala Lumpur',  glyph: '🏙️', flag: '🇲🇾' },
+    { id: 'tel_aviv',      label: 'Tel Aviv',      glyph: '🌊', flag: '🇮🇱' },
+    { id: 'manila',        label: 'Manila',        glyph: '🌺', flag: '🇵🇭' },
+    { id: 'munich',        label: 'Munich',        glyph: '🍺', flag: '🇩🇪' },
   ];
 
   const [analyses, setAnalyses]     = React.useState([]);

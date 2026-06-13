@@ -354,6 +354,30 @@ VILLES = [
         "lon":         101.687,
         "tz":          ZoneInfo("Asia/Kuala_Lumpur"),
     },
+    {
+        "id":          "tel_aviv",
+        "label":       "Tel Aviv",
+        "slug_prefix": "highest-temperature-in-tel-aviv",
+        "lat":         32.085,
+        "lon":         34.781,
+        "tz":          ZoneInfo("Asia/Jerusalem"),
+    },
+    {
+        "id":          "manila",
+        "label":       "Manila",
+        "slug_prefix": "highest-temperature-in-manila",
+        "lat":         14.599,
+        "lon":         120.984,
+        "tz":          ZoneInfo("Asia/Manila"),
+    },
+    {
+        "id":          "munich",
+        "label":       "Munich",
+        "slug_prefix": "highest-temperature-in-munich",
+        "lat":         48.137,
+        "lon":         11.576,
+        "tz":          ZoneInfo("Europe/Berlin"),
+    },
 ]
 
 GAMMA_API = "https://gamma-api.polymarket.com"
