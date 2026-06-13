@@ -151,7 +151,8 @@ def _stats(history: list) -> str:
 
 # ── Stop-loss automatique ─────────────────────────────────────────────────────
 
-STOP_LOSS_PCT = -0.15  # -15% → vente automatique
+STOP_LOSS_PCT    = -0.15  # -15% → vente automatique
+TAKE_PROFIT_PRICE = 0.999  # YES ≥ 99.9% → vente automatique (lock profit)
 
 def _get_current_yes_price(condition_id: str) -> float | None:
     """Récupère le prix YES actuel depuis le CLOB."""
@@ -188,6 +189,30 @@ def check_stop_loss(history: list, bot_id: str = "polyedge"):
             continue
 
         pnl_pct = (current_price - entry_price) / entry_price
+        # Take-profit : YES ≥ 99.9% → vendre maintenant, ne pas attendre la résolution
+        if current_price >= TAKE_PROFIT_PRICE:
+            tokens_held = amount_usdc / entry_price
+            pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
+            log(f"  💰 TAKE-PROFIT {t.get('sym','Yes')} {t.get('condition_id','')[:12]}… "
+                f"| prix {current_price:.4f} ≥ {TAKE_PROFIT_PRICE} | P&L estimé +${pnl_usd:.2f}")
+            try:
+                result = trader.place_market_order(
+                    condition_id=t["condition_id"],
+                    outcome=t.get("sym", "Yes"),
+                    side="sell",
+                    amount_usdc=tokens_held,
+                )
+                if result.get("ok") or result.get("dry_run"):
+                    taking   = float(result.get("taking_amount") or 0)
+                    real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
+                    update_trade_pnl(t["id"], real_pnl)
+                    log(f"    ✅ Vendu — P&L réel +${real_pnl:.2f}")
+                else:
+                    log(f"    ⚠️  Vente rejetée par Polymarket")
+            except Exception as e:
+                log(f"    ❌ Erreur vente take-profit : {e}")
+            continue
+
         if pnl_pct >= STOP_LOSS_PCT:
             continue
 
