@@ -3,8 +3,8 @@
 ## Ce que fait ce projet
 Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashboard iOS-style.
 - **ProfitWeather** : bot de trading météo — Claude Haiku décide quoi acheter selon les signaux des bots d'analyse
-- **Agent météo multi-villes** : 12 bots d'analyse qui trackent les options YES >75% sur les marchés température
-- **Stratège Mistral** : analyse cross-ville quotidienne, apprend des analyses passées
+- **Agent météo multi-villes** : 42 bots d'analyse qui trackent les options YES >75% sur les marchés température
+- **Stratège Mistral** : analyse cross-ville toutes les 15 min, apprend des analyses passées
 
 ## Structure du projet
 ```
@@ -14,7 +14,7 @@ Bottrading V2/
 │   ├── styles.css
 │   ├── app.jsx         ← Shell, navigation, sidebar avec drapeaux pays
 │   ├── api.jsx         ← Fetch données réelles depuis localhost:5000
-│   ├── data.jsx        ← 12 bots température + ProfitWeather + Crypto
+│   ├── data.jsx        ← 42 bots température + ProfitWeather + Crypto
 │   ├── charts.jsx
 │   ├── icons.jsx
 │   ├── ui.jsx
@@ -33,7 +33,7 @@ Bottrading V2/
 │   ├── trader.py       ← Exécution ordres (DRY_RUN=true par défaut)
 │   ├── loop.py         ← Boucle ProfitWeather toutes les 15 min (local)
 │   ├── server.py       ← Flask API port 5000
-│   ├── agent_temperature_cloud.py ← 12 villes, Railway 24/7 ← ACTIF
+│   ├── agent_temperature_cloud.py ← 42 villes, Railway 24/7 ← ACTIF
 │   ├── strategy.json   ← Stratégie ProfitWeather (ignoré par git, local)
 │   ├── history.json    ← Historique trades (ignoré par git, local)
 │   ├── requirements.txt
@@ -68,10 +68,12 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 
 ## État actuel
 - ✅ Dashboard iOS complet — Vercel, auto-deploy GitHub
-- ✅ **25 villes actives** : Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳, Los Angeles 🇺🇸, Guangzhou 🇨🇳, Mexico City 🇲🇽, Amsterdam 🇳🇱, Paris 🇫🇷, Toronto 🇨🇦, Chicago 🇺🇸, Denver 🇺🇸, Houston 🇺🇸, Taipei 🇹🇼, Beijing 🇨🇳, San Francisco 🇺🇸, Dallas 🇺🇸
+- ✅ **42 villes actives** :
+  - Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳, Los Angeles 🇺🇸, Guangzhou 🇨🇳, Mexico City 🇲🇽, Amsterdam 🇳🇱, Paris 🇫🇷, Toronto 🇨🇦, Chicago 🇺🇸, Denver 🇺🇸, Houston 🇺🇸, Taipei 🇹🇼, Beijing 🇨🇳, San Francisco 🇺🇸, Dallas 🇺🇸
+  - Wellington 🇳🇿, Chongqing 🇨🇳, Wuhan 🇨🇳, Ankara 🇹🇷, Moscou 🇷🇺, Lucknow 🇮🇳, Istanbul 🇹🇷, Varsovie 🇵🇱, Milan 🇮🇹, Helsinki 🇫🇮, Karachi 🇵🇰, Cape Town 🇿🇦, Jeddah 🇸🇦, Shenzhen 🇨🇳, Busan 🇰🇷, Qingdao 🇨🇳, Kuala Lumpur 🇲🇾
 - ✅ **ProfitWeather** (id: `polyedge`) — bot de trading local, **DRY_RUN=false (TRADING RÉEL)**
 - ✅ **Mistral Stratège** — analyse cross-ville toutes les 15 min (Railway)
-- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE
+- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE, MISTRAL
 - ✅ `can_trade: True` — clés Polymarket valides (API_KEY régénéré avec nonce=1 en juin 2026)
 - ✅ **DRY_RUN=false** — trading réel activé (premier ordre Toronto 31°C le 2026-06-11)
 - ✅ Résolution marchés : lit `/events` pour vrai prix (fix CLOB bloqué à 51%), fallback Open-Meteo
@@ -107,19 +109,24 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 - **Seuil signal** : YES ≥ 75%
 - **Scan** : toutes les 15 min, J+0 si encore ouvert sinon J+1
 - **Slug Polymarket** : `highest-temperature-in-{city}-on-{month}-{day}-{year}`
-- **Tables Supabase par ville** (`{ville_id}` = chengdu / seoul / hong-kong / nyc / london / tokyo / atlanta / seattle / miami / singapore / madrid / shanghai) :
+- **Tables Supabase par ville** (42 villes) :
   - `{ville_id}_tracking` — signaux détectés (condition_id UNIQUE, yes_price_au_signal, resultat…)
-  - `{ville_id}_stats` — stats globales (taux_victoire, gagnes, resolus…)
-  - `{ville_id}_rapports` — rapport à chaque cycle
-  - `{ville_id}_resumes` — résumé Mistral quotidien
+  - `{ville_id}_stats` — stats cumulatives long terme (taux_victoire, gagnes, resolus… ne reculent jamais)
+  - `{ville_id}_rapports` — rapport à chaque cycle (purge auto à 3 jours / 288 entrées)
+  - `{ville_id}_resumes` — résumé Mistral quotidien (1 par jour, gardé indéfiniment)
 - **Tables globales** : `strategie_analyses`, `strategie_config`, `bot_status`
+- **Purge automatique** :
+  - `_rapports` : 3 jours (288 entrées max)
+  - `_tracking` : signaux résolus >30 jours supprimés
+  - `_stats` : compteurs cumulatifs préservés (jamais recalculés à zéro)
 
 ## Ajouter une nouvelle ville
 1. Vérifier le slug Polymarket : `highest-temperature-in-{city}-on-...`
 2. Ajouter dans `VILLES` de `agent_temperature_cloud.py`
-3. Ajouter bot dans `dashboard/data.jsx` avec `type:'temperature'`, `citySlug`, `flag`, `glyph`
-4. Ajouter ville dans `VILLES` de `dashboard/page_stratege.jsx`
-5. Créer 4 tables Supabase avec le bon schéma (voir tables ci-dessus)
+3. Ajouter dans `_WEATHER_VILLES` de `brain.py`
+4. Ajouter bot dans `dashboard/data.jsx` avec `type:'temperature'`, `citySlug`, `flag`, `glyph`
+5. Ajouter ville dans `VILLES` de `dashboard/page_stratege.jsx`
+6. Créer 4 tables Supabase (via MCP Supabase ou SQL) avec le schéma standard
 
 ## Trading réel — ACTIF ✅
 - `DRY_RUN=false` dans `bot/.env`
