@@ -68,9 +68,10 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 
 ## État actuel
 - ✅ Dashboard iOS complet — Vercel, auto-deploy GitHub
-- ✅ **42 villes actives** :
+- ✅ **45 villes actives** :
   - Chengdu 🇨🇳, Séoul 🇰🇷, Hong Kong 🇭🇰, NYC 🇺🇸, Londres 🇬🇧, Tokyo 🇯🇵, Atlanta 🇺🇸, Seattle 🇺🇸, Miami 🇺🇸, Singapour 🇸🇬, Madrid 🇪🇸, Shanghai 🇨🇳, Los Angeles 🇺🇸, Guangzhou 🇨🇳, Mexico City 🇲🇽, Amsterdam 🇳🇱, Paris 🇫🇷, Toronto 🇨🇦, Chicago 🇺🇸, Denver 🇺🇸, Houston 🇺🇸, Taipei 🇹🇼, Beijing 🇨🇳, San Francisco 🇺🇸, Dallas 🇺🇸
   - Wellington 🇳🇿, Chongqing 🇨🇳, Wuhan 🇨🇳, Ankara 🇹🇷, Moscou 🇷🇺, Lucknow 🇮🇳, Istanbul 🇹🇷, Varsovie 🇵🇱, Milan 🇮🇹, Helsinki 🇫🇮, Karachi 🇵🇰, Cape Town 🇿🇦, Jeddah 🇸🇦, Shenzhen 🇨🇳, Busan 🇰🇷, Qingdao 🇨🇳, Kuala Lumpur 🇲🇾
+  - Tel Aviv 🇮🇱, Manila 🇵🇭, Munich 🇩🇪
 - ✅ **ProfitWeather** (id: `polyedge`) — bot de trading local, **DRY_RUN=false (TRADING RÉEL)**
 - ✅ **Mistral Stratège** — analyse cross-ville toutes les 15 min (Railway)
 - ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE, MISTRAL
