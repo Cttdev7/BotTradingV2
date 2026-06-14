@@ -221,7 +221,13 @@ def check_stop_loss(history: list, bot_id: str = "polyedge"):
                     else:
                         log(f"    ⚠️  Vente rejetée par Polymarket")
                 except Exception as e:
-                    log(f"    ❌ Erreur vente take-profit : {e}")
+                    err = str(e)
+                    if "resting liquidity" in err.lower() or "not enough balance" in err.lower():
+                        # Marché résolu ou tokens déjà absents → enregistre le P&L estimé
+                        update_trade_pnl(t["id"], pnl_usd)
+                        log(f"    ✅ Marché fermé — P&L enregistré +${pnl_usd:.2f}")
+                    else:
+                        log(f"    ❌ Erreur vente take-profit : {e}")
             continue
 
         if pnl_pct >= STOP_LOSS_PCT:
@@ -234,6 +240,11 @@ def check_stop_loss(history: list, bot_id: str = "polyedge"):
         log(f"  🛑 STOP-LOSS {t.get('sym','Yes')} {t.get('condition_id','')[:12]}… "
             f"| entrée {entry_price:.3f} → actuel {current_price:.3f} "
             f"({pnl_pct*100:+.1f}%) | P&L estimé ${pnl_usd:.2f}")
+        # Prix à 0.001 = marché résolu à NO, orderbook fermé → enregistre la perte directement
+        if current_price <= 0.005:
+            update_trade_pnl(t["id"], pnl_usd)
+            log(f"    ✅ Résolu à NO — P&L enregistré ${pnl_usd:.2f} (Polymarket a tranché)")
+            continue
         try:
             result = trader.place_market_order(
                 condition_id=t["condition_id"],
@@ -249,7 +260,12 @@ def check_stop_loss(history: list, bot_id: str = "polyedge"):
             else:
                 log(f"    ⚠️  Vente rejetée par Polymarket")
         except Exception as e:
-            log(f"    ❌ Erreur vente stop-loss : {e}")
+            err = str(e)
+            if "resting liquidity" in err.lower() or "not enough balance" in err.lower():
+                update_trade_pnl(t["id"], pnl_usd)
+                log(f"    ✅ Marché fermé — perte enregistrée ${pnl_usd:.2f}")
+            else:
+                log(f"    ❌ Erreur vente stop-loss : {e}")
 
 # ── Cycle principal ───────────────────────────────────────────────────────────
 
@@ -353,8 +369,8 @@ def run_cycle(bot_id: str = "polyedge"):
 
     # 5. Exécution + sauvegarde dans Supabase
     MIN_TRADE  = 10.0
-    MIN_PRICE  = 0.76
-    MAX_PRICE  = 0.95  # Jamais acheter ≥ 0.95, peu importe ce que Claude dit
+    MIN_PRICE  = 0.78  # Relevé de 0.76 → signal doit être plus fort
+    MAX_PRICE  = 0.92  # Abaissé de 0.95 → marge de sécurité plus large
     for d in decisions:
         if d.get("action") != "buy":
             continue
@@ -370,6 +386,34 @@ def run_cycle(bot_id: str = "polyedge"):
         if mkt.get("city", "") in CITY_BLACKLIST:
             log(f"  🚫 Bloqué ({mkt.get('city')}) — ville blacklistée")
             continue
+        # Vérification prix en temps réel + détection de crash
+        # 1er sample → attente 4s → 2ème sample : si la courbe descend → on n'achète pas
+        cid = d.get("condition_id", "")
+        price_t1 = _get_current_yes_price(cid)
+        if price_t1 is not None:
+            if price_t1 < MIN_PRICE:
+                log(f"  🚫 Prix T1 {price_t1:.3f} < {MIN_PRICE} — marché crashé, annulé")
+                continue
+            if price_t1 >= MAX_PRICE:
+                log(f"  🚫 Prix T1 {price_t1:.3f} ≥ {MAX_PRICE} — trop cher, annulé")
+                continue
+            if yes_price > 0 and abs(price_t1 - yes_price) / yes_price > 0.10:
+                log(f"  🚫 Écart trop élevé : Claude estimait {yes_price:.3f}, réel {price_t1:.3f} ({abs(price_t1-yes_price)/yes_price*100:.0f}%) — annulé")
+                continue
+            # 2ème sample 4 secondes plus tard pour détecter si le prix descend
+            time.sleep(4)
+            price_t2 = _get_current_yes_price(cid)
+            if price_t2 is not None:
+                drop = price_t1 - price_t2
+                drop_pct = drop / price_t1 * 100
+                if drop > 0.01:  # baisse de plus de 1 centime = tendance baissière
+                    log(f"  🚫 Crash détecté : {price_t1:.3f} → {price_t2:.3f} (-{drop_pct:.1f}% en 4s) — annulé")
+                    continue
+                log(f"  ✅ Prix stable : T1={price_t1:.3f} → T2={price_t2:.3f} — OK")
+                d["yes_price"] = price_t2
+            else:
+                log(f"  ✅ Prix T1 confirmé : {price_t1:.3f}")
+                d["yes_price"] = price_t1
         # Validation météo Open-Meteo — limite le risque avant exécution
         if mkt:
             wx = weather_validator.validate_yes_trade(
