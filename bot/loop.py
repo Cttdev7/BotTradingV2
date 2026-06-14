@@ -34,6 +34,9 @@ IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
 SB_KEY = os.getenv("SUPABASE_KEY", "")
 
+# Villes blacklistées — jamais de trade, peu importe le signal
+CITY_BLACKLIST = {"jeddah"}
+
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 
 def _sb_headers():
@@ -349,8 +352,12 @@ def run_cycle(bot_id: str = "polyedge"):
         if yes_price > 0 and yes_price < MIN_PRICE:
             log(f"  🚫 Bloqué (prix {yes_price:.3f} < {MIN_PRICE}) — signal insuffisant")
             continue
-        # Validation météo Open-Meteo — limite le risque avant exécution
+        # Blacklist villes — bloqué à jamais
         mkt = market_lookup.get(d.get("condition_id", ""), {})
+        if mkt.get("city", "") in CITY_BLACKLIST:
+            log(f"  🚫 Bloqué ({mkt.get('city')}) — ville blacklistée")
+            continue
+        # Validation météo Open-Meteo — limite le risque avant exécution
         if mkt:
             wx = weather_validator.validate_yes_trade(
                 city_slug=mkt.get("city", ""),

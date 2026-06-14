@@ -234,6 +234,7 @@ Heure locale de la ville (indiquée entre crochets) :
 - Utilise cette information pour ajuster ta confiance, pas comme blocage absolu
 
 Règles non-négociables :
+- INTERDIT Jeddah : ville blacklistée définitivement — ne jamais proposer ce marché
 - INTERDIT si prix YES ≥ 0.95 : trop proche de 1.0, marge quasi-nulle après frais Polymarket
 - INTERDIT si YES < 0.76 : signal insuffisant
 - MINIMUM ABSOLU 10 USDC par trade — pas de petites positions
