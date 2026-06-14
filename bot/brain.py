@@ -167,10 +167,52 @@ def _format_markets(markets: list) -> tuple:
             current_city = city
 
         index_map[idx] = m.get("condition_id", "")
-        lines.append(
+        market_line = (
             f"  [#{idx}] {m.get('question','?')[:75]}\n"
             f"    YES={yes_price:.2f} | NO={no_price:.2f} | Vol=${volume:,.0f}"
         )
+        wx = m.get("weather_ctx")
+        if wx:
+            sym   = wx.get("sym", "°C")
+            parts = []
+            if "current_temp" in wx:
+                parts.append(f"actuel:{wx['current_temp']:.1f}{sym}")
+            if "ensemble_prob" in wx:
+                n = wx.get("ensemble_members_count", "?")
+                parts.append(f"prob:{wx['ensemble_prob']}%({n}mbr)")
+            if wx.get("models"):
+                avg    = wx.get("models_avg", "?")
+                spread = wx.get("models_spread", "?")
+                parts.append(
+                    f"consensus:{wx['models_above']}/{wx['models_total']}ok"
+                    f"·moy:{avg}{sym}·écart:{spread}{sym}"
+                )
+            if parts:
+                market_line += "\n    🌤️ " + " | ".join(parts)
+            # Facteurs de risque (pluie, vent, nuages, orage, neige, ensoleillement)
+            risk = wx.get("risk", {})
+            if risk:
+                rparts = []
+                if "wlabel" in risk:
+                    rparts.append(risk["wlabel"])
+                if "precip_prob" in risk:
+                    emoji = "🌧️" if risk["precip_prob"] >= 60 else "🌦️" if risk["precip_prob"] >= 30 else "☀️"
+                    rparts.append(f"{emoji}pluie {risk['precip_prob']}%")
+                if risk.get("precip_mm", 0) > 0:
+                    rparts.append(f"{risk['precip_mm']}mm")
+                if "cloud_pct" in risk:
+                    rparts.append(f"☁️{risk['cloud_pct']}%nuages")
+                if "sun_h" in risk:
+                    rparts.append(f"☀️{risk['sun_h']}h soleil")
+                if "wind_kmh" in risk:
+                    rparts.append(f"💨{risk['wind_kmh']}km/h")
+                if risk.get("gusts_kmh", 0) > risk.get("wind_kmh", 0) + 10:
+                    rparts.append(f"rafales {risk['gusts_kmh']}km/h")
+                if risk.get("snow_mm", 0) > 0:
+                    rparts.append(f"❄️neige {risk['snow_mm']}mm")
+                if rparts:
+                    market_line += "\n    🌡️ " + " | ".join(rparts)
+        lines.append(market_line)
         idx += 1
 
     return "\n".join(lines), index_map
@@ -243,6 +285,18 @@ Règles non-négociables :
 - Ne pas re-trader un condition_id déjà en position
 - Villes Tier 1 uniquement avant 16h : toronto, houston, singapore, tokyo, seoul, london, paris
 - Si solde < 60 USDC : maximum 1 trade par cycle, 10% du solde
+
+Interprétation des données météo 🌤️ (présentes sous chaque marché quand disponibles) :
+- prob:X%(Nmbr)   = X% des N membres ECMWF IFS prévoient de dépasser le seuil
+  → prob > YES_price + 0.03 → value bet (météo plus optimiste que le marché)
+  → prob < YES_price - 0.05 → éviter (marché surévalué vs météo)
+  → prob = YES_price ± 0.03 → neutre, regarder les autres critères
+- consensus:N/4ok = N des 4 grands modèles (ECMWF/GFS/ICON/MF) au-dessus du seuil
+  → 4/4 = signal très fiable | 3/4 = bon signal | 2/4 ou moins = incertain
+- moy:X°C         = température moyenne prévue par les modèles
+- écart:X°C       = dispersion entre modèles (< 1.5°C = prévision fiable, > 3°C = incertain)
+- actuel:X°C      = température observée maintenant (utile pour marchés J+0)
+  → si actuel proche du seuil (< 2°C en dessous) → très forte probabilité d'atteinte
 
 Tu réponds UNIQUEMENT en JSON valide, sans texte autour :
 [
