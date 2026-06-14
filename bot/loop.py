@@ -290,6 +290,19 @@ def run_cycle(bot_id: str = "polyedge"):
         log(f"Erreur marchés Polymarket : {e}")
         return
 
+    # Filtre volume minimum par ville : $20 000 total cumulé
+    CITY_MIN_VOLUME = 20_000
+    from collections import defaultdict
+    city_vol = defaultdict(float)
+    for m in markets:
+        city_vol[m.get("city", "")] += float(m.get("volume") or 0)
+    before = len(markets)
+    markets = [m for m in markets if city_vol[m.get("city", "")] >= CITY_MIN_VOLUME]
+    excluded = before - len(markets)
+    if excluded:
+        low_vol = {c for c, v in city_vol.items() if v < CITY_MIN_VOLUME}
+        log(f"🔍 Filtre volume : {excluded} marchés exclus ({', '.join(sorted(low_vol))})")
+
     # Solde : override manuel > API > fictif (simulation) > bloquant (réel)
     usdc = float(os.getenv("BALANCE_USDC", "0"))
     if usdc < 1:
