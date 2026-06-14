@@ -15,6 +15,9 @@ from supabase import create_client
 
 PARIS = ZoneInfo("Europe/Paris")
 
+# Villes exclues du scan (taux de victoire trop bas — recommandation Mistral 14/06/2026)
+VILLES_EXCLUES = {"shanghai", "beijing", "denver"}
+
 # ── Config villes ─────────────────────────────────────────────────────────────
 
 VILLES = [
@@ -878,7 +881,7 @@ def run_ville(db, ville):
         log(f"   {len(markets)} options | Top: {top[0]['question'].split('be ')[-1].split(' on')[0]} à {top[0]['yes_price']*100:.0f}%", ville)
 
         for m in sorted(markets, key=lambda x: x["yes_price"], reverse=True):
-            flag  = "🔥" if m["yes_price"] >= 0.75 else ("📊" if m["yes_price"] >= 0.30 else "  ")
+            flag  = "🔥" if m["yes_price"] >= 0.82 else ("📊" if m["yes_price"] >= 0.30 else "  ")
             temp  = m["question"].split("be ")[-1].split(" on")[0]
             t_int = temp_from_question(m["question"])
             match = " ← Open-Meteo" if (temp_actuel is not None and t_int == temp_actuel) else ""
@@ -888,7 +891,7 @@ def run_ville(db, ville):
         tracked_ids = {t["condition_id"] for t in tracking}
         pending_ids = {t["condition_id"] for t in tracking if t["resultat"] is None}
 
-        candidates = [m for m in markets if m["yes_price"] >= 0.75 and not m["closed"] and not m["resolved"]]
+        candidates = [m for m in markets if m["yes_price"] >= 0.82 and not m["closed"] and not m["resolved"]]
         dominant   = max(candidates, key=lambda x: x["yes_price"]) if candidates else None
 
         if dominant:
@@ -904,7 +907,7 @@ def run_ville(db, ville):
             for m in markets:
                 if m["condition_id"] in pending_ids:
                     update_price(db, ville, m["condition_id"], m["yes_price"])
-            log("   Aucun signal dominant (aucune option à 75%+)", ville)
+            log("   Aucun signal dominant (aucune option à 82%+)", ville)
 
     # 5. Alerte divergence Open-Meteo
     if temp_actuel is not None:
@@ -1064,7 +1067,7 @@ def check_strategie_trigger(db):
     except Exception:
         return False
 
-def already_have_strategie_recently(db, minutes=10):
+def already_have_strategie_recently(db, minutes=60):
     """Évite de relancer si une analyse a été générée il y a moins de N minutes."""
     try:
         rows = db.table("strategie_analyses").select("created_at").order("created_at", desc=True).limit(1).execute().data
