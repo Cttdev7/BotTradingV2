@@ -137,25 +137,9 @@ def get_positions() -> list:
         return []
 
 def get_balance() -> dict:
-    """Solde disponible — data-api en priorité, fallback pUSD on-chain."""
-    try:
-        r = requests.get(
-            f"{DATA_API}/value",
-            params={"user": _addr()},
-            timeout=TIMEOUT,
-        )
-        if r.status_code not in (408, 504):
-            r.raise_for_status()
-            data = r.json()
-            value = float(data[0]["value"]) if data and isinstance(data, list) else 0.0
-            if value > 0:
-                return {"usdc": value}
-    except Exception:
-        pass
-    # Fallback : lire le solde pUSD directement on-chain
+    """Solde pUSD disponible lu directement on-chain (cash réel, sans les positions ouvertes)."""
     bal = get_polygon_balance()
-    total = bal.get("pusd", 0) + bal.get("usdc", 0) + bal.get("usdce", 0)
-    return {"usdc": round(total, 2)}
+    return {"usdc": round(bal.get("pusd", 0), 2)}
 
 import datetime as _dt
 

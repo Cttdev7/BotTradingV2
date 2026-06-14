@@ -25,6 +25,7 @@ import pm_api as polymarket
 import brain
 import trader
 import config
+import weather_validator
 
 INTERVAL_MINUTES = int(os.getenv("BOT_INTERVAL", "5"))
 IMPROVE_HOURS    = int(os.getenv("BOT_IMPROVE_HOURS", "6"))
@@ -188,6 +189,7 @@ def check_stop_loss(history: list, bot_id: str = "polyedge"):
         if current_price is None:
             continue
 
+        amount_usdc = float(t.get("amount_usdc") or 0)
         pnl_pct = (current_price - entry_price) / entry_price
         # Take-profit : YES ≥ 99.9% → vendre maintenant, ne pas attendre la résolution
         if current_price >= TAKE_PROFIT_PRICE:
@@ -195,29 +197,34 @@ def check_stop_loss(history: list, bot_id: str = "polyedge"):
             pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
             log(f"  💰 TAKE-PROFIT {t.get('sym','Yes')} {t.get('condition_id','')[:12]}… "
                 f"| prix {current_price:.4f} ≥ {TAKE_PROFIT_PRICE} | P&L estimé +${pnl_usd:.2f}")
-            try:
-                result = trader.place_market_order(
-                    condition_id=t["condition_id"],
-                    outcome=t.get("sym", "Yes"),
-                    side="sell",
-                    amount_usdc=tokens_held,
-                )
-                if result.get("ok") or result.get("dry_run"):
-                    taking   = float(result.get("taking_amount") or 0)
-                    real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
-                    update_trade_pnl(t["id"], real_pnl)
-                    log(f"    ✅ Vendu — P&L réel +${real_pnl:.2f}")
-                else:
-                    log(f"    ⚠️  Vente rejetée par Polymarket")
-            except Exception as e:
-                log(f"    ❌ Erreur vente take-profit : {e}")
+            # Si prix = 1.0 exact → marché déjà résolu, Polymarket a crédité le wallet
+            # L'orderbook est fermé → pas de vente possible, on enregistre le P&L directement
+            if current_price >= 1.0:
+                update_trade_pnl(t["id"], pnl_usd)
+                log(f"    ✅ Résolu à 1.0 — P&L enregistré +${pnl_usd:.2f} (Polymarket a déjà crédité)")
+            else:
+                try:
+                    result = trader.place_market_order(
+                        condition_id=t["condition_id"],
+                        outcome=t.get("sym", "Yes"),
+                        side="sell",
+                        amount_usdc=tokens_held,
+                    )
+                    if result.get("ok") or result.get("dry_run"):
+                        taking   = float(result.get("taking_amount") or 0)
+                        real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
+                        update_trade_pnl(t["id"], real_pnl)
+                        log(f"    ✅ Vendu — P&L réel +${real_pnl:.2f}")
+                    else:
+                        log(f"    ⚠️  Vente rejetée par Polymarket")
+                except Exception as e:
+                    log(f"    ❌ Erreur vente take-profit : {e}")
             continue
 
         if pnl_pct >= STOP_LOSS_PCT:
             continue
 
         # Stop-loss déclenché
-        amount_usdc = float(t.get("amount_usdc") or 0)
         tokens_held = amount_usdc / entry_price
         pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
 
@@ -321,6 +328,9 @@ def run_cycle(bot_id: str = "polyedge"):
         log("Tous les signaux déjà en position — rien à ajouter")
         return
 
+    # Lookup condition_id → infos marché (ville, question, slug) pour la validation météo
+    market_lookup = {m["condition_id"]: m for m in markets}
+
     # 5. Exécution + sauvegarde dans Supabase
     MIN_TRADE  = 10.0
     MIN_PRICE  = 0.76
@@ -335,6 +345,18 @@ def run_cycle(bot_id: str = "polyedge"):
         if yes_price > 0 and yes_price < MIN_PRICE:
             log(f"  🚫 Bloqué (prix {yes_price:.3f} < {MIN_PRICE}) — signal insuffisant")
             continue
+        # Validation météo Open-Meteo — limite le risque avant exécution
+        mkt = market_lookup.get(d.get("condition_id", ""), {})
+        if mkt:
+            wx = weather_validator.validate_yes_trade(
+                city_slug=mkt.get("city", ""),
+                question=mkt.get("question", ""),
+                slug=mkt.get("slug", ""),
+            )
+            if not wx["ok"]:
+                log(f"  🌤️ VETO MÉTÉO : {wx['reason']}")
+                continue
+            log(f"  🌤️ Météo OK : {wx['reason']}")
         # Enforce minimum absolu
         if d.get("amount_usdc", 0) < MIN_TRADE:
             d["amount_usdc"] = MIN_TRADE

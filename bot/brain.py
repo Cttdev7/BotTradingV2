@@ -227,7 +227,7 @@ Processus de décision :
 5. Si les conditions ne sont pas réunies → retourner [] et attendre le prochain cycle
 
 Règles non-négociables :
-- INTERDIT si prix YES ≥ 0.94 : frais Polymarket > marge restante, perte garantie même si signal fort
+- INTERDIT si prix YES ≥ 0.95 : trop proche de 1.0, marge quasi-nulle après frais Polymarket
 - INTERDIT si YES < 0.76 : signal insuffisant
 - MINIMUM ABSOLU 10 USDC par trade — pas de petites positions
 - Volume minimum : 1 000 USDC sur le marché (liquidité suffisante)
