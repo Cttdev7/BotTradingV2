@@ -3,7 +3,7 @@ agent_temperature_cloud.py — Bot température multi-villes (Railway + Supabase
 Tourne en continu sur Railway. Toutes les 15 minutes, pour chaque ville :
 - Analyse les options de température (J+0 si ouvert, sinon J+1)
 - Récupère la température max prévue via Open-Meteo
-- Enregistre les signaux >75% dans Supabase ({ville_id}_tracking)
+- Enregistre les signaux >82% dans Supabase ({ville_id}_tracking)
 - Vérifie les résolutions des marchés précédents
 - Met à jour les stats globales ({ville_id}_stats)
 Ajouter une ville = ajouter 1 entrée dans VILLES.
@@ -1000,7 +1000,7 @@ def analyser_strategie(db, villes):
         memoire = "Aucune analyse précédente — c'est la première."
 
     prompt = f"""Tu es un stratège IA dédié à un bot de trading sur Polymarket, spécialisé marchés météo température.
-Le bot track les options YES >75% sur "highest temperature in [ville] on [date]".
+Le bot track les options YES >82% sur "highest temperature in [ville] on [date]".
 Objectif : devenir rentable et exécuter de vrais trades.
 
 ════ MÉMOIRE — TES {len(past_analyses)} ANALYSES PRÉCÉDENTES ════
@@ -1009,8 +1009,9 @@ Objectif : devenir rentable et exécuter de vrais trades.
 ════ DONNÉES ACTUELLES ════
 - Signaux total : {len(all_tracking)} | Résolus : {len(resolus)} | En attente : {len(all_tracking)-len(resolus)}
 - Gagnés : {len(gagnes)} | Perdus : {len(perdus)} | Taux global : {taux_g}%
-- Villes actives : {', '.join(v['label'] for v in villes)}
-- Seuil actuel : 75% YES
+- Villes actives : {', '.join(v['label'] for v in villes if v['id'] not in VILLES_EXCLUES)}
+- Villes exclues (taux <70%) : {', '.join(VILLES_EXCLUES)}
+- Seuil actuel : 82% YES
 
 PERFORMANCE PAR VILLE
 {stats_ville}
@@ -1122,7 +1123,7 @@ def sync_wallet(db):
 def run():
     log("🌡️  Agent Température Multi-Villes démarré (Railway + Supabase)")
     log(f"   Villes : {', '.join(v['label'] for v in VILLES)}")
-    log(f"   Seuil : 75% YES | Scan : toutes les 15 min")
+    log(f"   Seuil : 82% YES | Scan : toutes les 15 min | Exclus : {', '.join(VILLES_EXCLUES)}")
     log("")
 
     while True:
@@ -1135,6 +1136,8 @@ def run():
             log(f"⚠️  Wallet: {e}")
 
         for ville in VILLES:
+            if ville["id"] in VILLES_EXCLUES:
+                continue
             try:
                 run_ville(db, ville)
             except Exception as e:
