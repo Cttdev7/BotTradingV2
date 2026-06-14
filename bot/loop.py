@@ -153,7 +153,7 @@ def _stats(history: list) -> str:
 # ── Stop-loss automatique ─────────────────────────────────────────────────────
 
 STOP_LOSS_PCT    = -0.15  # -15% → vente automatique
-TAKE_PROFIT_PRICE = 0.999  # YES ≥ 99.9% → vente automatique (lock profit)
+TAKE_PROFIT_PRICE = 0.99   # YES ≥ 99% → vente automatique (lock profit)
 
 def _get_current_yes_price(condition_id: str) -> float | None:
     """Récupère le prix YES actuel depuis le CLOB."""
