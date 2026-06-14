@@ -1,13 +1,20 @@
 """
 weather_validator.py — Vérifie la prévision météo avant tout trade YES.
 
-Avant d'acheter, on interroge Open-Meteo pour s'assurer que la prévision
-de température est compatible avec le seuil du marché Polymarket.
+Deux niveaux de vérification :
+- Jour J (aujourd'hui en heure locale) : regarde le max des heures RESTANTES
+  → si le pic de la journée est déjà passé et la temp ne peut plus monter, veto
+- Jour J+1 (demain) : regarde le max journalier (marge 3°C)
 """
 from __future__ import annotations
 import re
 import datetime
 import requests
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
 OPEN_METEO_FORECAST = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_GEO      = "https://geocoding-api.open-meteo.com/v1/search"
@@ -60,10 +67,57 @@ CITY_COORDS = {
     'munich':        (48.14,   11.58),
 }
 
+CITY_TZ = {
+    'chengdu':       'Asia/Shanghai',
+    'seoul':         'Asia/Seoul',
+    'hong-kong':     'Asia/Hong_Kong',
+    'nyc':           'America/New_York',
+    'london':        'Europe/London',
+    'tokyo':         'Asia/Tokyo',
+    'atlanta':       'America/New_York',
+    'seattle':       'America/Los_Angeles',
+    'miami':         'America/New_York',
+    'singapore':     'Asia/Singapore',
+    'madrid':        'Europe/Madrid',
+    'shanghai':      'Asia/Shanghai',
+    'los-angeles':   'America/Los_Angeles',
+    'guangzhou':     'Asia/Shanghai',
+    'mexico-city':   'America/Mexico_City',
+    'amsterdam':     'Europe/Amsterdam',
+    'paris':         'Europe/Paris',
+    'toronto':       'America/Toronto',
+    'chicago':       'America/Chicago',
+    'denver':        'America/Denver',
+    'houston':       'America/Chicago',
+    'taipei':        'Asia/Taipei',
+    'beijing':       'Asia/Shanghai',
+    'san-francisco': 'America/Los_Angeles',
+    'dallas':        'America/Chicago',
+    'wellington':    'Pacific/Auckland',
+    'chongqing':     'Asia/Shanghai',
+    'wuhan':         'Asia/Shanghai',
+    'ankara':        'Europe/Istanbul',
+    'moscow':        'Europe/Moscow',
+    'lucknow':       'Asia/Kolkata',
+    'istanbul':      'Europe/Istanbul',
+    'warsaw':        'Europe/Warsaw',
+    'milan':         'Europe/Rome',
+    'helsinki':      'Europe/Helsinki',
+    'karachi':       'Asia/Karachi',
+    'cape-town':     'Africa/Johannesburg',
+    'jeddah':        'Asia/Riyadh',
+    'shenzhen':      'Asia/Shanghai',
+    'busan':         'Asia/Seoul',
+    'qingdao':       'Asia/Shanghai',
+    'kuala-lumpur':  'Asia/Kuala_Lumpur',
+    'tel-aviv':      'Asia/Jerusalem',
+    'manila':        'Asia/Manila',
+    'munich':        'Europe/Berlin',
+}
+
 _MONTHS = {
-    'january':1, 'february':2, 'march':3, 'april':4,
-    'may':5, 'june':6, 'july':7, 'august':8,
-    'september':9, 'october':10, 'november':11, 'december':12,
+    'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
+    'july':7,'august':8,'september':9,'october':10,'november':11,'december':12,
 }
 
 
@@ -106,10 +160,10 @@ def _parse_date_from_slug(slug: str) -> datetime.date | None:
 
 def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
     """
-    Vérifie si la prévision Open-Meteo supporte un achat YES.
+    Vérifie si la prévision météo supporte un achat YES.
 
-    Logique : si la prévision est inférieure au seuil du marché (moins 3°C de marge),
-    la résolution YES est peu probable → trade bloqué.
+    Jour J  → regarde le max des heures restantes (heure locale) — marge 1°C
+    Jour J+1 → regarde le max journalier — marge 3°C
 
     Retourne {'ok': bool, 'reason': str, 'forecast': float | None}
     """
@@ -128,38 +182,99 @@ def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
     threshold = parsed['threshold']
     unit      = parsed['unit']
     sym       = '°F' if unit == 'fahrenheit' else '°C'
-    # Marge : 3°C ou 5.4°F — si prévision en dessous de (seuil - marge) → veto
-    margin    = 5.4 if unit == 'fahrenheit' else 3.0
+    lat, lon  = coords
+    tz_name   = CITY_TZ.get(city_slug)
+
+    # Détermine si le marché est pour aujourd'hui (heure locale de la ville)
+    local_now  = None
+    local_date = None
+    local_hour = None
+    if tz_name and ZoneInfo:
+        try:
+            local_now  = datetime.datetime.now(ZoneInfo(tz_name))
+            local_date = local_now.date()
+            local_hour = local_now.hour
+        except Exception:
+            pass
+
+    is_today = (local_date is not None and target_date == local_date)
 
     try:
-        r = requests.get(OPEN_METEO_FORECAST, params={
-            'latitude':         coords[0],
-            'longitude':        coords[1],
-            'daily':            'temperature_2m_max',
-            'temperature_unit': unit,
-            'timezone':         'UTC',
-            'start_date':       str(target_date),
-            'end_date':         str(target_date),
-        }, timeout=8)
-        temps = r.json().get('daily', {}).get('temperature_2m_max', [])
-        if not temps:
-            return {'ok': True, 'reason': 'Open-Meteo : aucune donnée — pas de veto', 'forecast': None}
-        forecast = float(temps[0])
+        if is_today:
+            # Prévision heure par heure → max des heures restantes
+            r = requests.get(OPEN_METEO_FORECAST, params={
+                'latitude':         lat,
+                'longitude':        lon,
+                'hourly':           'temperature_2m',
+                'temperature_unit': unit,
+                'timezone':         tz_name,
+                'start_date':       str(target_date),
+                'end_date':         str(target_date),
+            }, timeout=8)
+            data  = r.json()
+            times = data.get('hourly', {}).get('time', [])
+            temps = data.get('hourly', {}).get('temperature_2m', [])
+            if not temps:
+                return {'ok': True, 'reason': 'Open-Meteo : aucune donnée horaire — pas de veto', 'forecast': None}
+
+            # Filtre les heures restantes (≥ heure actuelle locale)
+            remaining = [
+                temps[i] for i, t in enumerate(times)
+                if int(t.split('T')[1][:2]) >= local_hour
+            ]
+            if not remaining:
+                return {'ok': True, 'reason': 'Plus d\'heures restantes aujourd\'hui — pas de veto', 'forecast': None}
+
+            forecast = max(remaining)
+            margin   = 1.8 if unit == 'fahrenheit' else 1.0
+
+            if forecast < threshold - margin:
+                return {
+                    'ok':       False,
+                    'forecast': forecast,
+                    'reason':   (
+                        f'{local_hour:02d}h00 heure locale — max restant {forecast:.1f}{sym} '
+                        f'< seuil {threshold}{sym} (marge -{margin}{sym}) → NO probable'
+                    ),
+                }
+            return {
+                'ok':       True,
+                'forecast': forecast,
+                'reason':   f'{local_hour:02d}h00 heure locale — max restant {forecast:.1f}{sym} ✓ seuil {threshold}{sym}',
+            }
+
+        else:
+            # Jour futur → max journalier
+            r = requests.get(OPEN_METEO_FORECAST, params={
+                'latitude':         lat,
+                'longitude':        lon,
+                'daily':            'temperature_2m_max',
+                'temperature_unit': unit,
+                'timezone':         'UTC',
+                'start_date':       str(target_date),
+                'end_date':         str(target_date),
+            }, timeout=8)
+            temps = r.json().get('daily', {}).get('temperature_2m_max', [])
+            if not temps:
+                return {'ok': True, 'reason': 'Open-Meteo : aucune donnée — pas de veto', 'forecast': None}
+
+            forecast = float(temps[0])
+            margin   = 5.4 if unit == 'fahrenheit' else 3.0
+
+            if forecast < threshold - margin:
+                return {
+                    'ok':       False,
+                    'forecast': forecast,
+                    'reason':   (
+                        f'Prévision J+1 {forecast:.1f}{sym} < seuil {threshold}{sym} '
+                        f'(marge -{margin}{sym}) → NO probable'
+                    ),
+                }
+            return {
+                'ok':       True,
+                'forecast': forecast,
+                'reason':   f'Prévision J+1 {forecast:.1f}{sym} ✓ seuil {threshold}{sym}',
+            }
+
     except Exception as e:
         return {'ok': True, 'reason': f'Open-Meteo erreur ({e}) — pas de veto', 'forecast': None}
-
-    if forecast < threshold - margin:
-        return {
-            'ok':       False,
-            'forecast': forecast,
-            'reason':   (
-                f'Prévision {forecast:.1f}{sym} < seuil {threshold}{sym} '
-                f'(marge -{margin}{sym}) → NO probable, trade bloqué'
-            ),
-        }
-
-    return {
-        'ok':       True,
-        'forecast': forecast,
-        'reason':   f'Prévision {forecast:.1f}{sym} ✓ seuil {threshold}{sym}',
-    }
