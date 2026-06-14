@@ -305,6 +305,10 @@ def run_cycle(bot_id: str = "polyedge"):
             return
         log(f"💰 Solde : ~${usdc:.2f} USDC | {len(markets)} marchés | {_stats(history)}")
 
+    # Enrichit chaque marché avec l'heure locale de la ville
+    for m in markets:
+        m['local_hour'] = weather_validator.get_city_local_hour(m.get('city', ''))
+
     # 4. Décision Claude
     if usdc < 10:
         log(f"💤 Solde insuffisant (${usdc:.2f} < $10) — aucun achat, en attente de résolution des trades")

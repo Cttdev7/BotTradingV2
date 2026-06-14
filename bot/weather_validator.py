@@ -121,6 +121,17 @@ _MONTHS = {
 }
 
 
+def get_city_local_hour(city_slug: str) -> int | None:
+    """Retourne l'heure locale actuelle dans la ville (0-23), ou None si inconnue."""
+    tz_name = CITY_TZ.get(city_slug)
+    if not tz_name or not ZoneInfo:
+        return None
+    try:
+        return datetime.datetime.now(ZoneInfo(tz_name)).hour
+    except Exception:
+        return None
+
+
 def _get_coords(city_slug: str):
     if city_slug in CITY_COORDS:
         return CITY_COORDS[city_slug]
@@ -198,15 +209,6 @@ def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
             pass
 
     is_today = (local_date is not None and target_date == local_date)
-
-    # Check heure locale : on ne trade le marché du jour qu'à partir de 16h
-    # (température max de la journée quasi-certaine, moins de risque)
-    if is_today and local_hour is not None and local_hour < 16:
-        return {
-            'ok':       False,
-            'forecast': None,
-            'reason':   f'Il est {local_hour:02d}h00 à {city_slug} — trop tôt, attendre 16h00 heure locale (temp max pas encore fixée)',
-        }
 
     try:
         if is_today:

@@ -161,7 +161,9 @@ def _format_markets(markets: list) -> tuple:
         city      = m.get("city", "?")
 
         if city != current_city:
-            lines.append(f"\n[{city.upper()}]")
+            local_hour = m.get("local_hour")
+            hour_str   = f" — {local_hour:02d}h00 heure locale" if local_hour is not None else ""
+            lines.append(f"\n[{city.upper()}{hour_str}]")
             current_city = city
 
         index_map[idx] = m.get("condition_id", "")
@@ -225,6 +227,11 @@ Processus de décision :
    - Signal exceptionnel (bots + Mistral convergent sur même ville, win rate >70%) : 25% du solde
 4. Vérifie les limites de risque : max 55% du solde total engagé
 5. Si les conditions ne sont pas réunies → retourner [] et attendre le prochain cycle
+
+Heure locale de la ville (indiquée entre crochets) :
+- Avant 16h00 : température max pas encore fixée → signal moins fiable, augmenter les exigences (signal ≥80%, ville Tier 1 uniquement)
+- Après 16h00 : pic de chaleur passé, température quasi-certaine → signal standard suffisant (≥75%)
+- Utilise cette information pour ajuster ta confiance, pas comme blocage absolu
 
 Règles non-négociables :
 - INTERDIT si prix YES ≥ 0.95 : trop proche de 1.0, marge quasi-nulle après frais Polymarket
