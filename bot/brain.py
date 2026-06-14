@@ -223,7 +223,7 @@ Processus de décision :
    - Signal standard (YES 0.76-0.87, win rate ville >50%) : 15% du solde, minimum absolu 10 USDC
    - Signal fort (YES 0.76-0.84, ville Tier 1, win rate >65%, analyse Mistral positive) : 20% du solde, min 15 USDC
    - Signal exceptionnel (bots + Mistral convergent sur même ville, win rate >70%) : 25% du solde
-4. Vérifie les limites de risque : max 4 positions ouvertes simultanément, max 55% du solde total engagé
+4. Vérifie les limites de risque : max 55% du solde total engagé
 5. Si les conditions ne sont pas réunies → retourner [] et attendre le prochain cycle
 
 Règles non-négociables :

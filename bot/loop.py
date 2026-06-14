@@ -73,7 +73,7 @@ def load_strategy(bot_id: str = "polyedge") -> dict:
             "version": 1,
             "prompt": (
                 "STRATÉGIE : acheter YES sur les marchés température où les bots d'analyse "
-                "ont détecté un signal fort. Qualité > quantité — max 4 positions ouvertes.\n\n"
+                "ont détecté un signal fort. Minimum 10 USDC par trade, autant de positions que les signaux le justifient.\n\n"
                 "Règle d'entrée :\n"
                 "- Un signal actif d'un bot d'analyse (YES ≥ 75%) EST une opportunité à évaluer\n"
                 "- Le prix YES actuel doit être entre 0.76 et 0.92\n"
