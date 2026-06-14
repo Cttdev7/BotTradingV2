@@ -93,7 +93,7 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
   - `{ville}_stats` — taux de réussite par ville
   - `{ville}_tracking` WHERE resultat IS NULL — signaux actifs
 - **Cycle** : toutes les 5 min, auto-amélioration de stratégie toutes les 6h
-- **Persistance** : `strategy.json` + `history.json` (fichiers locaux, ignorés par git)
+- **Persistance** : stratégie dans Supabase (`bot_strategies`), historique dans `trade_history`
 - **DRY_RUN=false** — trading réel actif depuis le 2026-06-11
 
 ## Architecture Polymarket SDK (important — a changé en 2026)
@@ -138,6 +138,12 @@ Ou double-cliquer sur les fichiers dans `scripts/`.
 Lancer : `~/.pyenv/versions/3.11.9/bin/python3 bot/derive_api_key.py`
 → Affiche les nouvelles valeurs API_KEY / API_SECRET / API_PASSPHRASE à coller dans `.env`
 (utilise EIP-712 L1 auth + nonces 0→4 pour trouver un slot libre)
+
+## Dashboard — page ProfitWeather (`page_bot.jsx`, bot.id === 'polyedge')
+- Onglet **Stratégie** : schéma visuel 7 étapes en haut (processus de décision), puis stratégie en lecture seule
+- La stratégie s'affiche depuis Supabase (`bot_strategies`) — **pas de textarea éditable** pour polyedge
+- Le toggle "Activer ProfitWeather" sauvegarde directement dans Supabase (pas de bouton Sauvegarder)
+- Les autres bots (Crypto, etc.) gardent la textarea éditable avec les exemples génériques
 
 ## Préférences utilisateur
 - L'utilisateur ne code pas — expliquer simplement
