@@ -488,6 +488,172 @@ Sois précis sur : marchés à cibler, probabilités d'entrée, taille des posit
     }
 
 
+def _format_markets_v2(markets: list) -> tuple:
+    """
+    Formate les marchés pour decide_v2 — trie par NO price DESC (meilleure opportunité NO d'abord).
+    """
+    if not markets:
+        return "Aucun marché disponible.", {}
+
+    import json as _json
+
+    def sort_key(m):
+        tokens = m.get("tokens", [])
+        no = next((t.get("price", 0) for t in tokens if t.get("outcome") == "No"), 0)
+        return -float(no)
+
+    sorted_markets = sorted(markets, key=sort_key)
+    lines = []
+    index_map = {}
+    current_city = None
+    idx = 0
+
+    for m in sorted_markets:
+        if idx >= 60:
+            break
+        tokens    = m.get("tokens", [])
+        yes_price = next((t.get("price", 0) for t in tokens if t.get("outcome") == "Yes"), 0)
+        no_price  = next((t.get("price", 0) for t in tokens if t.get("outcome") == "No"),  0)
+        if no_price < 0.60:
+            idx += 1
+            continue
+        volume    = float(m.get("volume") or 0)
+        city      = m.get("city", "?")
+
+        if city != current_city:
+            local_hour = m.get("local_hour")
+            hour_str   = f" — {local_hour:02d}h00 locale" if local_hour is not None else ""
+            lines.append(f"\n[{city.upper()}{hour_str}]")
+            current_city = city
+
+        index_map[idx] = m.get("condition_id", "")
+        market_line = (
+            f"  [#{idx}] {m.get('question','?')[:80]}\n"
+            f"    NO={no_price:.2f} | YES={yes_price:.2f} | Vol=${volume:,.0f}"
+        )
+        wx = m.get("weather_ctx")
+        if wx:
+            sym   = wx.get("sym", "°C")
+            parts = []
+            if "current_temp" in wx:
+                max_t = f" max_jour:{wx['max_today']:.1f}{sym}" if "max_today" in wx else ""
+                parts.append(f"actuel:{wx['current_temp']:.1f}{sym}{max_t}")
+            if "band_prob" in wx:
+                bp   = wx["band_prob"]
+                flag = "🎯" if bp < 15 else "✅" if bp < 30 else "⚠️"
+                parts.append(f"{flag}fourchette:{bp}% (NO évident si <30%)")
+            if wx.get("models"):
+                avg    = wx.get("models_avg", "?")
+                spread = wx.get("models_spread", "?")
+                parts.append(f"moy:{avg}{sym}·écart:{spread}{sym}")
+            if parts:
+                market_line += "\n    🌤️ " + " | ".join(parts)
+        lines.append(market_line)
+        idx += 1
+
+    return "\n".join(lines), index_map
+
+
+def decide_v2(strategy: dict, markets: list, history: list, balance_usdc: float) -> list:
+    """
+    ProfitWeather V2 : acheter NO sur marchés de fourchettes de température à 70–95 cents.
+    Logique : si la météo prédit clairement hors de la fourchette → NO vaut presque 1.
+    """
+    prompt_text = strategy.get("prompt", "").strip()
+    if not prompt_text:
+        return []
+
+    system_prompt = """Tu es ProfitWeather V2.0, un bot de trading sur Polymarket.
+
+STRATÉGIE : acheter NO sur les marchés météo de fourchettes de température US quand :
+  1. Le NO se trade à 70–95 cents (YES à 5–30 cents = température très improbable dans cette fourchette)
+  2. La météo confirme que la température sera CLAIREMENT hors de la fourchette
+
+LOGIQUE : les marchés Polymarket ont des fourchettes étroites (1-2°F). Si la prévision météo montre
+une temp à 80°F et la fourchette est 66-67°F, le NO à 0.80 est une évidence — il faut y mettre de l'argent.
+
+CRITÈRES D'ENTRÉE (tous obligatoires) :
+- NO price : 0.70–0.95 (sinon trop cheap = trop risqué, ou trop cher = marge faible)
+- fourchette: < 30% (peu de modèles ECMWF dans cette case → clairement hors range)
+- Écart évident entre temp actuelle/max_jour et les bornes de la fourchette
+- Volume minimum : 1 000 USDC
+
+TAILLE DES POSITIONS (solde disponible : sera fourni) :
+- Cas évident  (NO > 0.80, fourchette < 15%) : 25% du solde, min $20, max $1 400
+- Cas clair    (NO > 0.70, fourchette < 30%) : 15% du solde, min $20, max $500
+- JAMAIS plus de 40% du solde total engagé simultanément
+
+VILLES PRÉFÉRÉES (US) : san-francisco, miami, nyc, houston, atlanta, los-angeles, seattle, chicago, dallas
+Autres villes : acceptées si signal très évident (NO > 0.85, fourchette < 10%)
+
+INTERPRÉTATION DES DONNÉES MÉTÉO :
+- actuel:X°C/F   = température observée maintenant
+- max_jour:Y°F   = max prévu pour aujourd'hui
+- fourchette:Z%  = % des modèles ECMWF dans cette case exacte ← CLEF pour NO
+  → < 15% = NO évident (🎯) | 15-30% = NO clair (✅) | > 30% = trop risqué, ignorer
+
+Tu réponds UNIQUEMENT en JSON valide :
+[
+  {
+    "action": "buy",
+    "market_index": 3,
+    "outcome": "No",
+    "amount_usdc": 200.0,
+    "no_price": 0.82,
+    "reason": "SF prévision 80°F, fourchette 66-67°F clairement hors range, fourchette=8%, NO=0.82"
+  }
+]
+Si aucun cas évident → retourner []"""
+
+    markets_text, index_map = _format_markets_v2(markets)
+
+    user_message = f"""STRATÉGIE :
+{prompt_text}
+
+SOLDE DISPONIBLE : ${balance_usdc:.2f} USDC
+
+MARCHÉS MÉTÉO (triés par NO price décroissant) :
+{markets_text}
+
+HISTORIQUE DES 10 DERNIERS TRADES :
+{_format_history(history[-10:])}
+
+Identifie les cas où NO est évident (temp prévue clairement hors fourchette) et retourne tes décisions en JSON."""
+
+    response = get_client().messages.create(
+        model=config.CLAUDE_MODEL,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": user_message}],
+        system=system_prompt,
+    )
+
+    if not response.content:
+        return []
+    raw = response.content[0].text.strip()
+
+    start = raw.find("[")
+    end   = raw.rfind("]") + 1
+    if start == -1 or end == 0:
+        return []
+
+    try:
+        decisions = json.loads(raw[start:end])
+    except json.JSONDecodeError:
+        return []
+
+    resolved = []
+    for d in decisions:
+        if d.get("action") != "buy":
+            continue
+        idx = d.get("market_index")
+        if idx is None or idx not in index_map:
+            continue
+        d["condition_id"] = index_map[idx]
+        d["outcome"] = "No"
+        resolved.append(d)
+    return resolved
+
+
 def check_market_outcomes(trades: list) -> list:
     """
     Vérifie si les marchés ont résolu via le champ 'closed' de l'API Polymarket.

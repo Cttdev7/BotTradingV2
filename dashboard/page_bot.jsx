@@ -317,23 +317,58 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       {tab === 'strategie' && (
         <div style={{ maxWidth: 680 }}>
 
-          {/* ── Placeholder V2.0 ── */}
-          {bot.id === 'polyedge2' && (
-            <div style={{ marginBottom:'var(--gap)', padding:'20px 24px', borderRadius:'var(--r-md)',
-              background:'color-mix(in oklab,var(--accent) 8%,var(--bg-elev))',
-              border:'1px solid color-mix(in oklab,var(--accent) 25%,transparent)',
-              display:'flex', alignItems:'center', gap:16 }}>
-              <span style={{ fontSize:32 }}>🌤️</span>
-              <div>
-                <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
-                  ProfitWeather V2.0 — Stratégie à définir
+          {/* ── Schéma de réflexion ProfitWeather V2.0 ── */}
+          {bot.id === 'polyedge2' && (() => {
+            const steps = [
+              { icon:'📋', title:'Charge la stratégie', desc:'Supabase → bot_strategies (polyedge2)', sub:'Prompt + historique des versions auto-améliorées', color:'#6366f1' },
+              { icon:'🌦️', title:'Scrape Polymarket', desc:'45 villes · marchés J+0 et J+1 · fourchettes température', sub:'Filtre : NO price entre 60 et 99 cents', color:'#0ea5e9' },
+              { icon:'🌤️', title:'Enrichissement météo', desc:'Open-Meteo · ECMWF ensemble 51 membres · 4 modèles', sub:'band_prob = % des modèles dans la fourchette exacte ← clé V2', color:'#a855f7' },
+              { icon:'🤖', title:'Claude Haiku décide', desc:'Identifie les cas où temp prévue est clairement hors fourchette → JSON', sub:'NO 70–95 cents · fourchette ECMWF < 30% · villes US préférées', color:'#f59e0b', highlight:true },
+              { icon:'🛡️', title:'Filtres hard-coded', desc:'NO 0.70–0.95 · Min $20 · Max $1 400 · double vérification CLOB', sub:'Ces règles s\'appliquent après Claude — il ne peut pas les contourner', color:'#ef4444' },
+              { icon:'✅', title:'Ordre NO exécuté', desc:'polymarket-client · Polygon blockchain · wallet Safe', sub:'Stop-loss -20% automatique · Take-profit à 99% NO', color:'#22c55e' },
+            ];
+            return (
+              <div style={{ marginBottom:'var(--gap)' }}>
+                <div style={{ fontSize:11.5, fontWeight:700, color:'var(--text-3)', letterSpacing:'.07em', marginBottom:14, textTransform:'uppercase' }}>
+                  Processus de décision V2 — cycle toutes les 5 min
                 </div>
-                <div style={{ fontSize:13, color:'var(--text-3)', lineHeight:1.6 }}>
-                  Configure la stratégie dans l'onglet ci-dessous, puis active le bot.
+                <div style={{ display:'flex', flexDirection:'column' }}>
+                  {steps.map((step, i) => (
+                    <div key={i} style={{ display:'flex', gap:0 }}>
+                      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:44, flexShrink:0 }}>
+                        <div style={{ width:34, height:34, borderRadius:'50%', flexShrink:0, zIndex:1,
+                          background:`color-mix(in oklab,${step.color} 15%,var(--bg-elev))`,
+                          border:`2px solid color-mix(in oklab,${step.color} 60%,transparent)`,
+                          display:'grid', placeItems:'center', fontSize:15 }}>
+                          {step.icon}
+                        </div>
+                        {i < steps.length - 1 && (
+                          <div style={{ width:2, flex:1, minHeight:14,
+                            background:`linear-gradient(${step.color}80, ${steps[i+1].color}40)` }} />
+                        )}
+                      </div>
+                      <div style={{ flex:1, paddingLeft:12, paddingBottom: i < steps.length - 1 ? 10 : 0 }}>
+                        <div style={{ padding:'10px 14px', borderRadius:'var(--r-md)',
+                          background: step.highlight
+                            ? `color-mix(in oklab,${step.color} 10%,var(--bg-elev))`
+                            : 'var(--bg-elev)',
+                          border:`1px solid ${step.highlight
+                            ? `color-mix(in oklab,${step.color} 50%,transparent)`
+                            : 'var(--separator)'}` }}>
+                          <div style={{ fontSize:13.5, fontWeight:700,
+                            color: step.highlight ? step.color : 'var(--text)', marginBottom:2 }}>
+                            {step.title}
+                          </div>
+                          <div style={{ fontSize:12.5, color:'var(--text-2)', marginBottom:3 }}>{step.desc}</div>
+                          <div style={{ fontSize:11.5, color:'var(--text-3)', lineHeight:1.5 }}>{step.sub}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ── Schéma de réflexion ProfitWeather ── */}
           {bot.id === 'polyedge' && (() => {
