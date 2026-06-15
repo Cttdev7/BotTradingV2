@@ -211,6 +211,7 @@ function App() {
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} transactions={liveActivity} />;
+  else if (nav.page === 'bot' && bot && bot.id === 'deko') content = <window.DekoPage onBack={() => go('dashboard')} />;
   else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} liveActivity={liveActivity} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
   else if (nav.page === 'stratege') content = <window.StratègePage onBack={() => go('dashboard')} />;
