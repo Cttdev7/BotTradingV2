@@ -443,6 +443,26 @@ def run_cycle(bot_id: str = "polyedge"):
             continue
         log(f"  ✅ Prix stable : T1={price_t1:.3f} → T2={price_t2:.3f} — OK")
         d["yes_price"] = price_t2
+        # Vérification température actuelle vs fourchette du marché
+        # Si la temp observée maintenant dépasse déjà la borne haute → case impossible
+        if mkt:
+            wx_ctx    = mkt.get("weather_ctx", {})
+            curr_temp = wx_ctx.get("current_temp")
+            threshold = float(d.get("yes_price", 0) or 0)  # pas le seuil mais on parse la question
+            mkt_q     = mkt.get("question", "")
+            import re as _re
+            m_thresh  = _re.search(r'(\d+(?:\.\d+)?)\s*°([CF])', mkt_q)
+            if curr_temp is not None and m_thresh:
+                band_lower = float(m_thresh.group(1))
+                band_width = 2.0 if m_thresh.group(2).upper() == 'F' else 1.0
+                band_upper = band_lower + band_width
+                if curr_temp >= band_upper + 0.5:
+                    log(f"  🚫 Temp actuelle {curr_temp:.1f}° > borne haute {band_upper:.0f}° — case impossible, annulé")
+                    continue
+                if curr_temp >= band_lower:
+                    log(f"  ✅ Temp actuelle {curr_temp:.1f}° dans la fourchette [{band_lower:.0f}-{band_upper:.0f}°] — parfait")
+                else:
+                    log(f"  ℹ️  Temp actuelle {curr_temp:.1f}° sous la fourchette [{band_lower:.0f}-{band_upper:.0f}°] — peut encore monter")
         # Filtre probabilité de fourchette ECMWF — protection anti mauvaise case
         # band_prob = % des 51 modèles qui tombent exactement dans la fourchette du marché
         BAND_PROB_MIN = 35  # min 35% = 18/51 modèles dans la bonne fourchette
