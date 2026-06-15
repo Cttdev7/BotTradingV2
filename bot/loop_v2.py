@@ -467,8 +467,9 @@ def run_cycle():
     open_cids = {t.get("condition_id") for t in history if t.get("pnl") is None}
     decisions = [d for d in decisions if d.get("condition_id") not in open_cids]
 
-    market_lookup = {m["condition_id"]: m for m in candidates}
-    total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    market_lookup  = {m["condition_id"]: m for m in candidates}
+    total_exposed  = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    traded_cities  = set()  # villes déjà tradées dans CE cycle
 
     for d in decisions:
         if d.get("action") != "buy" or d.get("outcome") != "No":
@@ -477,6 +478,12 @@ def run_cycle():
         cid       = d.get("condition_id", "")
         certainty = d.get("certainty", "low")
         mkt       = market_lookup.get(cid, {})
+        city      = mkt.get("city", "")
+
+        # 1 seule position par ville par cycle
+        if city and city in traded_cities:
+            log(f"  🚫 Déjà 1 position sur {city} ce cycle — ignoré")
+            continue
 
         # Boost certitude si sailor82 est aussi sur ce trade
         if mkt.get("_deko"):
@@ -547,7 +554,9 @@ def run_cycle():
             }
             insert_trade(trade)
             total_exposed += amount
-            usdc -= amount  # solde réel décrémenté pour _calc_bet des trades suivants
+            usdc -= amount
+            if city:
+                traded_cities.add(city)
             log(f"  ✅ Enregistré | Exposition totale : ${total_exposed:.2f}/{usdc*MAX_EXPOSURE_PCT:.2f}")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
