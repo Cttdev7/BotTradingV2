@@ -128,12 +128,14 @@ def load_history() -> list:
 
 def insert_trade(trade: dict):
     try:
-        requests.post(
+        r = requests.post(
             f"{SB_URL}/rest/v1/trade_history",
             json=trade,
             headers={**_sb_headers(), "Prefer": "return=minimal"},
             timeout=5,
         )
+        if r.status_code not in (200, 201):
+            log(f"⚠️  insert_trade erreur {r.status_code} : {r.text[:200]}")
     except Exception as e:
         log(f"⚠️  insert_trade : {e}")
 
