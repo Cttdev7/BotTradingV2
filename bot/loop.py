@@ -21,6 +21,7 @@ import json
 import uuid
 import datetime
 import requests
+from concurrent.futures import ThreadPoolExecutor
 import pm_api as polymarket
 import brain
 import trader
@@ -341,7 +342,28 @@ def run_cycle(bot_id: str = "polyedge"):
     for m in markets:
         m['local_hour'] = weather_validator.get_city_local_hour(m.get('city', ''))
 
-    # 4. Décision Claude
+    # 4. Enrichissement météo complet (ensemble + multi-modèles + temp actuelle)
+    # Cache 30 min par ville — coût API minimal même à cycle court
+    def _enrich_weather(m):
+        try:
+            ctx = weather_validator.get_rich_weather_context(
+                city_slug=m.get('city', ''),
+                question=m.get('question', ''),
+                slug=m.get('slug', ''),
+            )
+            if ctx:
+                m['weather_ctx'] = ctx
+        except Exception:
+            pass
+        return m
+
+    log("🌤️  Enrichissement météo (ensemble ECMWF + 4 modèles)…")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        markets = list(pool.map(_enrich_weather, markets))
+    wx_count = sum(1 for m in markets if m.get('weather_ctx'))
+    log(f"   {wx_count}/{len(markets)} marchés enrichis")
+
+    # 5. Décision Claude
     if usdc < 10:
         log(f"💤 Solde insuffisant (${usdc:.2f} < $10) — aucun achat, en attente de résolution des trades")
         return
@@ -387,33 +409,40 @@ def run_cycle(bot_id: str = "polyedge"):
             log(f"  🚫 Bloqué ({mkt.get('city')}) — ville blacklistée")
             continue
         # Vérification prix en temps réel + détection de crash
-        # 1er sample → attente 4s → 2ème sample : si la courbe descend → on n'achète pas
+        # T1 → attente 4s → T2 : vérifie limites à CHAQUE sample
         cid = d.get("condition_id", "")
         price_t1 = _get_current_yes_price(cid)
-        if price_t1 is not None:
-            if price_t1 < MIN_PRICE:
-                log(f"  🚫 Prix T1 {price_t1:.3f} < {MIN_PRICE} — marché crashé, annulé")
-                continue
-            if price_t1 >= MAX_PRICE:
-                log(f"  🚫 Prix T1 {price_t1:.3f} ≥ {MAX_PRICE} — trop cher, annulé")
-                continue
-            if yes_price > 0 and abs(price_t1 - yes_price) / yes_price > 0.10:
-                log(f"  🚫 Écart trop élevé : Claude estimait {yes_price:.3f}, réel {price_t1:.3f} ({abs(price_t1-yes_price)/yes_price*100:.0f}%) — annulé")
-                continue
-            # 2ème sample 4 secondes plus tard pour détecter si le prix descend
-            time.sleep(4)
-            price_t2 = _get_current_yes_price(cid)
-            if price_t2 is not None:
-                drop = price_t1 - price_t2
-                drop_pct = drop / price_t1 * 100
-                if drop > 0.01:  # baisse de plus de 1 centime = tendance baissière
-                    log(f"  🚫 Crash détecté : {price_t1:.3f} → {price_t2:.3f} (-{drop_pct:.1f}% en 4s) — annulé")
-                    continue
-                log(f"  ✅ Prix stable : T1={price_t1:.3f} → T2={price_t2:.3f} — OK")
-                d["yes_price"] = price_t2
-            else:
-                log(f"  ✅ Prix T1 confirmé : {price_t1:.3f}")
-                d["yes_price"] = price_t1
+        if price_t1 is None:
+            # API CLOB inaccessible — on ne peut pas vérifier le prix réel → annulé
+            log(f"  🚫 CLOB inaccessible — impossible de vérifier le prix, annulé")
+            continue
+        if price_t1 < MIN_PRICE:
+            log(f"  🚫 Prix T1 {price_t1:.3f} < {MIN_PRICE} — marché crashé, annulé")
+            continue
+        if price_t1 >= MAX_PRICE:
+            log(f"  🚫 Prix T1 {price_t1:.3f} ≥ {MAX_PRICE} — trop cher, annulé")
+            continue
+        if yes_price > 0 and abs(price_t1 - yes_price) / yes_price > 0.10:
+            log(f"  🚫 Écart trop élevé : Claude estimait {yes_price:.3f}, réel {price_t1:.3f} ({abs(price_t1-yes_price)/yes_price*100:.0f}%) — annulé")
+            continue
+        # 2ème sample 4 secondes plus tard — re-vérifie aussi les limites
+        time.sleep(4)
+        price_t2 = _get_current_yes_price(cid)
+        if price_t2 is None:
+            log(f"  ⚠️  T2 inaccessible — utilise T1={price_t1:.3f}")
+            price_t2 = price_t1
+        if price_t2 < MIN_PRICE:
+            log(f"  🚫 Prix T2 {price_t2:.3f} < {MIN_PRICE} — a crashé entre T1 et T2, annulé")
+            continue
+        if price_t2 >= MAX_PRICE:
+            log(f"  🚫 Prix T2 {price_t2:.3f} ≥ {MAX_PRICE} — a monté entre T1 et T2, annulé")
+            continue
+        drop = price_t1 - price_t2
+        if drop > 0.01:
+            log(f"  🚫 Crash détecté : {price_t1:.3f} → {price_t2:.3f} (-{drop/price_t1*100:.1f}% en 4s) — annulé")
+            continue
+        log(f"  ✅ Prix stable : T1={price_t1:.3f} → T2={price_t2:.3f} — OK")
+        d["yes_price"] = price_t2
         # Validation météo Open-Meteo — limite le risque avant exécution
         if mkt:
             wx = weather_validator.validate_yes_trade(
