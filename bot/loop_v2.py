@@ -46,7 +46,7 @@ MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
 MAX_MODELS_SPREAD = 12.0    # °F — si les modèles ECMWF divergent de plus de 12°F → trop incertain
 MIN_VOLUME        = 1_000   # volume minimum du marché USDC
 
-NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique
+NO_STOP_LOSS_PCT  = -0.50   # -50% → vente automatique
 NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99% → lock profit (quasi-résolution)
 
 # Villes US fiables (météo prévisible en été)
@@ -469,7 +469,6 @@ def run_cycle():
 
     market_lookup  = {m["condition_id"]: m for m in candidates}
     total_exposed  = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
-    traded_cities  = set()  # villes déjà tradées dans CE cycle
 
     for d in decisions:
         if d.get("action") != "buy" or d.get("outcome") != "No":
@@ -479,11 +478,6 @@ def run_cycle():
         certainty = d.get("certainty", "low")
         mkt       = market_lookup.get(cid, {})
         city      = mkt.get("city", "")
-
-        # 1 seule position par ville par cycle
-        if city and city in traded_cities:
-            log(f"  🚫 Déjà 1 position sur {city} ce cycle — ignoré")
-            continue
 
         # Boost certitude si sailor82 est aussi sur ce trade
         if mkt.get("_deko"):
@@ -555,8 +549,6 @@ def run_cycle():
             insert_trade(trade)
             total_exposed += amount
             usdc -= amount
-            if city:
-                traded_cities.add(city)
             log(f"  ✅ Enregistré | Exposition totale : ${total_exposed:.2f}/{usdc*MAX_EXPOSURE_PCT:.2f}")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
