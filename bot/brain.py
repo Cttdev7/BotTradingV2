@@ -592,15 +592,23 @@ INTERPRÉTATION DES DONNÉES MÉTÉO :
 - fourchette:Z%  = % des modèles ECMWF dans cette case exacte ← CLEF pour NO
   → < 15% = NO évident (🎯) | 15-30% = NO clair (✅) | > 30% = trop risqué, ignorer
 
+NIVEAUX DE CERTITUDE (tu dois les évaluer pour chaque trade) :
+- "high"   : band_prob < 10% ET écart prévision/fourchette > 10°F → cas évident
+- "medium" : band_prob < 20% ET écart > 5°F → cas clair
+- "low"    : band_prob < 30% ET écart > 3°F → cas acceptable
+
+⚠️  Ne PAS inclure "amount_usdc" — la mise est calculée automatiquement selon le solde.
+⚠️  Ne PAS jouer les ranges proches de la prévision (< 3°F d'écart) — c'est là que sailor82 a perdu $2 500.
+
 Tu réponds UNIQUEMENT en JSON valide :
 [
   {
     "action": "buy",
     "market_index": 3,
     "outcome": "No",
-    "amount_usdc": 200.0,
     "no_price": 0.82,
-    "reason": "SF prévision 80°F, fourchette 66-67°F clairement hors range, fourchette=8%, NO=0.82"
+    "certainty": "high",
+    "reason": "SF prévu 80°F, fourchette 66-67°F → 14°F d'écart, band_prob=5% → NO évident"
   }
 ]
 Si aucun cas évident → retourner []"""

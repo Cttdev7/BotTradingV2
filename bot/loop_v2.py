@@ -3,14 +3,17 @@ from __future__ import annotations
 """
 loop_v2.py — ProfitWeather V2.0
 
-Stratégie sailor82 : acheter NO sur les marchés de fourchettes de température US
-quand NO se trade à 70–95 cents.
+Stratégie inspirée de sailor82 ($11→$5 272 en 3 semaines, win rate 86%) :
+- Acheter NO sur fourchettes de température clairement hors de la prévision météo
+- Améliorations vs sailor82 : ECMWF ensemble, filtre canicule, timing local, mises % du solde
 
-Logique : si la météo prédit clairement hors d'une fourchette étroite, NO vaut presque 1.
-Ex : SF prévu à 80°F, fourchette 66-67°F → NO à 0.82 = argent quasi-gratuit.
+Règle capitale des mises :
+  bet = 2–5% du solde selon certitude → 9 gains à 22% couvrent 1 perte à 100%
+  Jamais plus de 6% par trade, jamais plus de 25% du solde total exposé.
 """
 
 import time
+import re
 import os
 import json
 import uuid
@@ -31,14 +34,26 @@ IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
 SB_KEY = os.getenv("SUPABASE_KEY", "")
 
-# Limites hard-codées pour NO trades
-MIN_NO_PRICE  = 0.70   # NO minimum 70 cents
-MAX_NO_PRICE  = 0.95   # NO maximum 95 cents (marge trop faible au-dessus)
-MIN_TRADE     = 20.0   # $20 minimum par trade
-MAX_TRADE     = 1400.0 # $1 400 maximum par trade
+# ── Règles hard-codées ────────────────────────────────────────────────────────
 
-NO_STOP_LOSS_PCT   = -0.20  # -20% → vente automatique
-NO_TAKE_PROFIT     = 0.99   # NO ≥ 99% → lock profit
+MIN_NO_PRICE      = 0.70    # NO minimum 70¢
+MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (marge trop faible au-dessus)
+MAX_EXPOSURE_PCT  = 0.25    # max 25% du solde total exposé simultanément
+MAX_BET_PCT       = 0.06    # jamais plus de 6% du solde sur 1 trade
+MIN_HOUR_J0       = 14      # marchés J+0 : seulement après 14h heure locale
+MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
+MAX_ENSEMBLE_PROB = 40      # si ECMWF prédit >40% de chance dans ce range → INTERDIT
+MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
+MIN_VOLUME        = 1_000   # volume minimum du marché USDC
+
+NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique
+NO_TAKE_PROFIT    = 0.99    # NO ≥ 99% → lock profit
+
+# Villes US fiables (météo prévisible en été)
+PREFERRED_CITIES  = {"miami", "houston", "dallas", "atlanta", "los-angeles",
+                     "san-francisco", "seattle", "chicago", "denver"}
+# Villes à exclure si canicule ECMWF > 35% (été chaud imprévisible)
+HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami"}
 
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 
@@ -65,11 +80,10 @@ def load_strategy() -> dict:
         "enabled": True,
         "version": 1,
         "prompt": (
-            "STRATÉGIE V2 : acheter NO sur les marchés de fourchettes de température US "
-            "quand NO est à 70–95 cents et que la météo confirme que la temp sera hors range.\n\n"
-            "Critères : NO 0.70–0.95 · fourchette ECMWF < 30% · écart évident entre prévision et fourchette.\n"
-            "Taille : 15–25% du solde selon certitude. Min $20, max $1 400.\n"
-            "Villes US préférées : san-francisco, miami, nyc, houston, atlanta, los-angeles."
+            "Acheter NO sur les fourchettes de température US clairement hors de la prévision météo.\n"
+            "Critères : NO 0.70–0.95 · band_prob < 30% · écart prévision/fourchette ≥ 3°F · après 14h locale.\n"
+            "Éviter : NYC/Houston/Austin si canicule possible · ranges proches de la prévision.\n"
+            "Mises : calculées automatiquement en % du solde selon certitude."
         ),
     }
 
@@ -130,15 +144,11 @@ def _stats(history: list) -> str:
     wins   = len([t for t in history if (t.get("pnl") or 0) > 0])
     losses = len([t for t in history if (t.get("pnl") or 0) < 0])
     pnl    = sum(t.get("pnl") or 0 for t in history)
-    return f"{wins}W / {losses}L / P&L total ${pnl:.2f}"
+    return f"{wins}W / {losses}L / P&L ${pnl:.2f}"
 
 def _get_current_no_price(condition_id: str) -> float | None:
-    """Récupère le prix NO actuel depuis le CLOB."""
     try:
-        r = requests.get(
-            f"https://clob.polymarket.com/markets/{condition_id}",
-            timeout=8,
-        )
+        r = requests.get(f"https://clob.polymarket.com/markets/{condition_id}", timeout=8)
         if r.status_code != 200:
             return None
         for token in r.json().get("tokens", []):
@@ -148,7 +158,35 @@ def _get_current_no_price(condition_id: str) -> float | None:
         pass
     return None
 
-# ── Stop-loss / Take-profit sur positions NO ──────────────────────────────────
+def _calc_bet(usdc: float, certainty: str) -> float:
+    """
+    Mise en % du solde selon la certitude.
+
+    Math : NO moyen à 82¢ → gain 22% par win.
+    9 wins × 22% × mise = 198% ≫ 100% perte → les 9 gains couvrent toujours 1 perte.
+    On reste conservateur : max 6% du solde par trade, max 25% total exposé.
+
+      high   (band_prob<10%, écart>10°F) → 5% du solde
+      medium (band_prob<20%, écart>5°F)  → 3% du solde
+      low    (band_prob<30%, écart>3°F)  → 2% du solde
+    """
+    pct = {"high": 0.05, "medium": 0.03, "low": 0.02}.get(certainty, 0.025)
+    raw = usdc * pct
+    min_bet = max(1.0, usdc * 0.015)   # au moins 1.5% du solde (ou $1)
+    max_bet = usdc * MAX_BET_PCT        # jamais plus de 6% du solde
+    return round(max(min_bet, min(raw, max_bet)), 2)
+
+def _parse_range_bounds(question: str) -> tuple[float, float] | None:
+    """Extrait les bornes (low, high) depuis 'be between X and Y' ou 'X-YF'."""
+    m = re.search(r'between\s+([\d.]+)\s+and\s+([\d.]+)', question, re.I)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    m = re.search(r'([\d.]+)[–\-]([\d.]+)\s*[°]?[FC]', question)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    return None
+
+# ── Stop-loss / Take-profit ───────────────────────────────────────────────────
 
 def check_stop_loss(history: list):
     open_trades = [t for t in history if t.get("pnl") is None]
@@ -156,10 +194,11 @@ def check_stop_loss(history: list):
         return
 
     for t in open_trades:
+        if t.get("sym", "").lower() != "no":
+            continue
         entry_price = float(t.get("price") or 0)
         if entry_price <= 0:
             continue
-
         current_price = _get_current_no_price(t.get("condition_id", ""))
         if current_price is None:
             continue
@@ -167,66 +206,128 @@ def check_stop_loss(history: list):
         amount_usdc = float(t.get("amount_usdc") or 0)
         pnl_pct = (current_price - entry_price) / entry_price
 
-        # Take-profit : NO ≥ 99%
         if current_price >= NO_TAKE_PROFIT:
             tokens_held = amount_usdc / entry_price
             pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
-            log(f"  💰 TAKE-PROFIT NO {t.get('condition_id','')[:12]}… | prix {current_price:.4f} | P&L estimé +${pnl_usd:.2f}")
+            log(f"  💰 TAKE-PROFIT NO {t.get('condition_id','')[:12]}… | {current_price:.4f} | +${pnl_usd:.2f}")
             if current_price >= 1.0:
                 update_trade_pnl(t["id"], pnl_usd)
-                log(f"    ✅ Résolu à 1.0 — P&L enregistré +${pnl_usd:.2f}")
             else:
                 try:
                     result = trader.place_market_order(
-                        condition_id=t["condition_id"],
-                        outcome="No",
-                        side="sell",
-                        amount_usdc=tokens_held,
+                        condition_id=t["condition_id"], outcome="No",
+                        side="sell", amount_usdc=tokens_held,
                     )
-                    if result.get("ok") or result.get("dry_run"):
-                        taking   = float(result.get("taking_amount") or 0)
-                        real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
-                        update_trade_pnl(t["id"], real_pnl)
-                        log(f"    ✅ Vendu — P&L réel +${real_pnl:.2f}")
+                    taking   = float(result.get("taking_amount") or 0)
+                    real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
+                    update_trade_pnl(t["id"], real_pnl)
+                    log(f"    ✅ Vendu +${real_pnl:.2f}")
                 except Exception as e:
-                    err = str(e)
-                    if "resting liquidity" in err.lower() or "not enough balance" in err.lower():
+                    if "resting liquidity" in str(e).lower():
                         update_trade_pnl(t["id"], pnl_usd)
-                        log(f"    ✅ Marché fermé — P&L enregistré +${pnl_usd:.2f}")
                     else:
-                        log(f"    ❌ Erreur vente take-profit : {e}")
+                        log(f"    ❌ {e}")
             continue
 
         if pnl_pct >= NO_STOP_LOSS_PCT:
             continue
 
-        # Stop-loss déclenché
         tokens_held = amount_usdc / entry_price
         pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
-        log(f"  🛑 STOP-LOSS NO {t.get('condition_id','')[:12]}… | entrée {entry_price:.3f} → actuel {current_price:.3f} ({pnl_pct*100:+.1f}%) | P&L estimé ${pnl_usd:.2f}")
+        log(f"  🛑 STOP-LOSS NO {t.get('condition_id','')[:12]}… | {entry_price:.3f}→{current_price:.3f} ({pnl_pct*100:+.1f}%) | ${pnl_usd:.2f}")
         if current_price <= 0.005:
             update_trade_pnl(t["id"], pnl_usd)
-            log(f"    ✅ Résolu à YES=1 — NO perdu, P&L ${pnl_usd:.2f}")
             continue
         try:
             result = trader.place_market_order(
-                condition_id=t["condition_id"],
-                outcome="No",
-                side="sell",
-                amount_usdc=tokens_held,
+                condition_id=t["condition_id"], outcome="No",
+                side="sell", amount_usdc=tokens_held,
             )
-            if result.get("ok") or result.get("dry_run"):
-                taking   = float(result.get("taking_amount") or 0)
-                real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
-                update_trade_pnl(t["id"], real_pnl)
-                log(f"    ✅ Vendu — P&L réel ${real_pnl:.2f}")
+            taking   = float(result.get("taking_amount") or 0)
+            real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
+            update_trade_pnl(t["id"], real_pnl)
+            log(f"    ✅ Vendu ${real_pnl:.2f}")
         except Exception as e:
-            err = str(e)
-            if "resting liquidity" in err.lower() or "not enough balance" in err.lower():
+            if "resting liquidity" in str(e).lower():
                 update_trade_pnl(t["id"], pnl_usd)
-                log(f"    ✅ Marché fermé — perte enregistrée ${pnl_usd:.2f}")
             else:
-                log(f"    ❌ Erreur stop-loss : {e}")
+                log(f"    ❌ {e}")
+
+# ── Filtres pré-Claude ────────────────────────────────────────────────────────
+
+def _prefilter(markets: list, history: list, usdc: float) -> list:
+    """
+    Applique les filtres hard-codés AVANT de passer à Claude.
+    Retourne uniquement les marchés qui méritent d'être analysés.
+    """
+    open_cids    = {t.get("condition_id") for t in history if t.get("pnl") is None}
+    open_cities  = {t.get("city", "") for t in history if t.get("pnl") is None}
+    total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+
+    kept = []
+    for m in markets:
+        cid   = m.get("condition_id", "")
+        city  = m.get("city", "")
+        q     = m.get("question", "")
+        vol   = float(m.get("volume") or 0)
+        tokens  = m.get("tokens", [])
+        no_price = next((t.get("price", 0) for t in tokens if t.get("outcome") == "No"), 0)
+        local_hour = m.get("local_hour")
+        day_offset = m.get("day_offset", 0)
+        wx   = m.get("weather_ctx", {})
+
+        # Déjà en position ou ville déjà jouée aujourd'hui
+        if cid in open_cids:
+            continue
+        if city in open_cities:
+            continue
+
+        # Exposition totale dépassée
+        if total_exposed >= usdc * MAX_EXPOSURE_PCT:
+            log(f"  ⛔ Exposition max atteinte ({total_exposed:.0f}$ / {usdc*MAX_EXPOSURE_PCT:.0f}$)")
+            break
+
+        # Volume minimum
+        if vol < MIN_VOLUME:
+            continue
+
+        # Prix NO dans la zone cible
+        if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
+            continue
+
+        # Timing : marchés J+0 seulement après 14h locale
+        if day_offset == 0 and local_hour is not None and local_hour < MIN_HOUR_J0:
+            continue
+
+        # band_prob trop élevé → trop probable d'être dans ce range
+        band_prob = wx.get("band_prob")
+        if band_prob is not None and band_prob > MAX_BAND_PROB:
+            continue
+
+        # Filtre canicule : si ECMWF prédit >MAX_ENSEMBLE_PROB% d'atteindre un range chaud
+        ensemble_prob = wx.get("ensemble_prob")
+        if city in HEATWAVE_RISK_CITIES and ensemble_prob is not None and ensemble_prob > MAX_ENSEMBLE_PROB:
+            log(f"  🌡️  Canicule détectée {city} (ensemble_prob={ensemble_prob}%) — ignoré")
+            continue
+
+        # Écart entre prévision météo et fourchette du marché
+        forecast_mean = wx.get("models_avg") or wx.get("current_temp")
+        if forecast_mean is not None:
+            bounds = _parse_range_bounds(q)
+            if bounds:
+                low, high = bounds
+                gap = min(abs(forecast_mean - low), abs(forecast_mean - high))
+                if gap < MIN_FORECAST_GAP:
+                    continue   # trop proche du range → trop risqué
+                m["_gap"] = gap  # garde pour le sizing
+            else:
+                m["_gap"] = 0
+        else:
+            m["_gap"] = 0
+
+        kept.append(m)
+
+    return kept
 
 # ── Cycle principal ───────────────────────────────────────────────────────────
 
@@ -235,44 +336,38 @@ def run_cycle():
 
     strategy = load_strategy()
     if not strategy.get("enabled"):
-        log("Bot V2 désactivé — active-le dans le dashboard")
+        log("Bot V2 désactivé")
         return
     if not strategy.get("prompt", "").strip():
         log("Aucun prompt — configure la stratégie dans le dashboard")
         return
 
-    history     = load_history()
+    # Résolution des trades ouverts
+    history = load_history()
     open_trades = [t for t in history if t.get("pnl") is None]
     if open_trades:
-        log(f"Vérification outcomes de {len(open_trades)} trades ouverts…")
+        log(f"Vérification {len(open_trades)} trades ouverts…")
         updated = brain.check_market_outcomes(history)
         for t_new in updated:
             t_old = next((t for t in history if t.get("id") == t_new.get("id")), None)
             if t_old and t_old.get("pnl") is None and t_new.get("pnl") is not None:
                 update_trade_pnl(t_new["id"], t_new["pnl"])
-                log(f"  ✅ Trade {t_new['id'][:8]}… résolu — P&L ${t_new['pnl']:.2f}")
+                log(f"  ✅ {t_new['id'][:8]}… résolu — P&L ${t_new['pnl']:.2f}")
         history = updated
 
-    log(f"🛡️  Vérification stop-loss ({NO_STOP_LOSS_PCT*100:.0f}%)…")
+    # Stop-loss
+    log(f"🛡️  Stop-loss ({NO_STOP_LOSS_PCT*100:.0f}%)…")
     check_stop_loss(history)
     history = load_history()
 
+    # Marchés Polymarket
     try:
         markets = polymarket.get_weather_markets()
     except Exception as e:
-        log(f"Erreur marchés Polymarket : {e}")
+        log(f"Erreur marchés : {e}")
         return
 
-    # Filtre : garde uniquement les marchés avec NO entre 60-99 cents
-    markets_no = []
-    for m in markets:
-        tokens   = m.get("tokens", [])
-        no_price = next((t.get("price", 0) for t in tokens if t.get("outcome") == "No"), 0)
-        if 0.60 <= no_price <= 0.99:
-            markets_no.append(m)
-
-    log(f"📊 {len(markets_no)}/{len(markets)} marchés avec NO > 60 cents")
-
+    # Solde
     usdc = float(os.getenv("BALANCE_USDC", "0"))
     if usdc < 1:
         try:
@@ -283,18 +378,19 @@ def run_cycle():
     if trader.DRY_RUN:
         if usdc < 1:
             usdc = 100.0
-        log(f"[SIMULATION] Solde fictif ${usdc:.2f} | {_stats(history)}")
+        log(f"[SIM] Solde fictif ${usdc:.2f} | {_stats(history)}")
     else:
         if usdc < 1:
-            log(f"⚠️  Solde illisible — cycle annulé")
+            log("⚠️  Solde illisible — cycle annulé")
             return
-        log(f"💰 Solde : ~${usdc:.2f} USDC | {_stats(history)}")
+        log(f"💰 ${usdc:.2f} USDC | {_stats(history)}")
 
-    # Enrichissement météo
-    for m in markets_no:
+    # Heure locale par ville
+    for m in markets:
         m['local_hour'] = weather_validator.get_city_local_hour(m.get('city', ''))
 
-    def _enrich_weather(m):
+    # Enrichissement météo
+    def _enrich(m):
         try:
             ctx = weather_validator.get_rich_weather_context(
                 city_slug=m.get('city', ''),
@@ -309,19 +405,26 @@ def run_cycle():
 
     log("🌤️  Enrichissement météo…")
     with ThreadPoolExecutor(max_workers=8) as pool:
-        markets_no = list(pool.map(_enrich_weather, markets_no))
-    wx_count = sum(1 for m in markets_no if m.get('weather_ctx'))
-    log(f"   {wx_count}/{len(markets_no)} marchés enrichis")
+        markets = list(pool.map(_enrich, markets))
 
-    if usdc < MIN_TRADE:
-        log(f"💤 Solde insuffisant (${usdc:.2f} < ${MIN_TRADE}) — en attente")
+    # Pré-filtrage hard-codé
+    candidates = _prefilter(markets, history, usdc)
+    log(f"📊 {len(candidates)}/{len(markets)} marchés passent les filtres")
+
+    if not candidates:
+        log("Aucun candidat après filtrage")
         return
 
+    if usdc < 1.0:
+        log(f"💤 Solde insuffisant (${usdc:.2f})")
+        return
+
+    # Décision Claude
     try:
-        decisions = brain.decide_v2(strategy, markets_no, history, usdc)
+        decisions = brain.decide_v2(strategy, candidates, history, usdc)
         log(f"Claude V2 : {len(decisions)} décision(s)")
     except Exception as e:
-        log(f"Erreur Claude API : {e}")
+        log(f"Erreur Claude : {e}")
         return
 
     if not decisions:
@@ -331,60 +434,54 @@ def run_cycle():
     # Déduplication
     open_cids = {t.get("condition_id") for t in history if t.get("pnl") is None}
     decisions = [d for d in decisions if d.get("condition_id") not in open_cids]
-    if not decisions:
-        log("Tous les signaux déjà en position")
-        return
 
-    market_lookup = {m["condition_id"]: m for m in markets_no}
+    market_lookup = {m["condition_id"]: m for m in candidates}
+    total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
 
-    # Exécution
     for d in decisions:
         if d.get("action") != "buy" or d.get("outcome") != "No":
             continue
 
-        no_price = float(d.get("no_price", 0) or 0)
+        cid       = d.get("condition_id", "")
+        certainty = d.get("certainty", "low")
+        mkt       = market_lookup.get(cid, {})
 
-        # Vérification prix NO en temps réel
-        cid = d.get("condition_id", "")
+        # Vérif exposition globale
+        if total_exposed >= usdc * MAX_EXPOSURE_PCT:
+            log(f"  ⛔ Exposition max atteinte — stop")
+            break
+
+        # Calcul de la mise basée sur % du solde
+        amount = _calc_bet(usdc, certainty)
+        log(f"  💰 Mise calculée : ${amount:.2f} ({certainty}) sur solde ${usdc:.2f}")
+
+        # Double vérif prix NO en temps réel
         price_t1 = _get_current_no_price(cid)
         if price_t1 is None:
             log(f"  🚫 CLOB inaccessible — annulé")
             continue
-        if price_t1 < MIN_NO_PRICE:
-            log(f"  🚫 Prix NO T1 {price_t1:.3f} < {MIN_NO_PRICE} — signal insuffisant, annulé")
+        if not (MIN_NO_PRICE <= price_t1 <= MAX_NO_PRICE):
+            log(f"  🚫 Prix NO T1 {price_t1:.3f} hors zone [{MIN_NO_PRICE}-{MAX_NO_PRICE}] — annulé")
             continue
-        if price_t1 > MAX_NO_PRICE:
-            log(f"  🚫 Prix NO T1 {price_t1:.3f} > {MAX_NO_PRICE} — marge trop faible, annulé")
-            continue
-        if no_price > 0 and abs(price_t1 - no_price) / no_price > 0.10:
-            log(f"  🚫 Écart trop élevé : Claude estimait NO={no_price:.3f}, réel {price_t1:.3f} — annulé")
+
+        no_estimate = float(d.get("no_price", 0) or 0)
+        if no_estimate > 0 and abs(price_t1 - no_estimate) / no_estimate > 0.10:
+            log(f"  🚫 Écart T1 trop élevé : estimé {no_estimate:.3f}, réel {price_t1:.3f} — annulé")
             continue
 
         time.sleep(4)
         price_t2 = _get_current_no_price(cid)
-        if price_t2 is None:
-            log(f"  🚫 CLOB inaccessible en T2 — annulé")
+        if price_t2 is None or not (MIN_NO_PRICE <= price_t2 <= MAX_NO_PRICE):
+            log(f"  🚫 Prix T2 hors zone — annulé")
             continue
-        if price_t2 < MIN_NO_PRICE:
-            log(f"  🚫 Prix NO T2 {price_t2:.3f} < {MIN_NO_PRICE} — annulé")
+        if price_t1 - price_t2 > 0.02:
+            log(f"  🚫 NO en chute : {price_t1:.3f}→{price_t2:.3f} — annulé")
             continue
-        if price_t2 > MAX_NO_PRICE:
-            log(f"  🚫 Prix NO T2 {price_t2:.3f} > {MAX_NO_PRICE} — annulé")
-            continue
-        drop = price_t1 - price_t2
-        if drop > 0.02:
-            log(f"  🚫 NO chute : {price_t1:.3f} → {price_t2:.3f} en 4s — annulé")
-            continue
-        log(f"  ✅ Prix NO stable : T1={price_t1:.3f} → T2={price_t2:.3f} — OK")
+        log(f"  ✅ Prix NO stable T1={price_t1:.3f} T2={price_t2:.3f}")
         d["no_price"] = price_t2
 
-        # Clamp montant
-        amount = float(d.get("amount_usdc") or MIN_TRADE)
-        amount = max(MIN_TRADE, min(MAX_TRADE, amount))
-        d["amount_usdc"] = amount
-
         try:
-            log(f"→ BUY NO | {cid[:12]}… | ${amount:.2f} | {d.get('reason','')}")
+            log(f"→ BUY NO | {cid[:12]}… | ${amount:.2f} [{certainty}] | {d.get('reason','')}")
             result = trader.place_market_order(
                 condition_id=cid,
                 outcome="No",
@@ -392,7 +489,7 @@ def run_cycle():
                 amount_usdc=amount,
             )
             if not result.get("ok") and not result.get("dry_run"):
-                log(f"  ⚠️  Ordre rejeté par Polymarket")
+                log(f"  ⚠️  Ordre rejeté")
                 continue
             trade = {
                 "id":           str(uuid.uuid4()),
@@ -400,6 +497,7 @@ def run_cycle():
                 "time":         datetime.datetime.now().isoformat(),
                 "market":       "polymarket",
                 "condition_id": cid,
+                "city":         mkt.get("city", ""),
                 "sym":          "No",
                 "side":         "buy",
                 "amount_usdc":  amount,
@@ -409,7 +507,8 @@ def run_cycle():
                 "pnl":          None,
             }
             insert_trade(trade)
-            log("  ✅ Ordre enregistré")
+            total_exposed += amount
+            log(f"  ✅ Enregistré | Exposition totale : ${total_exposed:.2f}/{usdc*MAX_EXPOSURE_PCT:.2f}")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
 
@@ -419,25 +518,21 @@ def run_improvement():
     log("═══ Auto-amélioration V2 ═══")
     strategy = load_strategy()
     history  = load_history()
-    if not strategy.get("prompt", "").strip():
-        return
     resolved = [t for t in history if t.get("pnl") is not None]
     if len(resolved) < 5:
         log(f"Pas assez de trades résolus ({len(resolved)}/5)")
         return
     try:
-        result     = brain.improve_strategy(strategy, history)
-        old_prompt = strategy.get("prompt", "")
-        new_prompt = result.get("new_prompt", old_prompt)
-        if new_prompt == old_prompt:
+        result = brain.improve_strategy(strategy, history)
+        if result.get("new_prompt") == strategy.get("prompt"):
             log("Stratégie inchangée")
             return
-        strategy["prompt"]        = new_prompt
+        strategy["prompt"]        = result["new_prompt"]
         strategy["version"]       = result.get("version", 1)
         strategy["last_improved"] = datetime.datetime.now().isoformat()
         strategy["last_reason"]   = result.get("reason", "")
         save_strategy(strategy)
-        log(f"✅ Stratégie v{strategy['version']} — {result.get('reason','')}")
+        log(f"✅ v{strategy['version']} — {result.get('reason','')}")
     except Exception as e:
         log(f"Erreur auto-amélioration : {e}")
 
@@ -446,12 +541,12 @@ def run_improvement():
 if __name__ == "__main__":
     config.validate()
     log(f"🌤️  ProfitWeather V2.0 démarré — cycle toutes les {INTERVAL_MINUTES} min")
-    log(f"   Stratégie : NO sur fourchettes température US (70–95 cents)")
+    log(f"   Stratégie : NO sur fourchettes température (70–95¢)")
+    log(f"   Mises : 2–5% du solde selon certitude (max 6%, max 25% exposé)")
     log(f"   Mode : {'SIMULATION (DRY_RUN)' if trader.DRY_RUN else '⚠️  TRADING RÉEL'}")
     log(f"   Wallet : {config.WALLET_ADDRESS[:10]}…")
 
     last_improve = time.time()
-
     while True:
         try:
             run_cycle()
@@ -463,8 +558,6 @@ if __name__ == "__main__":
             break
         except Exception as e:
             import traceback
-            log(f"Erreur inattendue : {e}")
-            log(traceback.format_exc())
-
+            log(f"Erreur : {e}\n{traceback.format_exc()}")
         log(f"Prochain cycle dans {INTERVAL_MINUTES} min…")
         time.sleep(INTERVAL_MINUTES * 60)
