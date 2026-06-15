@@ -47,7 +47,7 @@ MAX_MODELS_SPREAD = 12.0    # °F — si les modèles ECMWF divergent de plus de
 MIN_VOLUME        = 1_000   # volume minimum du marché USDC
 
 NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique
-NO_TAKE_PROFIT    = 0.99    # NO ≥ 99% → lock profit
+NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99% → lock profit (quasi-résolution)
 
 # Villes US fiables (météo prévisible en été)
 PREFERRED_CITIES  = {"miami", "houston", "dallas", "atlanta", "los-angeles",
