@@ -37,7 +37,7 @@ SB_KEY = os.getenv("SUPABASE_KEY", "")
 # ── Règles hard-codées ────────────────────────────────────────────────────────
 
 MIN_NO_PRICE      = 0.70    # NO minimum 70¢
-MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (marge trop faible au-dessus)
+MAX_NO_PRICE      = 0.97    # NO maximum 97¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.06    # jamais plus de 6% du solde sur 1 trade
 MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
