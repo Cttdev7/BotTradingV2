@@ -44,6 +44,7 @@ MIN_HOUR_J0       = 14      # marchés J+0 : seulement après 14h heure locale
 MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
 MAX_ENSEMBLE_PROB = 40      # si ECMWF prédit >40% de chance dans ce range → INTERDIT
 MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
+MAX_MODELS_SPREAD = 8.0     # °F — si les modèles ECMWF divergent de plus de 8°F → trop incertain
 MIN_VOLUME        = 1_000   # volume minimum du marché USDC
 
 NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique
@@ -305,6 +306,12 @@ def _prefilter(markets: list, history: list, usdc: float) -> list:
         if band_prob is None or band_prob > MAX_BAND_PROB:
             continue
 
+        # Spread trop élevé → modèles en désaccord → température imprévisible
+        models_spread = wx.get("models_spread")
+        if models_spread is not None and models_spread > MAX_MODELS_SPREAD:
+            log(f"  📉 Spread trop élevé {city} ({models_spread}°F > {MAX_MODELS_SPREAD}°F) — ignoré")
+            continue
+
         # Filtre canicule : si ECMWF prédit >MAX_ENSEMBLE_PROB% d'atteindre un range chaud
         ensemble_prob = wx.get("ensemble_prob")
         if city in HEATWAVE_RISK_CITIES and ensemble_prob is not None and ensemble_prob > MAX_ENSEMBLE_PROB:
@@ -544,7 +551,7 @@ if __name__ == "__main__":
     config.validate()
     log(f"🌤️  ProfitWeather V2.0 démarré — cycle toutes les {INTERVAL_MINUTES} min")
     log(f"   Stratégie : NO sur fourchettes température (70–95¢)")
-    log(f"   Mises : 2–5% du solde selon certitude (max 6%, max 25% exposé)")
+    log(f"   Mises : 2–5% du solde selon certitude (max {MAX_BET_PCT*100:.0f}% par trade, max {MAX_EXPOSURE_PCT*100:.0f}% exposé)")
     log(f"   Mode : {'SIMULATION (DRY_RUN)' if trader.DRY_RUN else '⚠️  TRADING RÉEL'}")
     log(f"   Wallet : {config.WALLET_ADDRESS[:10]}…")
 
