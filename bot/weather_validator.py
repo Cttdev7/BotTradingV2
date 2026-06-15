@@ -315,7 +315,7 @@ def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
 
     try:
         if is_today:
-            # Prévision heure par heure → max des heures restantes
+            # Prévision heure par heure → trajectoire complète de la journée
             r = requests.get(OPEN_METEO_FORECAST, params={
                 'latitude':         lat,
                 'longitude':        lon,
@@ -331,15 +331,40 @@ def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
             if not temps:
                 return {'ok': True, 'reason': 'Open-Meteo : aucune donnée horaire — pas de veto', 'forecast': None}
 
-            # Filtre les heures restantes (≥ heure actuelle locale)
-            remaining = [
-                temps[i] for i, t in enumerate(times)
-                if int(t.split('T')[1][:2]) >= local_hour
-            ]
+            # Heures passées vs restantes
+            past      = [temps[i] for i, t in enumerate(times) if int(t.split('T')[1][:2]) < local_hour]
+            remaining = [temps[i] for i, t in enumerate(times) if int(t.split('T')[1][:2]) >= local_hour]
+
             if not remaining:
                 return {'ok': True, 'reason': 'Plus d\'heures restantes aujourd\'hui — pas de veto', 'forecast': None}
 
-            forecast = max(remaining)
+            # Max observé aujourd'hui (heures passées) + max prévu (heures restantes)
+            max_observed = max(past)  if past      else None
+            forecast     = max(remaining)
+
+            # Veto si le max déjà observé dépasse la borne haute de la fourchette (+0.5°C marge)
+            band_width = 2.0 if unit == 'fahrenheit' else 1.0
+            if max_observed is not None and max_observed >= threshold + band_width + 0.5:
+                return {
+                    'ok':     False,
+                    'forecast': max_observed,
+                    'reason': (
+                        f'Max déjà observé {max_observed:.1f}{sym} dépasse la borne haute '
+                        f'{threshold + band_width:.0f}{sym} — fourchette {threshold:.0f}{sym} impossible'
+                    ),
+                }
+
+            # Tendance : les 3 dernières heures observées
+            trend_str = ""
+            if len(past) >= 3:
+                last3 = past[-3:]
+                if last3[-1] > last3[0] + 0.5:
+                    trend_str = f"↗️ monte ({last3[0]:.1f}→{last3[-1]:.1f}{sym})"
+                elif last3[-1] < last3[0] - 0.5:
+                    trend_str = f"↘️ descend ({last3[0]:.1f}→{last3[-1]:.1f}{sym})"
+                else:
+                    trend_str = f"→ stable ({last3[-1]:.1f}{sym})"
+
             margin   = 1.8 if unit == 'fahrenheit' else 1.0
 
             if forecast < threshold - margin:
@@ -356,11 +381,14 @@ def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
             veto = _apply_risk_veto(risk, forecast, sym)
             if veto:
                 return {'ok': False, 'forecast': forecast, 'reason': veto}
+            obs_str = f" | max observé {max_observed:.1f}{sym}" if max_observed else ""
             return {
                 'ok':       True,
                 'forecast': forecast,
                 'risk':     risk,
-                'reason':   f'{local_hour:02d}h00 — max {forecast:.1f}{sym} ✓ | {_risk_summary(risk)}',
+                'max_observed': max_observed,
+                'trend':    trend_str,
+                'reason':   f'{local_hour:02d}h00 — {trend_str}{obs_str} | max restant {forecast:.1f}{sym} ✓ | {_risk_summary(risk)}',
             }
 
         else:
@@ -450,19 +478,47 @@ def _fetch_single_model_max(lat, lon, model_id, target_date, unit, tz):
 
 
 def _fetch_current_temp(lat, lon, unit):
-    """Température observée en ce moment dans la ville."""
+    """Température actuelle + max observé aujourd'hui + tendance sur 3h."""
     try:
+        import datetime as _dt
+        today = _dt.date.today().isoformat()
         r = requests.get(OPEN_METEO_FORECAST, params={
             "latitude": lat, "longitude": lon,
             "current": "temperature_2m",
+            "hourly": "temperature_2m",
             "temperature_unit": unit,
-        }, timeout=5)
-        if r.status_code == 200:
-            val = r.json().get("current", {}).get("temperature_2m")
-            return float(val) if val is not None else None
+            "timezone": "auto",
+            "start_date": today,
+            "end_date":   today,
+        }, timeout=6)
+        if r.status_code != 200:
+            return None
+        data        = r.json()
+        current_val = data.get("current", {}).get("temperature_2m")
+        current     = float(current_val) if current_val is not None else None
+
+        # Heures passées pour max observé et tendance
+        now_hour = _dt.datetime.now().hour
+        times    = data.get("hourly", {}).get("time", [])
+        temps    = data.get("hourly", {}).get("temperature_2m", [])
+        past     = [temps[i] for i, t in enumerate(times)
+                    if temps[i] is not None and int(t.split('T')[1][:2]) <= now_hour]
+
+        result = {"current": current}
+        if past:
+            result["max_today"] = round(max(past), 1)
+            if len(past) >= 3:
+                last3 = past[-3:]
+                delta = last3[-1] - last3[0]
+                if delta > 0.5:
+                    result["trend"] = f"↗️ +{delta:.1f}°"
+                elif delta < -0.5:
+                    result["trend"] = f"↘️ {delta:.1f}°"
+                else:
+                    result["trend"] = "→ stable"
+        return result
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _fetch_ensemble_members(lat, lon, target_date, unit):
@@ -549,8 +605,11 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
             if val is not None:
                 models[name] = val
 
+        curr_data = f_current.result() or {}
         raw = {
-            "current_temp":     f_current.result(),
+            "current_temp":     curr_data.get("current") if isinstance(curr_data, dict) else curr_data,
+            "max_today":        curr_data.get("max_today") if isinstance(curr_data, dict) else None,
+            "trend":            curr_data.get("trend") if isinstance(curr_data, dict) else None,
             "ensemble_members": f_ensemble.result(),
             "models":           models,
             "risk":             f_risk.result(),
@@ -562,6 +621,10 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
 
     if raw["current_temp"] is not None:
         result["current_temp"] = raw["current_temp"]
+    if raw.get("max_today") is not None:
+        result["max_today"] = raw["max_today"]
+    if raw.get("trend"):
+        result["trend"] = raw["trend"]
 
     members = raw["ensemble_members"]
     if members:

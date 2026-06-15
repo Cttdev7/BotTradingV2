@@ -176,7 +176,9 @@ def _format_markets(markets: list) -> tuple:
             sym   = wx.get("sym", "°C")
             parts = []
             if "current_temp" in wx:
-                parts.append(f"actuel:{wx['current_temp']:.1f}{sym}")
+                trend = wx.get("trend", "")
+                max_t = f" max_jour:{wx['max_today']:.1f}{sym}" if "max_today" in wx else ""
+                parts.append(f"actuel:{wx['current_temp']:.1f}{sym}{max_t} {trend}".strip())
             if "ensemble_prob" in wx:
                 n = wx.get("ensemble_members_count", "?")
                 parts.append(f"prob:{wx['ensemble_prob']}%({n}mbr)")
@@ -281,26 +283,42 @@ Heure locale de la ville (indiquée entre crochets) :
 
 Règles non-négociables :
 - INTERDIT Jeddah : ville blacklistée définitivement
-- INTERDIT si prix YES ≥ 0.92 : trop cher, marge trop faible (était 0.95)
-- INTERDIT si YES < 0.78 : signal insuffisant (était 0.76)
+- INTERDIT si prix YES ≥ 0.92 : trop cher, marge trop faible
+- INTERDIT si YES < 0.78 : signal insuffisant
 - INTERDIT si win rate ville < 55% : historique pas assez solide
 - MINIMUM ABSOLU 10 USDC par trade
-- Volume minimum marché : 5 000 USDC (était 1 000)
+- Volume minimum marché : 5 000 USDC
 - Ne pas re-trader un condition_id déjà en position
-- Villes Tier 1 uniquement avant 16h : toronto, houston, singapore, tokyo, seoul, london, paris
 - Si solde < 60 USDC : maximum 1 trade par cycle, 10% du solde
 
-Interprétation des données météo 🌤️ (présentes sous chaque marché quand disponibles) :
-- prob:X%(Nmbr)   = X% des N membres ECMWF IFS prévoient de dépasser le seuil
-  → prob > YES_price + 0.03 → value bet (météo plus optimiste que le marché)
-  → prob < YES_price - 0.05 → éviter (marché surévalué vs météo)
-  → prob = YES_price ± 0.03 → neutre, regarder les autres critères
-- consensus:N/4ok = N des 4 grands modèles (ECMWF/GFS/ICON/MF) au-dessus du seuil
-  → 4/4 = signal très fiable | 3/4 = bon signal | 2/4 ou moins = incertain
-- moy:X°C         = température moyenne prévue par les modèles
-- écart:X°C       = dispersion entre modèles (< 1.5°C = prévision fiable, > 3°C = incertain)
-- actuel:X°C      = température observée maintenant (utile pour marchés J+0)
-  → si actuel proche du seuil (< 2°C en dessous) → très forte probabilité d'atteinte
+Classement des villes par fiabilité (basé sur l'analyse des marchés résolus Polymarket) :
+
+✅ TIER 1 — Villes prioritaires (température stable, fourchette se dégage nettement) :
+Seoul, Hong Kong, Tokyo, Shanghai, Chengdu, Singapore, Kuala Lumpur,
+Taipei, Wuhan, Lucknow, Karachi, Busan, Shenzhen
+
+✅ TIER 2 — Villes acceptables (bon historique, surveiller la fourchette) :
+Miami, Houston, Dallas, San Francisco, Toronto, Madrid, Helsinki,
+Cape Town, Tel Aviv, Munich, Beijing, Guangzhou
+
+⚠️  TIER 3 — Villes à risque (météo variable, fourchettes concurrentes, signal moins fiable) :
+London, Paris, Amsterdam, Milan, Warsaw, Moscow, Ankara, Istanbul,
+Atlanta, Chicago, Denver, Seattle, NYC, Los Angeles, Mexico City
+
+Règles par Tier :
+- Tier 1 : signal ≥ 80%, toute heure après 14h local
+- Tier 2 : signal ≥ 82%, uniquement après 16h local
+- Tier 3 : signal ≥ 88% + band_prob ≥ 50% + après 18h local + win rate >65% — très rare
+
+Interprétation des données météo 🌤️ (présentes sous chaque marché) :
+- prob:X%(Nmbr)     = X% des N membres ECMWF prévoient de dépasser le seuil
+- fourchette:X%     = X% des membres dans la fourchette EXACTE du marché ← le plus important
+  → fourchette > 50% = signal fort | 35-50% = acceptable | < 35% = INTERDIT (trop incertain)
+- consensus:N/4ok   = N des 4 modèles (ECMWF/GFS/ICON/MF) au-dessus du seuil
+  → 4/4 = très fiable | 3/4 = bon | 2/4 ou moins = éviter
+- écart:X°C         = dispersion entre modèles (< 1.5°C fiable, > 3°C incertain)
+- actuel:X°C        = température observée maintenant
+  → si actuel dans la fourchette ou juste en dessous → signal très fort
 
 Tu réponds UNIQUEMENT en JSON valide, sans texte autour :
 [
