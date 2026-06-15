@@ -40,7 +40,6 @@ MIN_NO_PRICE      = 0.70    # NO minimum 70¢
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (marge trop faible au-dessus)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.06    # jamais plus de 6% du solde sur 1 trade
-MIN_HOUR_J0       = 14      # marchés J+0 : seulement après 14h heure locale
 MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
 MAX_ENSEMBLE_PROB = 40      # si ECMWF prédit >40% de chance dans ce range → INTERDIT
 MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
@@ -311,10 +310,6 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
 
         # Prix NO dans la zone cible
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
-            continue
-
-        # Timing : marchés J+0 seulement après 14h locale
-        if day_offset == 0 and local_hour is not None and local_hour < MIN_HOUR_J0:
             continue
 
         # band_prob trop élevé → trop probable d'être dans ce range
