@@ -38,7 +38,7 @@ SB_KEY = os.getenv("SUPABASE_KEY", "")
 
 MIN_NO_PRICE      = 0.70    # NO minimum 70¢
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (marge trop faible au-dessus)
-MAX_EXPOSURE_PCT  = 0.25    # max 25% du solde total exposé simultanément
+MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.06    # jamais plus de 6% du solde sur 1 trade
 MIN_HOUR_J0       = 14      # marchés J+0 : seulement après 14h heure locale
 MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
@@ -224,7 +224,7 @@ def check_stop_loss(history: list):
                     log(f"    ✅ Vendu +${real_pnl:.2f}")
                 except Exception as e:
                     if "resting liquidity" in str(e).lower():
-                        update_trade_pnl(t["id"], pnl_usd)
+                        log(f"    ⏳ Pas de liquidité — réessai au prochain cycle")
                     else:
                         log(f"    ❌ {e}")
             continue
@@ -249,7 +249,7 @@ def check_stop_loss(history: list):
             log(f"    ✅ Vendu ${real_pnl:.2f}")
         except Exception as e:
             if "resting liquidity" in str(e).lower():
-                update_trade_pnl(t["id"], pnl_usd)
+                log(f"    ⏳ Pas de liquidité — réessai au prochain cycle")
             else:
                 log(f"    ❌ {e}")
 
@@ -300,8 +300,9 @@ def _prefilter(markets: list, history: list, usdc: float) -> list:
             continue
 
         # band_prob trop élevé → trop probable d'être dans ce range
+        # Si weather_ctx manque (enrichissement raté), on refuse le trade par sécurité
         band_prob = wx.get("band_prob")
-        if band_prob is not None and band_prob > MAX_BAND_PROB:
+        if band_prob is None or band_prob > MAX_BAND_PROB:
             continue
 
         # Filtre canicule : si ECMWF prédit >MAX_ENSEMBLE_PROB% d'atteindre un range chaud
@@ -508,6 +509,7 @@ def run_cycle():
             }
             insert_trade(trade)
             total_exposed += amount
+            usdc -= amount  # solde réel décrémenté pour _calc_bet des trades suivants
             log(f"  ✅ Enregistré | Exposition totale : ${total_exposed:.2f}/{usdc*MAX_EXPOSURE_PCT:.2f}")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
