@@ -69,7 +69,7 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
               <span style={{ fontSize: 22 }}>🌦</span>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
-                  ProfitWeather — Profits réels
+                  ProfitWeather V1.0 — Profits réels
                 </div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 1 }}>
                   Trading météo Polymarket · DRY_RUN=false

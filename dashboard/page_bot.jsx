@@ -420,7 +420,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               {/* Activer / désactiver */}
               <Card style={{ marginBottom: 'var(--gap)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <div>
-                  <div style={{ fontSize:15, fontWeight:500 }}>Activer ProfitWeather</div>
+                  <div style={{ fontSize:15, fontWeight:500 }}>Activer ProfitWeather V1.0</div>
                   <div style={{ fontSize:12.5, color:'var(--text-3)', marginTop:2 }}>
                     Active ou met en pause le bot de trading
                   </div>

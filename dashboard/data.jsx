@@ -44,7 +44,7 @@ const MARKETS = {
 // TODO: API — capital, status et openPos sont mis à jour en temps réel par api.jsx
 const BOTS = [
   {
-    id: 'polyedge', name: 'ProfitWeather', market: 'polymarket', glyph: '🌦',
+    id: 'polyedge', name: 'ProfitWeather V1.0', market: 'polymarket', glyph: '🌦',
     strategy: 'Arbitrage météo 80%+', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 50,
     pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
