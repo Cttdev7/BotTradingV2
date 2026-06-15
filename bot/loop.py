@@ -77,19 +77,23 @@ def load_strategy(bot_id: str = "polyedge") -> dict:
             "version": 1,
             "prompt": (
                 "STRATÉGIE : acheter YES sur les marchés température où les bots d'analyse "
-                "ont détecté un signal fort. Minimum 10 USDC par trade, autant de positions que les signaux le justifient.\n\n"
+                "ont détecté un signal fort. Minimum 10 USDC par trade.\n\n"
                 "Règle d'entrée :\n"
-                "- Un signal actif d'un bot d'analyse (YES ≥ 75%) EST une opportunité à évaluer\n"
-                "- Le prix YES actuel doit être entre 0.76 et 0.92\n"
-                "- Zone idéale : YES 0.76-0.87 (meilleur rapport valeur/risque)\n"
-                "- Volume minimum du marché : 1 000 USDC\n"
+                "- Signal minimum : YES ≥ 80% (85% avant 16h heure locale)\n"
+                "- Prix YES actuel entre 0.78 et 0.92\n"
+                "- Zone idéale : YES 0.78-0.87 (meilleur rapport valeur/risque)\n"
+                "- Volume minimum du marché : 5 000 USDC\n"
+                "- Fourchette ECMWF ≥ 35% (band_prob) obligatoire\n"
                 "- Favoriser les villes avec un taux de victoire historique > 60%\n\n"
+                "Classement des villes :\n"
+                "- Tier 1 (prioritaires) : Seoul, Hong Kong, Tokyo, Shanghai, Chengdu, Singapore, Kuala Lumpur, Taipei, Wuhan, Lucknow, Karachi, Busan, Shenzhen\n"
+                "- Tier 2 (acceptables) : Miami, Houston, Dallas, San Francisco, Toronto, Madrid, Helsinki, Cape Town, Tel Aviv, Munich, Beijing, Guangzhou\n"
+                "- Tier 3 (à risque — signal ≥ 88% + band_prob ≥ 50% + après 18h) : London, Paris, Amsterdam, Milan, Warsaw, Moscow, Ankara, Istanbul, Atlanta, Chicago, Denver, Seattle, NYC, Los Angeles, Mexico City\n\n"
                 "Taille des positions (jamais en dessous de 10 USDC) :\n"
-                "- Signal standard : 15% du solde, min 10 USDC\n"
-                "- Signal fort (ville Tier 1, win rate >65%) : 20% du solde\n"
-                "- Signal exceptionnel (convergence bots + Mistral) : 25% du solde\n"
-                "- Max 55% du solde total engagé simultanément\n\n"
-                "Villes Tier 1 prioritaires : toronto, miami, houston, singapore, tokyo, seoul, shanghai, dubai.\n\n"
+                "- Signal standard (Tier 1) : 12% du solde, min 10 USDC\n"
+                "- Signal exceptionnel (Tier 1 + Mistral convergent + après 16h) : 18% du solde\n"
+                "- JAMAIS plus de 18% du solde sur un seul trade\n"
+                "- Max 35% du solde total engagé simultanément\n\n"
                 "Ne rien trader si aucun signal qualifié. Mieux vaut attendre le prochain cycle."
             ),
         }
@@ -429,8 +433,8 @@ def run_cycle(bot_id: str = "polyedge"):
         time.sleep(4)
         price_t2 = _get_current_yes_price(cid)
         if price_t2 is None:
-            log(f"  ⚠️  T2 inaccessible — utilise T1={price_t1:.3f}")
-            price_t2 = price_t1
+            log(f"  🚫 CLOB inaccessible en T2 — impossible de confirmer le prix, annulé")
+            continue
         if price_t2 < MIN_PRICE:
             log(f"  🚫 Prix T2 {price_t2:.3f} < {MIN_PRICE} — a crashé entre T1 et T2, annulé")
             continue
@@ -448,7 +452,6 @@ def run_cycle(bot_id: str = "polyedge"):
         if mkt:
             wx_ctx    = mkt.get("weather_ctx", {})
             curr_temp = wx_ctx.get("current_temp")
-            threshold = float(d.get("yes_price", 0) or 0)  # pas le seuil mais on parse la question
             mkt_q     = mkt.get("question", "")
             import re as _re
             m_thresh  = _re.search(r'(\d+(?:\.\d+)?)\s*°([CF])', mkt_q)
