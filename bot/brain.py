@@ -180,6 +180,10 @@ def _format_markets(markets: list) -> tuple:
             if "ensemble_prob" in wx:
                 n = wx.get("ensemble_members_count", "?")
                 parts.append(f"prob:{wx['ensemble_prob']}%({n}mbr)")
+            if "band_prob" in wx:
+                bp = wx["band_prob"]
+                flag = "⚠️" if bp < 40 else "✅"
+                parts.append(f"{flag}fourchette:{bp}%")
             if wx.get("models"):
                 avg    = wx.get("models_avg", "?")
                 spread = wx.get("models_spread", "?")

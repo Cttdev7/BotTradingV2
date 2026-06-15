@@ -565,8 +565,16 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
 
     members = raw["ensemble_members"]
     if members:
-        above = sum(1 for t in members if t > threshold)
-        result["ensemble_prob"]          = round(above / len(members) * 100)
+        # Largeur de la fourchette Polymarket : 1°C ou 2°F
+        band_width = 2.0 if unit == "fahrenheit" else 1.0
+        upper      = threshold + band_width
+
+        above_lower = sum(1 for t in members if t >= threshold)
+        above_upper = sum(1 for t in members if t >= upper)
+        in_band     = above_lower - above_upper  # membres dans [threshold, upper)
+
+        result["ensemble_prob"]          = round(above_lower / len(members) * 100)
+        result["band_prob"]              = round(in_band / len(members) * 100)
         result["ensemble_members_count"] = len(members)
 
     models = raw["models"]

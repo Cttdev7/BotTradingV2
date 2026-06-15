@@ -443,6 +443,16 @@ def run_cycle(bot_id: str = "polyedge"):
             continue
         log(f"  ✅ Prix stable : T1={price_t1:.3f} → T2={price_t2:.3f} — OK")
         d["yes_price"] = price_t2
+        # Filtre probabilité de fourchette ECMWF — protection anti mauvaise case
+        # band_prob = % des 51 modèles qui tombent exactement dans la fourchette du marché
+        BAND_PROB_MIN = 35  # min 35% = 18/51 modèles dans la bonne fourchette
+        wx_ctx = mkt.get("weather_ctx", {}) if mkt else {}
+        band_prob = wx_ctx.get("band_prob")
+        if band_prob is not None and band_prob < BAND_PROB_MIN:
+            log(f"  🚫 Fourchette incertaine : seulement {band_prob}% des modèles ECMWF dans cette case (<{BAND_PROB_MIN}%) — annulé")
+            continue
+        if band_prob is not None:
+            log(f"  ✅ Fourchette ECMWF : {band_prob}% des modèles dans cette case")
         # Validation météo Open-Meteo — limite le risque avant exécution
         if mkt:
             wx = weather_validator.validate_yes_trade(
