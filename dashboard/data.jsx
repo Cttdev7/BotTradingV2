@@ -52,6 +52,14 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
+    id: 'polyedge2', name: 'ProfitWeather V2.0', market: 'polymarket', glyph: '🌤️',
+    strategy: 'Stratégie à définir', venue: 'Polymarket',
+    status: 'paused', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
     id: 'polycrypto', name: 'Crypto Horaire', market: 'polymarket', glyph: '₿',
     strategy: 'Arbitrage crypto horaire 80%+', venue: 'Polymarket',
     status: 'paused', capital: 0, allocPct: 33,

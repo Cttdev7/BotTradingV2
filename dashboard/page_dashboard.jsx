@@ -18,6 +18,7 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
   }, []);
 
   const pwBot      = bots.find(b => b.id === 'polyedge');
+  const pw2Bot     = bots.find(b => b.id === 'polyedge2');
   const pwTotalPnl = pwHistory.length > 0 ? pwHistory[pwHistory.length - 1].pnl_cumul : null;
   const pwTrades   = pwHistory.reduce((a, b) => a + b.trades, 0);
   const pwGagnes   = pwHistory.reduce((a, b) => a + b.gagnes, 0);
@@ -146,6 +147,33 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
               </div>
             </div>
           )}
+        </Card>
+      )}
+
+      {/* ── ProfitWeather V2.0 ── */}
+      {pw2Bot && (
+        <Card style={{ marginBottom: 'var(--gap)', padding: 0, overflow: 'hidden',
+          cursor: 'pointer' }} onClick={() => onOpen('polyedge2')}>
+          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+            background: 'linear-gradient(135deg,#0f2027,#1a3040,#0d4040)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 22 }}>🌤️</span>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
+                  ProfitWeather V2.0
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 1 }}>
+                  Nouvelle stratégie · En pause
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)', fontStyle: 'italic' }}>
+                🔧 Stratégie à configurer
+              </div>
+            </div>
+          </div>
         </Card>
       )}
 

@@ -28,9 +28,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [meteoStats,      setMeteoStats]      = React.useState(null);
 
   const agentPrefix = bot.type === 'temperature' ? bot.id : bot.id === 'polycrypto' ? 'crypto' : bot.id === 'polycrypto4h' ? 'crypto_4h' : 'meteo';
-  const agentLabel  = bot.id === 'polyedge' || bot.id === 'chengdu' ? 'Mistral' : 'Gemini';
-  const agentEmoji  = bot.id === 'polyedge' ? '🌦' : bot.id === 'chengdu' ? '🌡️' : bot.id === 'polycrypto4h' ? '⏱' : '₿';
-  const agentAnalyseKey = bot.id === 'polyedge' ? 'analyse_mistral' : 'analyse_gemini';
+  const agentLabel  = bot.id === 'polyedge' || bot.id === 'polyedge2' || bot.id === 'chengdu' ? 'Mistral' : 'Gemini';
+  const agentEmoji  = bot.id === 'polyedge' ? '🌦' : bot.id === 'polyedge2' ? '🌤️' : bot.id === 'chengdu' ? '🌡️' : bot.id === 'polycrypto4h' ? '⏱' : '₿';
+  const agentAnalyseKey = (bot.id === 'polyedge' || bot.id === 'polyedge2') ? 'analyse_mistral' : 'analyse_gemini';
 
   const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
   const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
@@ -249,6 +249,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       'Signal fort (ville Tier 1 + win rate > 65% + analyse Mistral positive + YES 0.76–0.84) → 20% du solde. Signal exceptionnel (convergence bots + Mistral sur même ville) → 25% du solde. Jamais si YES ≥ 0.95 ou < 0.76.',
       'Si aucun signal qualifié ce cycle → retourner []. Mieux vaut attendre que forcer un trade douteux. Volume minimum sur le marché : 1 000 USDC. Max 55% du solde total engagé simultanément.',
     ];
+    if (bot.id === 'polyedge2') return [
+      'Stratégie à définir par l\'utilisateur.',
+    ];
     return [
       'Achète YES quand la probabilité est < 40% et que le volume dépasse 10 000 USDC.',
       'Mise sur NO pour les marchés électoraux quand le favori dépasse 70%.',
@@ -305,7 +308,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
         <Segmented size="sm" value={tab} onChange={setTab}
           options={bot.type === 'temperature'
             ? [{ value: 'analyse', label: 'Analyse' }]
-            : bot.id === 'polyedge'
+            : (bot.id === 'polyedge' || bot.id === 'polyedge2')
               ? [{ value: 'apercu', label: 'Aperçu' }, { value: 'strategie', label: 'Stratégie' }]
               : [{ value: 'apercu', label: 'Aperçu' }, { value: 'strategie', label: 'Stratégie' }, { value: 'analyse', label: 'Analyse' }]} />
       </div>
@@ -313,6 +316,24 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       {/* ── onglet Stratégie ── */}
       {tab === 'strategie' && (
         <div style={{ maxWidth: 680 }}>
+
+          {/* ── Placeholder V2.0 ── */}
+          {bot.id === 'polyedge2' && (
+            <div style={{ marginBottom:'var(--gap)', padding:'20px 24px', borderRadius:'var(--r-md)',
+              background:'color-mix(in oklab,var(--accent) 8%,var(--bg-elev))',
+              border:'1px solid color-mix(in oklab,var(--accent) 25%,transparent)',
+              display:'flex', alignItems:'center', gap:16 }}>
+              <span style={{ fontSize:32 }}>🌤️</span>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>
+                  ProfitWeather V2.0 — Stratégie à définir
+                </div>
+                <div style={{ fontSize:13, color:'var(--text-3)', lineHeight:1.6 }}>
+                  Configure la stratégie dans l'onglet ci-dessous, puis active le bot.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Schéma de réflexion ProfitWeather ── */}
           {bot.id === 'polyedge' && (() => {
@@ -371,7 +392,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
           })()}
 
           {/* ── Stratégie ProfitWeather : lecture seule ── */}
-          {bot.id === 'polyedge' ? (
+          {(bot.id === 'polyedge' || bot.id === 'polyedge2') ? (
             <>
               {/* Stratégie active */}
               <Card style={{ marginBottom: 'var(--gap)' }}>
@@ -420,7 +441,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
               {/* Activer / désactiver */}
               <Card style={{ marginBottom: 'var(--gap)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 <div>
-                  <div style={{ fontSize:15, fontWeight:500 }}>Activer ProfitWeather V1.0</div>
+                  <div style={{ fontSize:15, fontWeight:500 }}>Activer {bot.name}</div>
                   <div style={{ fontSize:12.5, color:'var(--text-3)', marginTop:2 }}>
                     Active ou met en pause le bot de trading
                   </div>
