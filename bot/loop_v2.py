@@ -44,7 +44,7 @@ MIN_HOUR_J0       = 14      # marchés J+0 : seulement après 14h heure locale
 MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
 MAX_ENSEMBLE_PROB = 40      # si ECMWF prédit >40% de chance dans ce range → INTERDIT
 MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
-MAX_MODELS_SPREAD = 8.0     # °F — si les modèles ECMWF divergent de plus de 8°F → trop incertain
+MAX_MODELS_SPREAD = 12.0    # °F — si les modèles ECMWF divergent de plus de 12°F → trop incertain
 MIN_VOLUME        = 1_000   # volume minimum du marché USDC
 
 NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique
@@ -98,6 +98,21 @@ def save_strategy(strategy: dict):
         )
     except Exception as e:
         log(f"⚠️  save_strategy : {e}")
+
+def load_deko_trades(hours: int = 4) -> set:
+    """Retourne les condition_id des marchés récemment achetés NO par sailor82."""
+    try:
+        since = (datetime.datetime.utcnow() - datetime.timedelta(hours=hours)).isoformat()
+        r = requests.get(
+            f"{SB_URL}/rest/v1/deko_trades",
+            params={"outcome": "eq.NO", "created_at": f"gte.{since}", "select": "condition_id"},
+            headers=_sb_headers(), timeout=5,
+        )
+        if r.status_code == 200:
+            return {t["condition_id"] for t in r.json() if t.get("condition_id")}
+    except Exception as e:
+        log(f"⚠️  load_deko : {e}")
+    return set()
 
 def load_history() -> list:
     try:
@@ -256,14 +271,16 @@ def check_stop_loss(history: list):
 
 # ── Filtres pré-Claude ────────────────────────────────────────────────────────
 
-def _prefilter(markets: list, history: list, usdc: float) -> list:
+def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None) -> list:
     """
     Applique les filtres hard-codés AVANT de passer à Claude.
     Retourne uniquement les marchés qui méritent d'être analysés.
+    deko_cids : condition_ids récemment tradés par sailor82 (signal bonus).
     """
     open_cids    = {t.get("condition_id") for t in history if t.get("pnl") is None}
     open_cities  = {t.get("city", "") for t in history if t.get("pnl") is None}
     total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    deko_cids = deko_cids or set()
 
     kept = []
     for m in markets:
@@ -332,6 +349,11 @@ def _prefilter(markets: list, history: list, usdc: float) -> list:
                 m["_gap"] = 0
         else:
             m["_gap"] = 0
+
+        # Signal Deko : sailor82 est aussi positionné NO sur ce marché
+        if cid in deko_cids:
+            m["_deko"] = True
+            log(f"  🔍 Signal Deko : sailor82 est NO sur {city} ({cid[:12]}…)")
 
         kept.append(m)
 
@@ -415,8 +437,13 @@ def run_cycle():
     with ThreadPoolExecutor(max_workers=8) as pool:
         markets = list(pool.map(_enrich, markets))
 
+    # Trades récents de sailor82 (signal bonus)
+    deko_cids = load_deko_trades(hours=4)
+    if deko_cids:
+        log(f"🔍 {len(deko_cids)} trade(s) récent(s) de sailor82 chargés")
+
     # Pré-filtrage hard-codé
-    candidates = _prefilter(markets, history, usdc)
+    candidates = _prefilter(markets, history, usdc, deko_cids=deko_cids)
     log(f"📊 {len(candidates)}/{len(markets)} marchés passent les filtres")
 
     if not candidates:
@@ -453,6 +480,13 @@ def run_cycle():
         cid       = d.get("condition_id", "")
         certainty = d.get("certainty", "low")
         mkt       = market_lookup.get(cid, {})
+
+        # Boost certitude si sailor82 est aussi sur ce trade
+        if mkt.get("_deko"):
+            old = certainty
+            certainty = {"low": "medium", "medium": "high"}.get(certainty, certainty)
+            if certainty != old:
+                log(f"  🔍 Deko boost : certitude {old} → {certainty} (sailor82 confirme)")
 
         # Vérif exposition globale
         if total_exposed >= usdc * MAX_EXPOSURE_PCT:

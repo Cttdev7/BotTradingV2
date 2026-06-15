@@ -548,6 +548,8 @@ def _format_markets_v2(markets: list) -> tuple:
                 parts.append(f"moy:{avg}{sym}·écart:{spread}{sym}")
             if parts:
                 market_line += "\n    🌤️ " + " | ".join(parts)
+        if m.get("_deko"):
+            market_line += "\n    🔍 SIGNAL DEKO : sailor82 est NO sur ce marché (win rate 86%)"
         lines.append(market_line)
         idx += 1
 
