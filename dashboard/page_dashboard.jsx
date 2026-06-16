@@ -1,10 +1,10 @@
 // ============================================================
-// page_dashboard.jsx — list of all bots + portfolio summary
+// page_dashboard.jsx — 2 onglets : Action / Analyse
 // ============================================================
 function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
-  const { fmtUSD, fmtSignedUSD, sliceRange, Card, SectionTitle, BotGlyph, MarketChip,
-    StatusPill, Toggle, Sparkline, Delta, Stat, Button, Icon } = window;
-  const [filter, setFilter] = React.useState('all');
+  const { fmtUSD, fmtSignedUSD, sliceRange, Card, BotGlyph,
+    Toggle, Sparkline, Delta, Stat } = window;
+  const [tab, setTab] = React.useState('action');
   const [pwHistory, setPwHistory] = React.useState([]);
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
@@ -17,24 +17,41 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
     return () => clearInterval(id);
   }, []);
 
-  const pwBot      = bots.find(b => b.id === 'polyedge');
-  const pw2Bot     = bots.find(b => b.id === 'polyedge2');
+  const pw2Bot   = bots.find(b => b.id === 'polyedge2');
+  const pw1Bot   = bots.find(b => b.id === 'polyedge');
+  const dekoBot  = bots.find(b => b.id === 'deko');
+  const tempBots = bots.filter(b => b.type === 'temperature');
+
+  const actionBots  = bots.filter(b => !b.type);
+  const analyseBots = bots.filter(b => b.type);
+
   const pwTotalPnl = pwHistory.length > 0 ? pwHistory[pwHistory.length - 1].pnl_cumul : null;
   const pwTrades   = pwHistory.reduce((a, b) => a + b.trades, 0);
   const pwGagnes   = pwHistory.reduce((a, b) => a + b.gagnes, 0);
   const pwWinRate  = pwTrades > 0 ? Math.round(pwGagnes / pwTrades * 100) : null;
 
-  const active = bots.filter((b) => b.status === 'running').length;
-  const filtered = filter === 'all' ? bots : bots.filter((b) => b.market === filter);
+  const active = bots.filter(b => b.status === 'running').length;
 
-  const filters = [
-    { value: 'all', label: 'Tous' }, { value: 'crypto', label: 'Crypto' },
-    { value: 'stocks', label: 'Actions' }, { value: 'polymarket', label: 'Polymarket' },
-  ];
+  const tabBtn = (t, label, count) => (
+    <div onClick={() => setTab(t)} style={{
+      flex: 1, textAlign: 'center', padding: '9px 16px', borderRadius: 9,
+      fontSize: 14, fontWeight: 600, cursor: 'pointer',
+      background: tab === t ? 'var(--fill)' : 'transparent',
+      color: tab === t ? 'var(--text)' : 'var(--text-3)',
+      transition: 'all .18s', userSelect: 'none',
+    }}>
+      {label}
+      <span style={{
+        fontSize: 11, borderRadius: 20, padding: '1px 7px', marginLeft: 7,
+        background: tab === t ? 'var(--accent)' : 'var(--fill)',
+        color: tab === t ? '#fff' : 'var(--text-3)',
+      }}>{count}</span>
+    </div>
+  );
 
   return (
     <div>
-      {/* hero summary */}
+      {/* ── Hero portfolio ── */}
       <Card style={{ marginBottom: 'var(--gap)', padding: 'calc(var(--pad) + 4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
         <div>
@@ -59,179 +76,186 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
         </div>
       </Card>
 
-      {/* ── ProfitWeather — Historique des profits ── */}
-      {pwBot && (
-        <Card style={{ marginBottom: 'var(--gap)', padding: 0, overflow: 'hidden',
-          cursor: 'pointer' }} onClick={() => onOpen('polyedge')}>
-          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
-            background: 'linear-gradient(135deg,#0f2027,#203a43,#2c5364)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 22 }}>🌦</span>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
-                  ProfitWeather V1.0 — Profits réels
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 'var(--gap)',
+        background: 'var(--card)', borderRadius: 12, padding: 5 }}>
+        {tabBtn('action',  '⚡ Action',  actionBots.length)}
+        {tabBtn('analyse', '🔍 Analyse', analyseBots.length)}
+      </div>
+
+      {/* ── Onglet Action ── */}
+      {tab === 'action' && (
+        <div>
+          {/* ProfitWeather V2.0 — hero actif */}
+          {pw2Bot && (
+            <Card style={{ marginBottom: 'var(--gap)', padding: 0, overflow: 'hidden', cursor: 'pointer' }}
+              onClick={() => onOpen('polyedge2')}>
+              <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+                background: 'linear-gradient(135deg,#0f2027,#1a3040,#0d4040)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 24 }}>🌤️</span>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
+                      ProfitWeather V2.0
+                    </div>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 5,
+                      background: 'rgba(74,222,128,.15)', border: '1px solid rgba(74,222,128,.3)',
+                      borderRadius: 20, padding: '2px 9px', fontSize: 11, color: '#4ade80', fontWeight: 600 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80',
+                        boxShadow: '0 0 6px #4ade80', display: 'inline-block' }} />
+                      EN LIGNE
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 1 }}>
-                  Trading météo Polymarket · DRY_RUN=false
+                <div style={{ textAlign: 'right' }}>
+                  {pwTotalPnl !== null ? (
+                    <>
+                      <div className="num" style={{ fontSize: 28, fontWeight: 900, lineHeight: 1,
+                        color: pwTotalPnl >= 0 ? '#4ade80' : '#f87171' }}>
+                        {pwTotalPnl >= 0 ? '+' : ''}{fmtUSD(Math.abs(pwTotalPnl), 2)}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 3 }}>
+                        P&L cumulé · {pwTrades} trade{pwTrades !== 1 ? 's' : ''}{pwWinRate !== null ? ` · ${pwWinRate}% win` : ''}
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)', fontStyle: 'italic' }}>
+                      {isLocal ? 'Lancez le serveur pour voir les profits' : 'Données locales requises'}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              {pwTotalPnl !== null ? (
-                <>
-                  <div style={{ fontSize: 28, fontWeight: 900, lineHeight: 1,
-                    color: pwTotalPnl >= 0 ? '#4ade80' : '#f87171' }}>
-                    {pwTotalPnl >= 0 ? '+' : ''}{fmtUSD(Math.abs(pwTotalPnl), 2)}
+
+              {pwHistory.length > 0 && (
+                <div style={{ padding: '14px 20px 16px' }}>
+                  <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 44, marginBottom: 12 }}>
+                    {pwHistory.slice(-30).map((h, i, arr) => {
+                      const maxAbs = Math.max(...arr.map(x => Math.abs(x.pnl)), 0.01);
+                      const barH   = Math.max(Math.round((Math.abs(h.pnl) / maxAbs) * 36), 3);
+                      const isLast = i === arr.length - 1;
+                      return (
+                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column',
+                          justifyContent: 'flex-end', height: 44 }}>
+                          <div style={{ width: '100%', height: barH, borderRadius: 2,
+                            background: h.pnl >= 0 ? 'var(--green)' : 'var(--red)',
+                            opacity: isLast ? 1 : 0.45 }} />
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 3 }}>
-                    P&L cumulé · {pwTrades} trade{pwTrades !== 1 ? 's' : ''}{pwWinRate !== null ? ` · ${pwWinRate}% win` : ''}
+                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                    {[
+                      { l: 'P&L total', v: (pwTotalPnl >= 0 ? '+' : '') + fmtUSD(Math.abs(pwTotalPnl), 2), c: pwTotalPnl >= 0 ? 'var(--green)' : 'var(--red)' },
+                      { l: 'Trades',    v: pwTrades },
+                      { l: 'Win rate',  v: pwWinRate !== null ? `${pwWinRate}%` : '—' },
+                      { l: '✅ Gagnés', v: pwGagnes, c: 'var(--green)' },
+                      { l: '❌ Perdus', v: pwTrades - pwGagnes, c: 'var(--red)' },
+                    ].map((s, i) => (
+                      <div key={i}>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 2 }}>{s.l}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: s.c || 'var(--text)' }}>{s.v}</div>
+                      </div>
+                    ))}
                   </div>
-                </>
-              ) : (
-                <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)', fontStyle: 'italic' }}>
-                  {isLocal ? 'Lancez le serveur pour voir les profits' : 'Données locales requises'}
                 </div>
               )}
-            </div>
-          </div>
 
-          {pwHistory.length > 0 && (
-            <div style={{ padding: '14px 20px 16px' }}>
-              {/* Mini graphique barres */}
-              <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 44, marginBottom: 12 }}>
-                {pwHistory.slice(-30).map((h, i, arr) => {
-                  const maxAbs = Math.max(...arr.map(x => Math.abs(x.pnl)), 0.01);
-                  const barH   = Math.max(Math.round((Math.abs(h.pnl) / maxAbs) * 36), 3);
-                  const isLast = i === arr.length - 1;
-                  return (
-                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column',
-                      justifyContent: 'flex-end', height: 44 }}>
-                      <div style={{ width: '100%', height: barH, borderRadius: 2,
-                        background: h.pnl >= 0 ? 'var(--green)' : 'var(--red)',
-                        opacity: isLast ? 1 : 0.45 }} />
+              {pwHistory.length === 0 && isLocal && (
+                <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12,
+                  color: 'var(--text-3)' }}>
+                  <span style={{ fontSize: 20 }}>⏳</span>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-2)', marginBottom: 2 }}>
+                      En attente du premier trade
                     </div>
-                  );
-                })}
-              </div>
-              {/* Stats ligne */}
-              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                {[
-                  { l: 'P&L total',  v: (pwTotalPnl >= 0 ? '+' : '') + fmtUSD(Math.abs(pwTotalPnl), 2),
-                    c: pwTotalPnl >= 0 ? 'var(--green)' : 'var(--red)' },
-                  { l: 'Trades',     v: pwTrades },
-                  { l: 'Win rate',   v: pwWinRate !== null ? `${pwWinRate}%` : '—' },
-                  { l: '✅ Gagnés',  v: pwGagnes, c: 'var(--green)' },
-                  { l: '❌ Perdus',  v: pwTrades - pwGagnes, c: 'var(--red)' },
-                ].map((s, i) => (
-                  <div key={i}>
-                    <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 2 }}>{s.l}</div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: s.c || 'var(--text)' }}>{s.v}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {pwHistory.length === 0 && isLocal && (
-            <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12,
-              color: 'var(--text-3)' }}>
-              <span style={{ fontSize: 20 }}>⏳</span>
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-2)', marginBottom: 2 }}>
-                  En attente du premier trade
-                </div>
-                <div style={{ fontSize: 12.5 }}>
-                  Les profits s'afficheront ici dès que ProfitWeather passera un ordre.
-                </div>
-              </div>
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* ── ProfitWeather V2.0 ── */}
-      {pw2Bot && (
-        <Card style={{ marginBottom: 'var(--gap)', padding: 0, overflow: 'hidden',
-          cursor: 'pointer' }} onClick={() => onOpen('polyedge2')}>
-          <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center',
-            justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
-            background: 'linear-gradient(135deg,#0f2027,#1a3040,#0d4040)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 22 }}>🌤️</span>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
-                  ProfitWeather V2.0
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 1 }}>
-                  Nouvelle stratégie · En pause
-                </div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,.35)', fontStyle: 'italic' }}>
-                🔧 Stratégie à configurer
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <SectionTitle title="Mes bots" sub={`${active} en exécution · ${bots.length} au total`}
-        trailing={<Button icon="plus" onClick={onNewBot}>Nouveau bot</Button>} />
-
-      <div style={{ marginBottom: 'var(--gap)', maxWidth: 420 }}>
-        <window.Segmented options={filters} value={filter} onChange={setFilter} size="sm" />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 'var(--gap)' }}>
-        {filtered.map((b) => {
-          const paused = b.status !== 'running';
-          return (
-            <Card key={b.id} onClick={() => onOpen(b.id)} style={{ display: 'flex', flexDirection: 'column',
-              gap: 14, opacity: paused ? 0.82 : 1 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <BotGlyph bot={b} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 16, fontWeight: 650, letterSpacing: '-.01em' }}>{b.name}</div>
-                  <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 1,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.strategy}</div>
-                </div>
-                <Toggle on={!paused} onChange={() => onToggle(b.id)} />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
-                <div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginBottom: 2 }}>Capital alloué</div>
-                  <div className="num" style={{ fontSize: 21, fontWeight: 700, letterSpacing: '-.02em' }}>{fmtUSD(b.capital)}</div>
-                </div>
-                <Sparkline data={sliceRange(b.series, '1M')} w={92} h={34}
-                  up={b.series[b.series.length - 1] >= b.series[0]} />
-              </div>
-
-              <div style={{ height: 1, background: 'var(--separator)' }} />
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>24h</div>
-                    <Delta pct={b.pnlDayPct} size={13.5} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Win rate</div>
-                    <div className="num" style={{ fontSize: 13.5, fontWeight: 600 }}>{b.winRate}%</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-3)' }}>Positions</div>
-                    <div className="num" style={{ fontSize: 13.5, fontWeight: 600 }}>{b.openPos}</div>
+                    <div style={{ fontSize: 12.5 }}>
+                      Les profits s'afficheront ici dès que ProfitWeather passera un ordre.
+                    </div>
                   </div>
                 </div>
-                <MarketChip market={b.market} />
-              </div>
+              )}
             </Card>
-          );
-        })}
-      </div>
+          )}
+
+          {/* ProfitWeather V1.0 — hors ligne */}
+          {pw1Bot && (
+            <>
+              <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '.07em', color: 'var(--text-3)', marginBottom: 10 }}>
+                Inactif
+              </div>
+              <Card onClick={() => onOpen('polyedge')} style={{ display: 'flex', flexDirection: 'column',
+                gap: 14, opacity: 0.55, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <BotGlyph bot={pw1Bot} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 650, letterSpacing: '-.01em' }}>{pw1Bot.name}</div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 1 }}>{pw1Bot.strategy}</div>
+                  </div>
+                  <Toggle on={false} onChange={() => onToggle('polyedge')} />
+                </div>
+                <div style={{ display: 'flex', gap: 20, paddingTop: 10, borderTop: '1px solid var(--separator)' }}>
+                  {[{ l: 'Capital', v: fmtUSD(pw1Bot.capital) }, { l: 'Trades', v: pw1Bot.trades }, { l: 'Win rate', v: `${pw1Bot.winRate}%` }]
+                    .map((s, i) => (
+                      <div key={i}>
+                        <div style={{ fontSize: 10.5, color: 'var(--text-3)', marginBottom: 2 }}>{s.l}</div>
+                        <div style={{ fontSize: 15, fontWeight: 700 }}>{s.v}</div>
+                      </div>
+                    ))}
+                </div>
+              </Card>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet Analyse ── */}
+      {tab === 'analyse' && (
+        <div>
+          {/* Deko */}
+          {dekoBot && (
+            <Card onClick={() => onOpen('deko')} style={{ display: 'flex', alignItems: 'center',
+              gap: 12, cursor: 'pointer', marginBottom: 'var(--gap)' }}>
+              <BotGlyph bot={dekoBot} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 650, letterSpacing: '-.01em' }}>{dekoBot.name}</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 1 }}>{dekoBot.strategy}</div>
+              </div>
+              <Toggle on={dekoBot.status === 'running'} onChange={() => onToggle('deko')} />
+            </Card>
+          )}
+
+          {/* 45 bots température — grille compacte */}
+          <div style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '.07em', color: 'var(--text-3)', marginBottom: 10 }}>
+            {tempBots.length} bots température
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 8 }}>
+            {tempBots.map(b => (
+              <Card key={b.id} onClick={() => onOpen(b.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 13px', cursor: 'pointer' }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>{b.flag || b.glyph}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                    overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {b.name.replace(' Temp', '')}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                      background: b.status === 'running' ? '#4ade80' : '#555',
+                      boxShadow: b.status === 'running' ? '0 0 5px #4ade80' : 'none' }} />
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                      {b.status === 'running' ? 'Actif' : 'Pause'}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -68,22 +68,6 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'polycrypto', name: 'Crypto Horaire', market: 'polymarket', glyph: '₿',
-    strategy: 'Arbitrage crypto horaire 80%+', venue: 'Polymarket',
-    status: 'paused', capital: 0, allocPct: 33,
-    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
-    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
-    series: Array(90).fill(0),
-  },
-  {
-    id: 'polycrypto4h', name: 'Crypto 4H', market: 'polymarket', glyph: '⏱',
-    strategy: 'Arbitrage crypto 4h 80%+', venue: 'Polymarket',
-    status: 'paused', capital: 0, allocPct: 17,
-    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
-    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
-    series: Array(90).fill(0),
-  },
-  {
     id: 'chengdu', name: 'Chengdu Temp', market: 'polymarket', glyph: '🌡️', flag: '🇨🇳',
     type: 'temperature', citySlug: 'chengdu',
     strategy: 'Température max Chengdu 80%+', venue: 'Polymarket',
@@ -492,9 +476,8 @@ const BOTS = [
 
 // TODO: API — positions mises à jour en temps réel par api.jsx
 const POSITIONS = {
-  polyedge:     [],
-  polycrypto:   [],
-  polycrypto4h: [],
+  polyedge:  [],
+  polyedge2: [],
 };
 
 // TODO: API — transactions chargées depuis api.jsx (get_activity)
