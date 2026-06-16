@@ -253,6 +253,7 @@ def get_weather_markets() -> list:
                         "closed":       False,
                         "tokens":       tokens,
                         "day_offset":   delta,
+                        "end_date_iso": m.get("endDate") or m.get("endDateIso") or "",
                     })
                     seen.add(cid)
                     found_open = True

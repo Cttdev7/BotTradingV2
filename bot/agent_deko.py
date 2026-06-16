@@ -174,7 +174,7 @@ def detect_new_trades() -> list:
             continue
 
         trade_type = (act.get("type") or "").upper()
-        if trade_type not in ("BUY",):
+        if trade_type not in ("BUY", "TRADE"):
             continue
 
         condition_id = act.get("conditionId", "") or act.get("condition_id", "")

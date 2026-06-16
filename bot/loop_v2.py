@@ -18,6 +18,7 @@ import os
 import json
 import uuid
 import datetime
+from zoneinfo import ZoneInfo
 import requests
 from concurrent.futures import ThreadPoolExecutor
 import pm_api as polymarket
@@ -46,7 +47,7 @@ MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
 MAX_MODELS_SPREAD = 12.0    # °F — si les modèles ECMWF divergent de plus de 12°F → trop incertain
 MIN_VOLUME        = 1_000   # volume minimum du marché USDC
 
-NO_STOP_LOSS_PCT  = -0.50   # -50% → vente automatique
+NO_STOP_LOSS_PCT  = -0.25   # -25% → vente automatique
 NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99% → lock profit (quasi-résolution)
 
 # Villes US fiables (météo prévisible en été)
@@ -54,6 +55,25 @@ PREFERRED_CITIES  = {"miami", "houston", "dallas", "atlanta", "los-angeles",
                      "san-francisco", "seattle", "chicago", "denver"}
 # Villes à exclure si canicule ECMWF > 35% (été chaud imprévisible)
 HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami"}
+
+# Fenêtre de temps optimale : refuser si trop tôt (>20h restantes) ou trop tard (<1h)
+MIN_HOURS_REMAINING = 1.0   # marché qui ferme dans moins d'1h → liquidité trop faible
+MAX_HOURS_REMAINING = 20.0  # marché qui ferme dans plus de 20h → trop d'incertitude
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _hours_remaining(end_date_iso: str) -> float | None:
+    """Retourne les heures restantes avant clôture du marché, ou None si inconnu."""
+    if not end_date_iso:
+        return None
+    try:
+        # Supporte "2026-06-16T23:59:00Z" et "2026-06-16T23:59:00+00:00"
+        end = datetime.datetime.fromisoformat(end_date_iso.replace("Z", "+00:00"))
+        now = datetime.datetime.now(ZoneInfo("UTC"))
+        delta = (end - now).total_seconds() / 3600
+        return round(delta, 1)
+    except Exception:
+        return None
 
 # ── Supabase helpers ──────────────────────────────────────────────────────────
 
@@ -310,6 +330,18 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         if vol < MIN_VOLUME:
             continue
 
+        # Temps restant avant clôture
+        hours_left = _hours_remaining(m.get("end_date_iso", ""))
+        if hours_left is not None:
+            if hours_left < MIN_HOURS_REMAINING:
+                label = "déjà fermé" if hours_left < 0 else f"ferme dans {hours_left:.1f}h"
+                log(f"  ⏰ {city} {label} — ignoré")
+                continue
+            if hours_left > MAX_HOURS_REMAINING:
+                log(f"  ⏰ {city} ferme dans {hours_left:.1f}h — trop tôt, ignoré")
+                continue
+            m["_hours_left"] = hours_left  # transmis à Claude pour contexte
+
         # Prix NO dans la zone cible
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
             continue
@@ -469,15 +501,21 @@ def run_cycle():
 
     market_lookup  = {m["condition_id"]: m for m in candidates}
     total_exposed  = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    traded_cities  = set()  # 1 trade max par ville par cycle
 
     for d in decisions:
-        if d.get("action") != "buy" or d.get("outcome") != "No":
+        if d.get("action") != "buy" or d.get("outcome") not in ("No", "NO"):
             continue
 
         cid       = d.get("condition_id", "")
         certainty = d.get("certainty", "low")
         mkt       = market_lookup.get(cid, {})
         city      = mkt.get("city", "")
+
+        # 1 trade max par ville par cycle
+        if city in traded_cities:
+            log(f"  ⛔ {city} déjà tradé ce cycle — ignoré")
+            continue
 
         # Boost certitude si sailor82 est aussi sur ce trade
         if mkt.get("_deko"):
@@ -491,7 +529,7 @@ def run_cycle():
             log(f"  ⛔ Exposition max atteinte — stop")
             break
 
-        # Calcul de la mise basée sur % du solde
+        # Calcul de la mise NO basée sur % du solde
         amount = _calc_bet(usdc, certainty)
         log(f"  💰 Mise calculée : ${amount:.2f} ({certainty}) sur solde ${usdc:.2f}")
 
@@ -549,7 +587,8 @@ def run_cycle():
             insert_trade(trade)
             total_exposed += amount
             usdc -= amount
-            log(f"  ✅ Enregistré | Exposition totale : ${total_exposed:.2f}/{usdc*MAX_EXPOSURE_PCT:.2f}")
+            traded_cities.add(city)
+            log(f"  ✅ Enregistré | Exposition : ${total_exposed:.2f}")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
 

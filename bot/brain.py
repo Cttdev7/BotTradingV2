@@ -550,6 +550,12 @@ def _format_markets_v2(markets: list) -> tuple:
                 market_line += "\n    🌤️ " + " | ".join(parts)
         if m.get("_deko"):
             market_line += "\n    🔍 SIGNAL DEKO : sailor82 est NO sur ce marché (win rate 86%)"
+        hours_left = m.get("_hours_left")
+        if hours_left is not None:
+            if hours_left <= 4:
+                market_line += f"\n    ⏳ FERME DANS {hours_left:.1f}h — résolution imminente, risque très faible"
+            else:
+                market_line += f"\n    ⏳ {hours_left:.1f}h avant clôture"
         lines.append(market_line)
         idx += 1
 
