@@ -205,6 +205,7 @@ function App() {
   const portfolio = useMemo(() => window.computePortfolio(bots), [bots]);
   const actionBots  = bots.filter((b) => !b.type).sort((a, b) => (b.status === 'running') - (a.status === 'running'));
   const dekoBot     = bots.find((b) => b.id === 'deko');
+  const luckBot     = bots.find((b) => b.id === 'luck');
   const meteoBots   = bots.filter((b) => b.type === 'temperature');
   const meteoActive = meteoBots.filter((b) => b.status === 'running').length;
 
@@ -213,15 +214,18 @@ function App() {
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} transactions={liveActivity} />;
   else if (nav.page === 'bot' && bot && bot.id === 'deko') content = <window.DekoPage onBack={() => go('dashboard')} />;
+  else if (nav.page === 'bot' && bot && bot.id === 'luck') content = <window.LuckPage onBack={() => go('dashboard')} />;
   else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} liveActivity={liveActivity} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
   else if (nav.page === 'stratege') content = <window.StratègePage onBack={() => go('dashboard')} />;
+  else if (nav.page === 'calendar') content = <window.CalendarPage onBack={() => go('dashboard')} />;
   else content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
 
   const mainNav = [
-    { page: 'dashboard', icon: 'grid',    label: 'Bots',       badge: bots.length },
-    { page: 'portfolio', icon: 'wallet',  label: 'Portefeuille' },
-    { page: 'history',   icon: 'clock',   label: 'Historique' },
+    { page: 'dashboard', icon: 'grid',         label: 'Bots',         badge: bots.length },
+    { page: 'portfolio', icon: 'wallet',        label: 'Portefeuille' },
+    { page: 'calendar',  icon: 'calendar-days', label: 'Calendrier' },
+    { page: 'history',   icon: 'clock',         label: 'Historique' },
   ];
   const navActive = (p) => nav.page === p || (p === 'dashboard' && (nav.page === 'bot' || nav.page === 'settings'));
 
@@ -314,6 +318,24 @@ function App() {
                 <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
                   background: dekoBot.status === 'running' ? 'var(--green)' : 'var(--text-3)',
                   boxShadow: dekoBot.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
+              </button>
+            </div>
+          )}
+
+          {/* Luck */}
+          {luckBot && (
+            <div className="bot-item" style={{ borderRadius: 'var(--r-md)',
+              background: nav.botId === 'luck' ? 'var(--fill)' : 'transparent' }}>
+              <button onClick={() => go('bot', 'luck')} className="tap"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  border: 'none', cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
+                  borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
+                <window.BotGlyph bot={luckBot} size={26} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: 'var(--text)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{luckBot.name}</span>
+                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                  background: luckBot.status === 'running' ? 'var(--green)' : 'var(--text-3)',
+                  boxShadow: luckBot.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
               </button>
             </div>
           )}

@@ -60,6 +60,14 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
+    id: 'luck', name: 'Analyse onlylucknobrain', market: 'polymarket', glyph: '🍀',
+    type: 'analyse', strategy: 'Surveillance onlylucknobrain — patterns météo US', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
     id: 'polyedge2', name: 'ProfitWeather V2.0', market: 'polymarket', glyph: '🌤️',
     strategy: 'Stratégie à définir', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
