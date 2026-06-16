@@ -535,9 +535,14 @@ def _format_markets_v2(markets: list) -> tuple:
         if wx:
             sym   = wx.get("sym", "°C")
             parts = []
+            # Trajectoire temps réel
             if "current_temp" in wx:
-                max_t = f" max_jour:{wx['max_today']:.1f}{sym}" if "max_today" in wx else ""
-                parts.append(f"actuel:{wx['current_temp']:.1f}{sym}{max_t}")
+                cur   = wx["current_temp"]
+                h_loc = wx.get("local_hour", "?")
+                traj  = f" {wx['trend']}" if wx.get("trend") else ""
+                max_o = f" max_observé:{wx['max_today']:.1f}{sym}" if "max_today" in wx else ""
+                max_r = f" max_restant:{wx['remaining_max']:.1f}{sym}" if "remaining_max" in wx else ""
+                parts.append(f"🌡️ {h_loc}h→{cur:.1f}{sym}{traj}{max_o}{max_r}")
             if "band_prob" in wx:
                 bp   = wx["band_prob"]
                 flag = "🎯" if bp < 15 else "✅" if bp < 30 else "⚠️"
@@ -548,6 +553,8 @@ def _format_markets_v2(markets: list) -> tuple:
                 parts.append(f"moy:{avg}{sym}·écart:{spread}{sym}")
             if parts:
                 market_line += "\n    🌤️ " + " | ".join(parts)
+        if m.get("_no_confirmed"):
+            market_line += "\n    ✅ NO CONFIRMÉ EN TEMPS RÉEL : max observé aujourd'hui dépasse déjà la fourchette haute"
         if m.get("_deko"):
             market_line += "\n    🔍 SIGNAL DEKO : sailor82 est NO sur ce marché (win rate 86%)"
         hours_left = m.get("_hours_left")

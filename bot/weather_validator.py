@@ -477,17 +477,21 @@ def _fetch_single_model_max(lat, lon, model_id, target_date, unit, tz):
     return None
 
 
-def _fetch_current_temp(lat, lon, unit):
-    """Température actuelle + max observé aujourd'hui + tendance sur 3h."""
+def _fetch_current_temp(lat, lon, unit, tz_name: str = "UTC"):
+    """Température actuelle + max observé + max restant + tendance 3h (heure locale ville)."""
     try:
         import datetime as _dt
-        today = _dt.date.today().isoformat()
+        tz   = ZoneInfo(tz_name) if ZoneInfo and tz_name else None
+        now  = _dt.datetime.now(tz) if tz else _dt.datetime.utcnow()
+        today = now.date().isoformat()
+        now_hour = now.hour
+
         r = requests.get(OPEN_METEO_FORECAST, params={
             "latitude": lat, "longitude": lon,
             "current": "temperature_2m",
             "hourly": "temperature_2m",
             "temperature_unit": unit,
-            "timezone": "auto",
+            "timezone": tz_name or "UTC",
             "start_date": today,
             "end_date":   today,
         }, timeout=6)
@@ -497,12 +501,14 @@ def _fetch_current_temp(lat, lon, unit):
         current_val = data.get("current", {}).get("temperature_2m")
         current     = float(current_val) if current_val is not None else None
 
-        # Heures passées pour max observé et tendance
-        now_hour = _dt.datetime.now().hour
-        times    = data.get("hourly", {}).get("time", [])
-        temps    = data.get("hourly", {}).get("temperature_2m", [])
-        past     = [temps[i] for i, t in enumerate(times)
-                    if temps[i] is not None and int(t.split('T')[1][:2]) <= now_hour]
+        times = data.get("hourly", {}).get("time", [])
+        temps = data.get("hourly", {}).get("temperature_2m", [])
+
+        # Heures passées (heure locale ville) vs restantes
+        past      = [temps[i] for i, t in enumerate(times)
+                     if temps[i] is not None and int(t.split('T')[1][:2]) <= now_hour]
+        remaining = [temps[i] for i, t in enumerate(times)
+                     if temps[i] is not None and int(t.split('T')[1][:2]) > now_hour]
 
         result = {"current": current}
         if past:
@@ -516,6 +522,9 @@ def _fetch_current_temp(lat, lon, unit):
                     result["trend"] = f"↘️ {delta:.1f}°"
                 else:
                     result["trend"] = "→ stable"
+        if remaining:
+            result["remaining_max"] = round(max(remaining), 1)
+        result["local_hour"] = now_hour
         return result
     except Exception:
         return None
@@ -591,7 +600,7 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
     if raw is None:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=7) as pool:
-            f_current  = pool.submit(_fetch_current_temp,      lat, lon, unit)
+            f_current  = pool.submit(_fetch_current_temp,      lat, lon, unit, tz_name)
             f_ensemble = pool.submit(_fetch_ensemble_members,  lat, lon, target_date, unit)
             f_ecmwf    = pool.submit(_fetch_single_model_max,  lat, lon, "ecmwf_ifs025",         target_date, unit, tz_name)
             f_gfs      = pool.submit(_fetch_single_model_max,  lat, lon, "gfs_global",           target_date, unit, tz_name)
@@ -623,8 +632,12 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
         result["current_temp"] = raw["current_temp"]
     if raw.get("max_today") is not None:
         result["max_today"] = raw["max_today"]
+    if raw.get("remaining_max") is not None:
+        result["remaining_max"] = raw["remaining_max"]
     if raw.get("trend"):
         result["trend"] = raw["trend"]
+    if raw.get("local_hour") is not None:
+        result["local_hour"] = raw["local_hour"]
 
     members = raw["ensemble_members"]
     if members:

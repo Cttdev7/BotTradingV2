@@ -346,6 +346,19 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
             continue
 
+        # Trajectoire temps réel — si remaining_max peut atteindre la fourchette → trop risqué
+        bounds = _parse_range_bounds(q)
+        if bounds and wx.get("remaining_max") is not None:
+            low, high = bounds
+            remaining_max = wx["remaining_max"]
+            if remaining_max >= low:
+                log(f"  🌡️  {city} remaining_max {remaining_max}°F ≥ fourchette basse {low}°F — trop risqué")
+                continue
+            # Si max déjà observé est très au-dessus de la fourchette → signal fort NO
+            max_today = wx.get("max_today")
+            if max_today is not None and max_today > high + 3:
+                m["_no_confirmed"] = True  # marché déjà gagné en temps réel
+
         # band_prob trop élevé → trop probable d'être dans ce range
         # Si weather_ctx manque (enrichissement raté), on refuse le trade par sécurité
         band_prob = wx.get("band_prob")
