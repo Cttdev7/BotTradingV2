@@ -72,7 +72,7 @@ function DekoPage({ onBack }) {
           display:'grid', placeItems:'center', fontSize:22 }}>🔍</div>
         <div style={{ flex:1 }}>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <h2 style={{ margin:0, fontSize:22, fontWeight:700 }}>Analyse Deko</h2>
+            <h2 style={{ margin:0, fontSize:22, fontWeight:700 }}>Analyse sailor82</h2>
             <StatusPill status="running" />
           </div>
           <div style={{ fontSize:13, color:'var(--text-3)', marginTop:3 }}>

@@ -52,7 +52,7 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'deko', name: 'Analyse Deko', market: 'polymarket', glyph: '🔍',
+    id: 'deko', name: 'Analyse sailor82', market: 'polymarket', glyph: '🔍',
     type: 'analyse', strategy: 'Surveillance sailor82 — patterns NO météo US', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
     pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
