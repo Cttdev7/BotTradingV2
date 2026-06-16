@@ -203,7 +203,8 @@ function App() {
   const bot = bots.find((b) => b.id === nav.botId);
   const active = bots.filter((b) => b.status === 'running').length;
   const portfolio = useMemo(() => window.computePortfolio(bots), [bots]);
-  const tradingBots = bots.filter((b) => b.type !== 'temperature');
+  const actionBots  = bots.filter((b) => !b.type).sort((a, b) => (b.status === 'running') - (a.status === 'running'));
+  const dekoBot     = bots.find((b) => b.id === 'deko');
   const meteoBots   = bots.filter((b) => b.type === 'temperature');
   const meteoActive = meteoBots.filter((b) => b.status === 'running').length;
 
@@ -246,10 +247,12 @@ function App() {
         <nav style={{ padding: '4px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
           {mainNav.map((n) => <NavItem key={n.page} {...n} active={navActive(n.page)} onClick={() => go(n.page)} />)}
         </nav>
-        <div style={{ padding: '18px 18px 8px', fontSize: 11.5, fontWeight: 600, color: 'var(--text-3)',
-          textTransform: 'uppercase', letterSpacing: '.05em' }}>Bots</div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {tradingBots.map((b) => {
+
+          {/* ── ⚡ Action ── */}
+          <div style={{ padding: '14px 9px 6px', fontSize: 11.5, fontWeight: 700, color: 'var(--text-3)',
+            textTransform: 'uppercase', letterSpacing: '.05em' }}>⚡ Action</div>
+          {actionBots.map((b) => {
             const sel = nav.botId === b.id;
             const isRenaming = renaming?.id === b.id;
             return (
@@ -279,7 +282,8 @@ function App() {
                       <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: 'var(--text)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
                       <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
-                        background: b.status === 'running' ? 'var(--green)' : 'var(--text-3)' }} />
+                        background: b.status === 'running' ? 'var(--green)' : 'var(--text-3)',
+                        boxShadow: b.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
                     </button>
                     <button className="bot-edit-btn" onClick={(e) => { e.stopPropagation(); setRenaming({ id: b.id, name: b.name }); }}
                       style={{ border: 'none', background: 'transparent', cursor: 'pointer',
@@ -292,15 +296,37 @@ function App() {
             );
           })}
 
-          {/* ── Section Météo dépliable ── */}
+          {/* ── 🔍 Analyse ── */}
+          <div style={{ padding: '14px 9px 6px', fontSize: 11.5, fontWeight: 700, color: 'var(--text-3)',
+            textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 4 }}>🔍 Analyse</div>
+
+          {/* Deko */}
+          {dekoBot && (
+            <div className="bot-item" style={{ borderRadius: 'var(--r-md)',
+              background: nav.botId === 'deko' ? 'var(--fill)' : 'transparent' }}>
+              <button onClick={() => go('bot', 'deko')} className="tap"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  border: 'none', cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
+                  borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
+                <window.BotGlyph bot={dekoBot} size={26} />
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: 'var(--text)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dekoBot.name}</span>
+                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                  background: dekoBot.status === 'running' ? 'var(--green)' : 'var(--text-3)',
+                  boxShadow: dekoBot.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
+              </button>
+            </div>
+          )}
+
+          {/* Météo dépliable */}
           {meteoBots.length > 0 && (
             <>
               <button onClick={() => setMeteoOpen((o) => !o)} className="tap" style={{
                 display: 'flex', alignItems: 'center', gap: 7, width: '100%', border: 'none',
-                cursor: 'pointer', textAlign: 'left', padding: '9px 9px 7px', marginTop: 8,
+                cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
                 background: 'transparent', borderRadius: 'var(--r-md)' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)',
-                  textTransform: 'uppercase', letterSpacing: '.05em', flex: 1 }}>🌡️ Météo</span>
+                <span style={{ fontSize: 13.5 }}>🌡️</span>
+                <span style={{ fontSize: 13.5, fontWeight: 550, color: 'var(--text)', flex: 1 }}>Météo</span>
                 {meteoActive > 0 && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)',
                     background: 'color-mix(in oklab, var(--green) 15%, transparent)',
@@ -311,7 +337,6 @@ function App() {
               </button>
               {meteoOpen && (
                 <>
-                  {/* Mistral en premier */}
                   <div className="bot-item" style={{ borderRadius: 'var(--r-md)', marginLeft: 8,
                     background: nav.page === 'stratege' ? 'var(--fill)' : 'transparent' }}>
                     <button onClick={() => go('stratege')} className="tap"
@@ -327,7 +352,6 @@ function App() {
                         padding: '1px 6px', borderRadius: 999 }}>IA</span>
                     </button>
                   </div>
-                  {/* Villes */}
                   {meteoBots.map((b) => {
                     const sel = nav.botId === b.id;
                     return (
