@@ -439,9 +439,12 @@ def validate_yes_trade(city_slug: str, question: str, slug: str) -> dict:
 import time as _time
 
 OPEN_METEO_ENSEMBLE = "https://ensemble-api.open-meteo.com/v1/ensemble"
+OPEN_METEO_ARCHIVE  = "https://archive-api.open-meteo.com/v1/archive"
 
 _WX_CACHE: dict = {}
-_WX_CACHE_TTL   = 1800  # 30 min — une seule requête par ville toutes les 30 min
+_WX_CACHE_TTL   = 1800   # 30 min — données météo actuelles
+_HIST_CACHE: dict = {}
+_HIST_CACHE_TTL = 86400  # 24h — données historiques (ne changent pas dans la journée)
 
 
 def _wx_cache_get(key: tuple):
@@ -454,6 +457,91 @@ def _wx_cache_get(key: tuple):
 
 def _wx_cache_set(key: tuple, data):
     _WX_CACHE[key] = (_time.time(), data)
+
+
+def _hist_cache_get(key: tuple):
+    entry = _HIST_CACHE.get(key)
+    if entry and _time.time() - entry[0] < _HIST_CACHE_TTL:
+        return entry[1]
+    _HIST_CACHE.pop(key, None)
+    return None
+
+
+def _hist_cache_set(key: tuple, data):
+    _HIST_CACHE[key] = (_time.time(), data)
+
+
+def _fetch_historical_maxes(lat, lon, unit, month, day, year_offset, window=3):
+    """
+    Récupère les maxima journaliers historiques pour ±window jours
+    autour du même mois/jour il y a year_offset ans.
+    """
+    try:
+        import datetime as _dt
+        current_year = _dt.date.today().year
+        year  = current_year - year_offset
+        try:
+            center = _dt.date(year, month, day)
+        except ValueError:
+            return []  # 29 fév en année non bissextile
+        start = center - _dt.timedelta(days=window)
+        end   = center + _dt.timedelta(days=window)
+        r = requests.get(OPEN_METEO_ARCHIVE, params={
+            "latitude": lat, "longitude": lon,
+            "daily": "temperature_2m_max",
+            "temperature_unit": unit,
+            "timezone": "UTC",
+            "start_date": str(start),
+            "end_date":   str(end),
+        }, timeout=8)
+        if r.status_code == 200:
+            vals = r.json().get("daily", {}).get("temperature_2m_max", [])
+            return [float(v) for v in vals if v is not None]
+    except Exception:
+        pass
+    return []
+
+
+def get_historical_range_prob(lat, lon, unit, target_date, range_low, range_high, years=7):
+    """
+    Probabilité historique que le max journalier tombe dans [range_low, range_high].
+    Utilise ±3 jours × 7 années → ~49 points historiques.
+    Cache 24h par (lat, lon, unit, mois, jour).
+
+    Retourne dict avec :
+      hist_yes_freq   : % des années où le max était dans la fourchette
+      hist_no_freq    : 100 - hist_yes_freq
+      hist_avg        : moyenne historique du max journalier
+      hist_samples    : nombre de points utilisés
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    cache_key = (round(lat, 2), round(lon, 2), unit, target_date.month, target_date.day)
+    cached = _hist_cache_get(cache_key)
+    if cached is not None:
+        all_maxes = cached
+    else:
+        with ThreadPoolExecutor(max_workers=years) as pool:
+            results = list(pool.map(
+                lambda offset: _fetch_historical_maxes(lat, lon, unit, target_date.month, target_date.day, offset),
+                range(1, years + 1)
+            ))
+        all_maxes = [v for year_data in results for v in year_data]
+        if all_maxes:
+            _hist_cache_set(cache_key, all_maxes)
+
+    if len(all_maxes) < 10:
+        return None
+
+    in_range = sum(1 for v in all_maxes if range_low <= v <= range_high)
+    hist_yes  = round(in_range / len(all_maxes) * 100)
+
+    return {
+        "hist_yes_freq": hist_yes,
+        "hist_no_freq":  100 - hist_yes,
+        "hist_avg":      round(sum(all_maxes) / len(all_maxes), 1),
+        "hist_samples":  len(all_maxes),
+    }
 
 
 def _fetch_single_model_max(lat, lon, model_id, target_date, unit, tz):
@@ -618,7 +706,9 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
         raw = {
             "current_temp":     curr_data.get("current") if isinstance(curr_data, dict) else curr_data,
             "max_today":        curr_data.get("max_today") if isinstance(curr_data, dict) else None,
+            "remaining_max":    curr_data.get("remaining_max") if isinstance(curr_data, dict) else None,
             "trend":            curr_data.get("trend") if isinstance(curr_data, dict) else None,
+            "local_hour":       curr_data.get("local_hour") if isinstance(curr_data, dict) else None,
             "ensemble_members": f_ensemble.result(),
             "models":           models,
             "risk":             f_risk.result(),
@@ -669,5 +759,19 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
         result["risk"] = risk
         if "wlabel" in risk:
             result["weather_label"] = risk["wlabel"]
+
+    # Probabilité historique pour la fourchette exacte de ce marché
+    # Fourchette Polymarket : [threshold, threshold + band_width]
+    band_width = 2.0 if unit == "fahrenheit" else 1.0
+    hist = get_historical_range_prob(
+        lat, lon, unit, target_date,
+        range_low=threshold,
+        range_high=threshold + band_width,
+    )
+    if hist:
+        result["hist_yes_freq"]  = hist["hist_yes_freq"]
+        result["hist_no_freq"]   = hist["hist_no_freq"]
+        result["hist_avg"]       = hist["hist_avg"]
+        result["hist_samples"]   = hist["hist_samples"]
 
     return result if len(result) > 2 else None

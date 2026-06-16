@@ -553,6 +553,17 @@ def _format_markets_v2(markets: list) -> tuple:
                 parts.append(f"moy:{avg}{sym}·écart:{spread}{sym}")
             if parts:
                 market_line += "\n    🌤️ " + " | ".join(parts)
+            # Historique : probabilité que cette fourchette soit atteinte sur les 7 dernières années
+            if "hist_yes_freq" in wx:
+                hy  = wx["hist_yes_freq"]
+                hn  = wx["hist_no_freq"]
+                avg = wx.get("hist_avg", "?")
+                n   = wx.get("hist_samples", "?")
+                flag = "✅" if hy <= 10 else "⚠️" if hy <= 20 else "🔴"
+                market_line += (
+                    f"\n    📊 HISTORIQUE 7 ans ({n} pts) : fourchette atteinte {hy}% du temps"
+                    f" | NO {hn}% | moy historique {avg}{sym} {flag}"
+                )
         if m.get("_no_confirmed"):
             market_line += "\n    ✅ NO CONFIRMÉ EN TEMPS RÉEL : max observé aujourd'hui dépasse déjà la fourchette haute"
         if m.get("_deko"):
