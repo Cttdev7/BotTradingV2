@@ -37,24 +37,21 @@ SB_KEY = os.getenv("SUPABASE_KEY", "")
 
 # ── Règles hard-codées ────────────────────────────────────────────────────────
 
-MIN_NO_PRICE      = 0.70    # NO minimum 70¢
+MIN_NO_PRICE      = 0.80    # NO minimum 80¢ (relevé — sous 80¢ marge insuffisante)
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
-MAX_BET_PCT       = 0.06    # jamais plus de 6% du solde sur 1 trade
-MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
-MAX_ENSEMBLE_PROB = 40      # si ECMWF prédit >40% de chance dans ce range → INTERDIT
-MAX_BAND_PROB     = 30      # band_prob max pour un trade acceptable
-MAX_MODELS_SPREAD = 12.0    # °F — si les modèles ECMWF divergent de plus de 12°F → trop incertain
-MIN_VOLUME        = 1_000   # volume minimum du marché USDC
+MAX_BET_PCT       = 0.05    # jamais plus de 5% du solde sur 1 trade (réduit de 6%)
+MIN_FORECAST_GAP  = 5.0     # écart minimum °F (relevé de 3 → 5 : on veut un signal clair)
+MAX_ENSEMBLE_PROB = 30      # si ECMWF prédit >30% dans ce range → INTERDIT (durci de 40)
+MAX_BAND_PROB     = 20      # band_prob max (durci de 30 → 20)
+MAX_MODELS_SPREAD = 10.0    # °F — si modèles ECMWF divergent >10°F → trop incertain (durci)
+MIN_VOLUME        = 2_000   # volume minimum USDC (relevé de 1000 → 2000 : marchés liquides)
 
-NO_STOP_LOSS_PCT  = -0.25   # -25% → vente automatique
+NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique (durci de -25%)
 NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99% → lock profit (quasi-résolution)
 
-# Villes US fiables (météo prévisible en été)
-PREFERRED_CITIES  = {"miami", "houston", "dallas", "atlanta", "los-angeles",
-                     "san-francisco", "seattle", "chicago", "denver"}
-# Villes à exclure si canicule ECMWF > 35% (été chaud imprévisible)
-HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami"}
+# Villes à exclure si canicule ECMWF > 30% (durci de 35%)
+HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami", "san-francisco"}
 
 # Fenêtre de temps optimale : refuser si trop tôt (>20h restantes) ou trop tard (<1h)
 MIN_HOURS_REMAINING = 1.0   # marché qui ferme dans moins d'1h → liquidité trop faible
@@ -209,8 +206,8 @@ def _calc_bet(usdc: float, certainty: str) -> float:
     """
     pct = {"high": 0.05, "medium": 0.03, "low": 0.02}.get(certainty, 0.025)
     raw = usdc * pct
-    min_bet = max(1.0, usdc * 0.015)   # au moins 1.5% du solde (ou $1)
-    max_bet = usdc * MAX_BET_PCT        # jamais plus de 6% du solde
+    min_bet = max(1.5, usdc * 0.02)    # au moins 2% du solde (ou $1.5)
+    max_bet = min(usdc * MAX_BET_PCT, 5.0)  # jamais plus de 5$ par trade
     return round(max(min_bet, min(raw, max_bet)), 2)
 
 def _parse_range_bounds(question: str) -> tuple[float, float] | None:
@@ -346,8 +343,10 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
             continue
 
-        # Trajectoire temps réel — si remaining_max peut atteindre la fourchette → trop risqué
+        # Parse les bornes une seule fois (réutilisé pour remaining_max ET gap)
         bounds = _parse_range_bounds(q)
+
+        # Trajectoire temps réel — si remaining_max peut atteindre la fourchette → trop risqué
         if bounds and wx.get("remaining_max") is not None:
             low, high = bounds
             remaining_max = wx["remaining_max"]
@@ -379,16 +378,12 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
 
         # Écart entre prévision météo et fourchette du marché
         forecast_mean = wx.get("models_avg") or wx.get("current_temp")
-        if forecast_mean is not None:
-            bounds = _parse_range_bounds(q)
-            if bounds:
-                low, high = bounds
-                gap = min(abs(forecast_mean - low), abs(forecast_mean - high))
-                if gap < MIN_FORECAST_GAP:
-                    continue   # trop proche du range → trop risqué
-                m["_gap"] = gap  # garde pour le sizing
-            else:
-                m["_gap"] = 0
+        if forecast_mean is not None and bounds:
+            low, high = bounds
+            gap = min(abs(forecast_mean - low), abs(forecast_mean - high))
+            if gap < MIN_FORECAST_GAP:
+                continue   # trop proche du range → trop risqué
+            m["_gap"] = gap
         else:
             m["_gap"] = 0
 
@@ -440,7 +435,7 @@ def run_cycle():
         return
 
     # Solde
-    usdc = float(os.getenv("BALANCE_USDC", "0"))
+    usdc = float(os.getenv("BALANCE_USDC", "0") or "0")
     if usdc < 1:
         try:
             usdc = polymarket.get_balance().get("usdc", 0)
@@ -525,17 +520,22 @@ def run_cycle():
         mkt       = market_lookup.get(cid, {})
         city      = mkt.get("city", "")
 
-        # 1 trade max par ville par cycle
-        if city in traded_cities:
-            log(f"  ⛔ {city} déjà tradé ce cycle — ignoré")
-            continue
-
-        # Boost certitude si sailor82 est aussi sur ce trade
+        # Boost certitude si sailor82 est aussi sur ce trade (avant le filtre high)
         if mkt.get("_deko"):
             old = certainty
             certainty = {"low": "medium", "medium": "high"}.get(certainty, certainty)
             if certainty != old:
                 log(f"  🔍 Deko boost : certitude {old} → {certainty} (sailor82 confirme)")
+
+        # On joue UNIQUEMENT les signaux high — pas de medium ni low
+        if certainty != "high":
+            log(f"  ⏭️  {city} certitude={certainty} — ignoré (on veut uniquement high)")
+            continue
+
+        # 1 trade max par ville par cycle
+        if city in traded_cities:
+            log(f"  ⛔ {city} déjà tradé ce cycle — ignoré")
+            continue
 
         # Vérif exposition globale
         if total_exposed >= usdc * MAX_EXPOSURE_PCT:
