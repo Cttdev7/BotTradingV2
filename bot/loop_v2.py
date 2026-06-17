@@ -41,14 +41,14 @@ MIN_NO_PRICE      = 0.80    # NO minimum 80¢ (relevé — sous 80¢ marge insuf
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.05    # jamais plus de 5% du solde sur 1 trade (réduit de 6%)
-MIN_FORECAST_GAP  = 5.0     # écart minimum °F (relevé de 3 → 5 : on veut un signal clair)
+MIN_FORECAST_GAP  = 4.0     # écart minimum °F entre prévision et fourchette
 MAX_ENSEMBLE_PROB = 30      # si ECMWF prédit >30% dans ce range → INTERDIT (durci de 40)
 MAX_BAND_PROB     = 20      # band_prob max (durci de 30 → 20)
 MAX_MODELS_SPREAD = 10.0    # °F — si modèles ECMWF divergent >10°F → trop incertain (durci)
-MIN_VOLUME        = 2_000   # volume minimum USDC (relevé de 1000 → 2000 : marchés liquides)
+MIN_VOLUME        = 1_500   # volume minimum USDC
 
-NO_STOP_LOSS_PCT  = -0.20   # -20% → vente automatique (durci de -25%)
-NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99% → lock profit (quasi-résolution)
+NO_STOP_LOSS_PCT  = -0.40   # -40% → vente automatique (durci de -25%)
+NO_TAKE_PROFIT    = 0.96    # NO ≥ 96¢ → vendre et lock profit
 
 # Villes à exclure si canicule ECMWF > 30% (durci de 35%)
 HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami", "san-francisco"}
@@ -359,10 +359,12 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
                 m["_no_confirmed"] = True  # marché déjà gagné en temps réel
 
         # band_prob trop élevé → trop probable d'être dans ce range
-        # Si weather_ctx manque (enrichissement raté), on refuse le trade par sécurité
         band_prob = wx.get("band_prob")
-        if band_prob is None or band_prob > MAX_BAND_PROB:
+        if band_prob is not None and band_prob > MAX_BAND_PROB:
             continue
+        # Si band_prob absent (ECMWF sans données), on marque pour que Claude soit plus prudent
+        if band_prob is None:
+            m["_band_unknown"] = True
 
         # Spread trop élevé → modèles en désaccord → température imprévisible
         models_spread = wx.get("models_spread")
