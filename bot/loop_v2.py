@@ -337,7 +337,9 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
     deko_cids : condition_ids récemment tradés par sailor82 (signal bonus).
     """
     open_cids    = {t.get("condition_id") for t in history if t.get("pnl") is None}
-    open_cities  = {t.get("city", "") for t in history if t.get("pnl") is None}
+    # Compter les positions ouvertes par ville (max 2 par ville)
+    from collections import Counter
+    open_city_count = Counter(t.get("city", "") for t in history if t.get("pnl") is None)
     total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
     cascade_signals = _detect_cascade(markets)
     deko_cids = deko_cids or set()
@@ -354,10 +356,11 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         day_offset = m.get("day_offset", 0)
         wx   = m.get("weather_ctx", {})
 
-        # Déjà en position ou ville déjà jouée aujourd'hui
+        # Déjà en position sur ce marché précis
         if cid in open_cids:
             continue
-        if city in open_cities:
+        # Max 2 positions ouvertes par ville (trade 1 + cascade trade 2)
+        if open_city_count.get(city, 0) >= 2:
             continue
 
         # Exposition totale dépassée
@@ -576,7 +579,7 @@ def run_cycle():
 
     market_lookup  = {m["condition_id"]: m for m in candidates}
     total_exposed  = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
-    traded_cities  = set()  # 1 trade max par ville par cycle
+    traded_cities  = []  # trades par ville ce cycle (liste pour compter les doublons cascade)
 
     for d in decisions:
         if d.get("action") != "buy" or d.get("outcome") not in ("No", "NO"):
@@ -599,9 +602,14 @@ def run_cycle():
             log(f"  ⏭️  {city} certitude={certainty} — ignoré (on veut uniquement high)")
             continue
 
-        # 1 trade max par ville par cycle
-        if city in traded_cities:
+        # Max 2 trades par ville par cycle : 1 normal + 1 cascade
+        is_cascade = bool(mkt.get("_cascade"))
+        city_count_cycle = traded_cities.count(city)
+        if city_count_cycle >= 1 and not is_cascade:
             log(f"  ⛔ {city} déjà tradé ce cycle — ignoré")
+            continue
+        if city_count_cycle >= 2:
+            log(f"  ⛔ {city} déjà 2 trades ce cycle (max) — ignoré")
             continue
 
         # Vérif exposition globale
@@ -667,7 +675,7 @@ def run_cycle():
             insert_trade(trade)
             total_exposed += amount
             usdc -= amount
-            traded_cities.add(city)
+            traded_cities.append(city)
             log(f"  ✅ Enregistré | Exposition : ${total_exposed:.2f}")
         except Exception as e:
             log(f"  ❌ Erreur ordre : {e}")
