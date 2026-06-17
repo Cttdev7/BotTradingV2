@@ -42,7 +42,8 @@ MIN_NO_PRICE      = 0.75    # NO minimum 75¢ — gain +33% par win, plus d'oppo
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.05    # jamais plus de 5% du solde sur 1 trade (réduit de 6%)
-MIN_FORECAST_GAP  = 4.0     # écart minimum °F entre prévision et fourchette
+MIN_FORECAST_GAP_DOWN = 4.0  # range EN-DESSOUS de la prévision (temp dépasse déjà ce range) → 4°F suffisent
+MIN_FORECAST_GAP_UP   = 8.0  # range AU-DESSUS de la prévision (temp peut encore monter) → 8°F minimum
 MAX_ENSEMBLE_PROB = 30      # si ECMWF prédit >30% dans ce range → INTERDIT (durci de 40)
 MAX_BAND_PROB     = 20      # band_prob max (durci de 30 → 20)
 MAX_MODELS_SPREAD = 10.0    # °F — si modèles ECMWF divergent >10°F → trop incertain (durci)
@@ -546,14 +547,35 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
             m["_cascade"] = info
             log(f"  📡 CASCADE {city} — dominant YES={info['dominant_yes']:.0%} → NO quasi-certain")
 
-        # Écart entre prévision météo et fourchette du marché
+        # Écart entre prévision météo et fourchette du marché — DIRECTIONNEL
+        # Si le range est AU-DESSUS de la prévision → la temp peut encore monter → gap strict (8°F)
+        # Si le range est EN-DESSOUS de la prévision → la temp dépasse déjà ce range → gap souple (4°F)
         # Exception : signaux cascade → le marché lui-même est le signal, pas besoin d'ECMWF
         forecast_mean = wx.get("models_avg") or wx.get("current_temp")
-        if forecast_mean is not None and bounds:
+        if forecast_mean is not None and bounds and cid not in cascade_signals:
             low, high = bounds
-            gap = min(abs(forecast_mean - low), abs(forecast_mean - high))
-            if gap < MIN_FORECAST_GAP and cid not in cascade_signals:
-                continue   # trop proche du range → trop risqué (sauf cascade)
+            if forecast_mean < low:
+                # Prévision EN-DESSOUS du range — la température doit encore monter pour l'atteindre
+                # Exemple : forecast=68°F, range=72-73°F → risqué si matinée, temp peut grimper
+                gap = low - forecast_mean
+                min_gap = MIN_FORECAST_GAP_UP
+                m["_gap_direction"] = "up"
+            elif forecast_mean > high:
+                # Prévision AU-DESSUS du range — la température dépasse déjà ce range → safe
+                # Exemple : forecast=74°F, range=66-67°F → clairement en-dessous, NO sûr
+                gap = forecast_mean - high
+                min_gap = MIN_FORECAST_GAP_DOWN
+                m["_gap_direction"] = "down"
+            else:
+                # Prévision DANS le range → très risqué, ne pas trader
+                gap = 0
+                min_gap = 999
+                m["_gap_direction"] = "inside"
+
+            if gap < min_gap:
+                if m.get("_gap_direction") == "up":
+                    log(f"  ⬆️  {city} range {low:.0f}-{high:.0f}°F au-dessus prévision {forecast_mean:.1f}°F (gap={gap:.1f} < {min_gap}°F) — trop risqué")
+                continue
             m["_gap"] = gap
         elif cid in cascade_signals:
             m["_gap"] = 0  # cascade : pas besoin du gap ECMWF
