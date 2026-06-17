@@ -362,6 +362,10 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
             max_today = wx.get("max_today")
             if max_today is not None and max_today > high + 3:
                 m["_no_confirmed"] = True  # marché déjà gagné en temps réel
+        elif day_offset == 0:
+            # Marché J+0 sans données remaining_max → on ne sait pas si la temp peut encore monter
+            log(f"  ⚠️  {city} J+0 sans données temp réelle — ignoré")
+            continue
 
         # band_prob trop élevé → trop probable d'être dans ce range
         band_prob = wx.get("band_prob")
@@ -391,6 +395,10 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
             if gap < MIN_FORECAST_GAP:
                 continue   # trop proche du range → trop risqué
             m["_gap"] = gap
+        elif day_offset == 0:
+            # J+0 sans données météo = trop risqué, on ne trade pas dans le flou
+            log(f"  ⚠️  {city} J+0 sans forecast météo — ignoré")
+            continue
         else:
             m["_gap"] = 0
 
