@@ -42,7 +42,7 @@ MIN_NO_PRICE      = 0.75    # NO minimum 75¢ — gain +33% par win, plus d'oppo
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.05    # jamais plus de 5% du solde sur 1 trade (réduit de 6%)
-MIN_FORECAST_GAP_DOWN = 4.0  # range EN-DESSOUS de la prévision (temp dépasse déjà ce range) → 4°F suffisent
+MIN_FORECAST_GAP_DOWN = 2.0  # range EN-DESSOUS de la prévision (temp dépasse déjà ce range) → 2°F suffisent
 MIN_FORECAST_GAP_UP   = 8.0  # range AU-DESSUS de la prévision (temp peut encore monter) → 8°F minimum
 MAX_ENSEMBLE_PROB = 30      # si ECMWF prédit >30% dans ce range → INTERDIT (durci de 40)
 MAX_BAND_PROB     = 20      # band_prob max (durci de 30 → 20)
