@@ -292,8 +292,9 @@ def check_stop_loss(history: list):
         pnl_pct = (current_price - entry_price) / entry_price
 
         # ── Auto-hedge : si YES dépasse le seuil, acheter YES pour couvrir ──
+        # Pas de hedge si YES > 90% : marché quasi-résolu, le gain serait nul
         if (current_yes is not None
-                and current_yes >= HEDGE_YES_TRIGGER
+                and HEDGE_YES_TRIGGER <= current_yes < 0.90
                 and cid not in _hedged_cids_session
                 and cid not in hedged_in_db):
             stake_yes = round(amount_usdc * entry_price / (1 - current_yes) * HEDGE_MULTIPLIER, 2)
