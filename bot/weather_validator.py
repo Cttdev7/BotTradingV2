@@ -120,6 +120,50 @@ _MONTHS = {
     'july':7,'august':8,'september':9,'october':10,'november':11,'december':12,
 }
 
+# Stations METAR (codes ICAO) utilisées par Polymarket/Weather Underground pour résoudre les marchés
+# Source : URL WU type wunderground.com/history/daily/{pays}/{ville}/{CODE}
+CITY_METAR_STATIONS = {
+    # Europe
+    'ankara':        'LTAC',   # Esenboğa Airport (confirmé par user)
+    'istanbul':      'LTFM',   # Istanbul Airport
+    'london':        'EGLL',   # Heathrow
+    'paris':         'LFPG',   # CDG
+    'madrid':        'LEMD',   # Barajas
+    'amsterdam':     'EHAM',   # Schiphol
+    'warsaw':        'EPWA',   # Chopin Airport
+    'milan':         'LIML',   # Linate
+    'munich':        'EDDM',   # Franz Josef Strauss
+    'helsinki':      'EFHK',   # Helsinki-Vantaa
+    'moscow':        'UUWW',   # Vnukovo
+    'tel-aviv':      'LLBG',   # Ben Gurion
+    # USA
+    'nyc':           'KJFK',   # JFK
+    'atlanta':       'KATL',   # Hartsfield-Jackson
+    'chicago':       'KORD',   # O'Hare
+    'houston':       'KHOU',   # Hobby
+    'dallas':        'KDFW',   # DFW
+    'denver':        'KDEN',   # Denver International
+    'miami':         'KMIA',   # Miami International
+    'seattle':       'KSEA',   # Seattle-Tacoma
+    'san-francisco': 'KSFO',   # SFO
+    'los-angeles':   'KLAX',   # LAX
+    # Asie/Pacifique
+    'tokyo':         'RJTT',   # Haneda
+    'seoul':         'RKSS',   # Gimpo
+    'busan':         'RKPK',   # Gimhae
+    'beijing':       'ZBAA',   # Capital Airport
+    'shanghai':      'ZSPD',   # Pudong
+    'hong-kong':     'VHHH',   # HK International
+    'singapore':     'WSSS',   # Changi
+    'taipei':        'RCTP',   # Taoyuan
+    'kuala-lumpur':  'WMKK',   # KLIA
+    'manila':        'RPLL',   # Ninoy Aquino
+    # Autres
+    'cape-town':     'FACT',   # Cape Town International
+    'jeddah':        'OEJN',   # King Abdulaziz
+    'karachi':       'OPKC',   # Jinnah International
+}
+
 # Codes WMO (standard international météo)
 _WMO_LABELS = {
     0: "☀️ ciel dégagé",
@@ -618,6 +662,38 @@ def _fetch_current_temp(lat, lon, unit, tz_name: str = "UTC"):
         return None
 
 
+def _fetch_metar_temp(city_slug: str) -> dict | None:
+    """
+    Température actuelle depuis la station METAR (ICAO) que Polymarket utilise pour résoudre.
+    API NOAA aviationweather.gov — gratuite, sans limite de taux.
+    Retourne {temp_c, temp_f, station, raw_metar} ou None.
+    """
+    station = CITY_METAR_STATIONS.get(city_slug)
+    if not station:
+        return None
+    try:
+        r = requests.get(
+            "https://aviationweather.gov/api/data/metar",
+            params={"ids": station, "format": "json"},
+            timeout=6,
+        )
+        if r.status_code != 200 or not r.json():
+            return None
+        d = r.json()[0]
+        temp_c = d.get("temp")
+        if temp_c is None:
+            return None
+        temp_f = round(temp_c * 9 / 5 + 32, 1)
+        return {
+            "temp_c":    round(float(temp_c), 1),
+            "temp_f":    temp_f,
+            "station":   station,
+            "raw_metar": d.get("rawOb", "")[:80],
+        }
+    except Exception:
+        return None
+
+
 def _fetch_ensemble_members(lat, lon, target_date, unit):
     """
     Retourne les températures max de chaque membre ECMWF IFS (≈51 membres).
@@ -687,8 +763,9 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
 
     if raw is None:
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=7) as pool:
+        with ThreadPoolExecutor(max_workers=8) as pool:
             f_current  = pool.submit(_fetch_current_temp,      lat, lon, unit, tz_name)
+            f_metar    = pool.submit(_fetch_metar_temp,        city_slug)
             f_ensemble = pool.submit(_fetch_ensemble_members,  lat, lon, target_date, unit)
             f_ecmwf    = pool.submit(_fetch_single_model_max,  lat, lon, "ecmwf_ifs025",         target_date, unit, tz_name)
             f_gfs      = pool.submit(_fetch_single_model_max,  lat, lon, "gfs_global",           target_date, unit, tz_name)
@@ -702,13 +779,22 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
             if val is not None:
                 models[name] = val
 
-        curr_data = f_current.result() or {}
+        curr_data  = f_current.result() or {}
+        metar_data = f_metar.result()
+
+        # Température actuelle : préférer METAR (station exacte Polymarket) sur Open-Meteo
+        if metar_data:
+            current_temp = metar_data["temp_f"] if unit == "fahrenheit" else metar_data["temp_c"]
+        else:
+            current_temp = curr_data.get("current") if isinstance(curr_data, dict) else curr_data
+
         raw = {
-            "current_temp":     curr_data.get("current") if isinstance(curr_data, dict) else curr_data,
+            "current_temp":     current_temp,
             "max_today":        curr_data.get("max_today") if isinstance(curr_data, dict) else None,
             "remaining_max":    curr_data.get("remaining_max") if isinstance(curr_data, dict) else None,
             "trend":            curr_data.get("trend") if isinstance(curr_data, dict) else None,
             "local_hour":       curr_data.get("local_hour") if isinstance(curr_data, dict) else None,
+            "metar":            metar_data,   # station ICAO exacte + temp brute
             "ensemble_members": f_ensemble.result(),
             "models":           models,
             "risk":             f_risk.result(),
