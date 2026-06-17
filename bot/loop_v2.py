@@ -38,7 +38,7 @@ SB_KEY = os.getenv("SUPABASE_KEY", "")
 
 # ── Règles hard-codées ────────────────────────────────────────────────────────
 
-MIN_NO_PRICE      = 0.80    # NO minimum 80¢ (relevé — sous 80¢ marge insuffisante)
+MIN_NO_PRICE      = 0.75    # NO minimum 75¢ — gain +33% par win, plus d'opportunités
 MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
 MAX_BET_PCT       = 0.05    # jamais plus de 5% du solde sur 1 trade (réduit de 6%)
