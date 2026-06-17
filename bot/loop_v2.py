@@ -339,6 +339,11 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
                 continue
             m["_hours_left"] = hours_left  # transmis à Claude pour contexte
 
+        # Marché du jour même → n'acheter qu'après 15h heure locale (temp max déjà atteinte)
+        if day_offset == 0 and local_hour is not None and local_hour < 15:
+            log(f"  🕐 {city} marché J+0 mais {local_hour}h locale — attendre 15h")
+            continue
+
         # Prix NO dans la zone cible
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
             continue
