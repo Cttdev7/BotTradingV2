@@ -18,6 +18,8 @@ import requests
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
 SB_KEY = os.getenv("SUPABASE_KEY", "")
 
+LOG_FILE = os.path.join(os.path.dirname(__file__), "postmortems.log")
+
 # Coordonnées GPS des villes
 CITY_COORDS = {
     "paris":         (48.8566,  2.3522,  "Europe/Paris"),
@@ -240,6 +242,15 @@ def analyze_loss(trade: dict, current_price: float, reason: str = "stop_loss"):
         lines.append(f"  Marché résolu YES — la température a atteint la fourchette {range_str}")
 
     report = "\n".join(lines)
+
+    # Sauvegarder dans le fichier local
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write("\n" + "━" * 60 + "\n")
+            f.write(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n")
+            f.write(report + "\n")
+    except Exception:
+        pass
 
     # Sauvegarder dans Supabase
     _save_postmortem({
