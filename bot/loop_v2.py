@@ -48,7 +48,7 @@ MAX_BAND_PROB     = 20      # band_prob max (durci de 30 → 20)
 MAX_MODELS_SPREAD = 10.0    # °F — si modèles ECMWF divergent >10°F → trop incertain (durci)
 MIN_VOLUME        = 1_500   # volume minimum USDC
 
-NO_STOP_LOSS_PCT  = -0.40   # -40% → vente automatique (durci de -25%)
+NO_STOP_LOSS_PCT  = -0.99   # SL désactivé — positions tenues jusqu'à résolution
 NO_TAKE_PROFIT    = 0.96    # NO ≥ 96¢ → vendre et lock profit
 
 # Villes à exclure si canicule ECMWF > 30% (durci de 35%)
