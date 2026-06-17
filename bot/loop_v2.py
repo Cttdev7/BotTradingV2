@@ -224,12 +224,56 @@ def _parse_range_bounds(question: str) -> tuple[float, float] | None:
         return float(m.group(1)), float(m.group(2))
     return None
 
+def _is_single_value_celsius(question: str) -> bool:
+    """
+    Détecte les marchés à valeur unique °C type 'be 21°C' (Cape Town, Wellington…).
+    Ces marchés sont BEAUCOUP plus volatils que les fourchettes °F :
+    un seul degré peut tout basculer → BLOQUÉS.
+    Retourne True si c'est un marché valeur unique °C (pas de 'between').
+    """
+    q = question.lower()
+    if "between" in q:
+        return False
+    if re.search(r'\d+[–\-]\d+\s*[°]?[fc]', q):
+        return False
+    # "be 21°c" ou "be 21 c" ou "be 21c"
+    if re.search(r'\bbe\s+\d+\s*[°]?\s*c\b', q, re.I):
+        return True
+    return False
+
+# Seuil de déclenchement auto-hedge : si YES dépasse ce niveau, acheter YES pour couvrir la perte NO
+HEDGE_YES_TRIGGER  = 0.60   # YES > 60% → le marché dit que on va perdre
+HEDGE_MULTIPLIER   = 1.10   # +10% au-dessus du break-even pour ressortir positif si YES gagne
+
+# Ensemble des CIDs déjà hedgés cette session (évite double-hedge)
+_hedged_cids_session: set = set()
+
 # ── Stop-loss / Take-profit ───────────────────────────────────────────────────
 
+def _get_both_prices(condition_id: str) -> tuple[float | None, float | None]:
+    """Retourne (no_price, yes_price) depuis le CLOB."""
+    try:
+        r = requests.get(f"https://clob.polymarket.com/markets/{condition_id}", timeout=8)
+        if r.status_code != 200:
+            return None, None
+        tokens = r.json().get("tokens", [])
+        no_p  = next((float(t["price"]) for t in tokens if t.get("outcome","").lower() == "no"),  None)
+        yes_p = next((float(t["price"]) for t in tokens if t.get("outcome","").lower() == "yes"), None)
+        return no_p, yes_p
+    except Exception:
+        return None, None
+
 def check_stop_loss(history: list):
+    global _hedged_cids_session
     open_trades = [t for t in history if t.get("pnl") is None]
     if not open_trades:
         return
+
+    # Charger les CIDs déjà hedgés (trades YES ouverts dans l'historique)
+    hedged_in_db = {
+        t["condition_id"] for t in history
+        if t.get("sym", "").upper() == "YES" and t.get("pnl") is None
+    }
 
     for t in open_trades:
         if t.get("sym", "").lower() != "no":
@@ -237,12 +281,53 @@ def check_stop_loss(history: list):
         entry_price = float(t.get("price") or 0)
         if entry_price <= 0:
             continue
-        current_price = _get_current_no_price(t.get("condition_id", ""))
+
+        cid = t.get("condition_id", "")
+        current_price, current_yes = _get_both_prices(cid)
         if current_price is None:
             continue
 
         amount_usdc = float(t.get("amount_usdc") or 0)
         pnl_pct = (current_price - entry_price) / entry_price
+
+        # ── Auto-hedge : si YES dépasse le seuil, acheter YES pour couvrir ──
+        if (current_yes is not None
+                and current_yes >= HEDGE_YES_TRIGGER
+                and cid not in _hedged_cids_session
+                and cid not in hedged_in_db):
+            stake_yes = round(amount_usdc * entry_price / (1 - current_yes) * HEDGE_MULTIPLIER, 2)
+            breakeven_no = round(amount_usdc * (1 - entry_price) / entry_price, 2)
+            gain_if_yes  = round(stake_yes * (1 - current_yes) / current_yes - amount_usdc, 2)
+            loss_if_no   = round(-(stake_yes - breakeven_no), 2)
+            city = t.get("city", "?")
+            log(f"  🔄 HEDGE AUTO {city} | NO={current_price:.3f} YES={current_yes:.3f}")
+            log(f"     Achat YES ${stake_yes:.2f} → si YES gagne: +${gain_if_yes:.2f}  si NO gagne: {loss_if_no:+.2f}$")
+            try:
+                result = trader.place_market_order(
+                    condition_id=cid, outcome="Yes",
+                    side="buy", amount_usdc=stake_yes,
+                )
+                _hedged_cids_session.add(cid)
+                log(f"     ✅ Hedge YES placé ${stake_yes:.2f}")
+                # Enregistrer le hedge dans l'historique
+                insert_trade({
+                    "id":           str(uuid.uuid4()),
+                    "bot_id":       BOT_ID,
+                    "time":         datetime.datetime.now().isoformat(),
+                    "market":       "polymarket",
+                    "condition_id": cid,
+                    "city":         city,
+                    "sym":          "YES",
+                    "side":         "buy",
+                    "price":        current_yes,
+                    "amount_usdc":  stake_yes,
+                    "reason":       f"auto-hedge NO@{entry_price:.3f}",
+                    "result":       {"hedge": True},
+                    "pnl":          None,
+                })
+            except Exception as e:
+                log(f"     ❌ Hedge échoué : {e}")
+                log(f"     → Acheter manuellement YES ${stake_yes:.2f} sur {cid[:16]}…")
 
         if current_price >= NO_TAKE_PROFIT:
             tokens_held = amount_usdc / entry_price
@@ -411,6 +496,12 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
 
         # Parse les bornes une seule fois (réutilisé pour remaining_max ET gap)
         bounds = _parse_range_bounds(q)
+
+        # Marchés à valeur unique °C (ex: "be 21°C") → BLOQUÉS
+        # Raison : 1 seul degré peut tout basculer, volatilité extrême (leçon Cape Town)
+        if _is_single_value_celsius(q):
+            log(f"  🌡️  {city} marché valeur unique °C — trop volatil, ignoré")
+            continue
 
         # Trajectoire temps réel — si remaining_max peut atteindre la fourchette → trop risqué
         if bounds and wx.get("remaining_max") is not None:
