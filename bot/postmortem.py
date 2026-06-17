@@ -156,11 +156,19 @@ def analyze_loss(trade: dict, current_price: float, reason: str = "stop_loss"):
     reason   : 'stop_loss' | 'resolution_yes'
     """
     city     = trade.get("city", "?")
-    question = trade.get("question", "")
+    question = trade.get("question", "") or ""
     entry    = float(trade.get("price") or 0)
     amount   = float(trade.get("amount_usdc") or 0)
     trade_time = trade.get("time", "")
     cid      = trade.get("condition_id", "")
+
+    # Si la question est absente, la récupérer depuis l'API Polymarket
+    if not question and cid:
+        try:
+            r = requests.get(f"https://clob.polymarket.com/markets/{cid}", timeout=6)
+            question = r.json().get("question", "") or ""
+        except Exception:
+            pass
 
     # Date du marché (résolution prévue)
     end_date = (trade.get("end_date") or trade_time)[:10]
