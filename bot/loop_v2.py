@@ -53,6 +53,9 @@ NO_TAKE_PROFIT    = 0.96    # NO ≥ 96¢ → vendre et lock profit
 # Villes à exclure si canicule ECMWF > 30% (durci de 35%)
 HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami", "san-francisco"}
 
+# Cascade : si un range YES dépasse ce seuil → les ranges adjacents sont des NO quasi-certains
+CASCADE_TRIGGER = 0.75   # range dominant YES > 75% → signaux cascade activés
+
 # Fenêtre de temps optimale : refuser si trop tôt (>20h restantes) ou trop tard (<1h)
 MIN_HOURS_REMAINING = 1.0   # marché qui ferme dans moins d'1h → liquidité trop faible
 MAX_HOURS_REMAINING = 20.0  # marché qui ferme dans plus de 20h → trop d'incertitude
@@ -287,6 +290,44 @@ def check_stop_loss(history: list):
             else:
                 log(f"    ❌ {e}")
 
+# ── Logique cascade ──────────────────────────────────────────────────────────
+
+def _detect_cascade(markets: list) -> dict:
+    """
+    Groupe les marchés par ville+date. Si un range domine à >CASCADE_TRIGGER YES,
+    tous les autres ranges de cette ville/date deviennent des NO quasi-certains.
+    Retourne {condition_id: dominant_yes_price}
+    """
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for m in markets:
+        city = m.get("city", "")
+        date = (m.get("end_date_iso") or "")[:10]
+        tokens = m.get("tokens", [])
+        yes_p = next((float(t.get("price", 0)) for t in tokens if t.get("outcome") == "Yes"), 0)
+        no_p  = next((float(t.get("price", 0)) for t in tokens if t.get("outcome") == "No"),  0)
+        groups[f"{city}|{date}"].append({
+            "cid": m.get("condition_id", ""),
+            "yes": yes_p, "no": no_p,
+            "question": m.get("question", ""),
+        })
+
+    cascade = {}
+    for items in groups.values():
+        if len(items) < 2:
+            continue
+        dominant = max(items, key=lambda x: x["yes"])
+        if dominant["yes"] < CASCADE_TRIGGER:
+            continue
+        for item in items:
+            if item["cid"] != dominant["cid"]:
+                cascade[item["cid"]] = {
+                    "dominant_yes": dominant["yes"],
+                    "dominant_q": dominant["question"],
+                }
+    return cascade
+
+
 # ── Filtres pré-Claude ────────────────────────────────────────────────────────
 
 def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None) -> list:
@@ -298,6 +339,7 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
     open_cids    = {t.get("condition_id") for t in history if t.get("pnl") is None}
     open_cities  = {t.get("city", "") for t in history if t.get("pnl") is None}
     total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    cascade_signals = _detect_cascade(markets)
     deko_cids = deko_cids or set()
 
     kept = []
@@ -362,8 +404,9 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
             max_today = wx.get("max_today")
             if max_today is not None and max_today > high + 3:
                 m["_no_confirmed"] = True  # marché déjà gagné en temps réel
-        elif day_offset == 0:
+        elif day_offset == 0 and cid not in cascade_signals:
             # Marché J+0 sans données remaining_max → on ne sait pas si la temp peut encore monter
+            # Exception : signaux cascade (le marché lui-même confirme la direction)
             log(f"  ⚠️  {city} J+0 sans données temp réelle — ignoré")
             continue
 
@@ -387,14 +430,23 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
             log(f"  🌡️  Canicule détectée {city} (ensemble_prob={ensemble_prob}%) — ignoré")
             continue
 
+        # Signal cascade : un range adjacent domine → ce NO est quasi-certain
+        if cid in cascade_signals:
+            info = cascade_signals[cid]
+            m["_cascade"] = info
+            log(f"  📡 CASCADE {city} — dominant YES={info['dominant_yes']:.0%} → NO quasi-certain")
+
         # Écart entre prévision météo et fourchette du marché
+        # Exception : signaux cascade → le marché lui-même est le signal, pas besoin d'ECMWF
         forecast_mean = wx.get("models_avg") or wx.get("current_temp")
         if forecast_mean is not None and bounds:
             low, high = bounds
             gap = min(abs(forecast_mean - low), abs(forecast_mean - high))
-            if gap < MIN_FORECAST_GAP:
-                continue   # trop proche du range → trop risqué
+            if gap < MIN_FORECAST_GAP and cid not in cascade_signals:
+                continue   # trop proche du range → trop risqué (sauf cascade)
             m["_gap"] = gap
+        elif cid in cascade_signals:
+            m["_gap"] = 0  # cascade : pas besoin du gap ECMWF
         elif day_offset == 0:
             # J+0 sans données météo = trop risqué, on ne trade pas dans le flou
             log(f"  ⚠️  {city} J+0 sans forecast météo — ignoré")
