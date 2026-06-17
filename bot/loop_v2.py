@@ -26,6 +26,7 @@ import brain
 import trader
 import config
 import weather_validator
+import postmortem
 
 BOT_ID           = "polyedge2"
 INTERVAL_MINUTES = int(os.getenv("BOT_V2_INTERVAL", "5"))
@@ -274,6 +275,11 @@ def check_stop_loss(history: list):
         log(f"  🛑 STOP-LOSS NO {t.get('condition_id','')[:12]}… | {entry_price:.3f}→{current_price:.3f} ({pnl_pct*100:+.1f}%) | ${pnl_usd:.2f}")
         if current_price <= 0.005:
             update_trade_pnl(t["id"], pnl_usd)
+            try:
+                report = postmortem.analyze_loss(t, current_price, reason="resolution_yes")
+                log(f"  📋 Post-mortem généré pour {t.get('city','?')}")
+            except Exception:
+                pass
             continue
         try:
             result = trader.place_market_order(
@@ -284,6 +290,12 @@ def check_stop_loss(history: list):
             real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
             update_trade_pnl(t["id"], real_pnl)
             log(f"    ✅ Vendu ${real_pnl:.2f}")
+            try:
+                report = postmortem.analyze_loss(t, current_price, reason="stop_loss")
+                log(f"  📋 Post-mortem généré pour {t.get('city','?')}")
+                log(report[:400])  # aperçu dans les logs
+            except Exception:
+                pass
         except Exception as e:
             if "resting liquidity" in str(e).lower():
                 log(f"    ⏳ Pas de liquidité — réessai au prochain cycle")
@@ -493,7 +505,16 @@ def run_cycle():
             t_old = next((t for t in history if t.get("id") == t_new.get("id")), None)
             if t_old and t_old.get("pnl") is None and t_new.get("pnl") is not None:
                 update_trade_pnl(t_new["id"], t_new["pnl"])
-                log(f"  ✅ {t_new['id'][:8]}… résolu — P&L ${t_new['pnl']:.2f}")
+                pnl_val = float(t_new["pnl"])
+                log(f"  {'✅' if pnl_val > 0 else '❌'} {t_new['id'][:8]}… résolu — P&L ${pnl_val:.2f}")
+                # Post-mortem automatique sur les pertes résolues
+                if pnl_val < 0:
+                    try:
+                        exit_price = float(t_old.get("price", 0)) + pnl_val / (float(t_old.get("amount_usdc") or 1) / float(t_old.get("price", 1)))
+                        report = postmortem.analyze_loss(t_old, 0.0, reason="resolution_yes")
+                        log(f"  📋 Post-mortem : {t_old.get('city','?')}")
+                    except Exception:
+                        pass
         history = updated
 
     # Stop-loss
