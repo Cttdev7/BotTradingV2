@@ -124,8 +124,8 @@ _MONTHS = {
 # Source : URL WU type wunderground.com/history/daily/{pays}/{ville}/{CODE}
 CITY_METAR_STATIONS = {
     # Europe
-    'ankara':        'LTAC',   # Esenboğa Airport (confirmé par user)
-    'istanbul':      'LTFM',   # Istanbul Airport
+    'ankara':        'LTAC',   # Esenboğa Airport (confirmé user)
+    'istanbul':      'LTFM',   # Istanbul Airport (nouveau)
     'london':        'EGLL',   # Heathrow
     'paris':         'LFPG',   # CDG
     'madrid':        'LEMD',   # Barajas
@@ -134,34 +134,46 @@ CITY_METAR_STATIONS = {
     'milan':         'LIML',   # Linate
     'munich':        'EDDM',   # Franz Josef Strauss
     'helsinki':      'EFHK',   # Helsinki-Vantaa
-    'moscow':        'UUWW',   # Vnukovo
+    'moscow':        'UUEE',   # Sheremetyevo (principal WU Moscou)
     'tel-aviv':      'LLBG',   # Ben Gurion
     # USA
     'nyc':           'KJFK',   # JFK
     'atlanta':       'KATL',   # Hartsfield-Jackson
     'chicago':       'KORD',   # O'Hare
-    'houston':       'KHOU',   # Hobby
+    'houston':       'KHOU',   # Hobby Airport
     'dallas':        'KDFW',   # DFW
     'denver':        'KDEN',   # Denver International
     'miami':         'KMIA',   # Miami International
     'seattle':       'KSEA',   # Seattle-Tacoma
     'san-francisco': 'KSFO',   # SFO
     'los-angeles':   'KLAX',   # LAX
-    # Asie/Pacifique
+    'toronto':       'CYYZ',   # Pearson International
+    'mexico-city':   'MMMX',   # Benito Juarez
+    # Asie de l'Est
     'tokyo':         'RJTT',   # Haneda
     'seoul':         'RKSS',   # Gimpo
-    'busan':         'RKPK',   # Gimhae
+    'busan':         'RKPK',   # Gimhae International
     'beijing':       'ZBAA',   # Capital Airport
     'shanghai':      'ZSPD',   # Pudong
+    'chengdu':       'ZUUU',   # Shuangliu International
+    'guangzhou':     'ZGGG',   # Baiyun International
+    'shenzhen':      'ZGSZ',   # Bao'an International
+    'chongqing':     'ZUCK',   # Jiangbei International
+    'wuhan':         'ZHHH',   # Tianhe International
+    'qingdao':       'ZSQD',   # Liuting International
     'hong-kong':     'VHHH',   # HK International
+    'taipei':        'RCTP',   # Taoyuan International
+    # Asie du Sud-Est / Pacifique
     'singapore':     'WSSS',   # Changi
-    'taipei':        'RCTP',   # Taoyuan
     'kuala-lumpur':  'WMKK',   # KLIA
     'manila':        'RPLL',   # Ninoy Aquino
-    # Autres
-    'cape-town':     'FACT',   # Cape Town International
-    'jeddah':        'OEJN',   # King Abdulaziz
+    'wellington':    'NZWN',   # Wellington International
+    # Asie du Sud
+    'lucknow':       'VILK',   # Chaudhary Charan Singh
     'karachi':       'OPKC',   # Jinnah International
+    # Moyen-Orient / Afrique
+    'jeddah':        'OEJN',   # King Abdulaziz
+    'cape-town':     'FACT',   # Cape Town International
 }
 
 # Codes WMO (standard international météo)
@@ -662,6 +674,76 @@ def _fetch_current_temp(lat, lon, unit, tz_name: str = "UTC"):
         return None
 
 
+def _fetch_metar_trend(city_slug: str, hours: int = 8) -> dict | None:
+    """
+    Récupère les N dernières heures d'observations METAR et détecte la tendance.
+
+    Retourne :
+      current_c / current_f  : température la plus récente (station exacte)
+      max_observed_c / _f    : max journalier observé à cette station
+      trend                  : 'rising' | 'falling' | 'stable'
+      peak_passed            : True si la temp a baissé de >2°C depuis le max
+                               → le max journalier est quasi-certain
+      observations           : [(heure_utc, temp_c), ...] chronologique
+    """
+    station = CITY_METAR_STATIONS.get(city_slug)
+    if not station:
+        return None
+    try:
+        r = requests.get(
+            "https://aviationweather.gov/api/data/metar",
+            params={"ids": station, "format": "json", "hours": hours},
+            timeout=8,
+        )
+        if r.status_code != 200 or not r.json():
+            return None
+
+        raw_obs = r.json()  # plus récent en premier
+        obs = []
+        for d in raw_obs:
+            t = d.get("temp")
+            ts = d.get("obsTime") or d.get("reportTime", "")
+            if t is not None:
+                obs.append((str(ts), float(t)))
+
+        if not obs:
+            return None
+
+        obs_chrono = list(reversed(obs))  # du plus vieux au plus récent
+        temps_c = [v for _, v in obs_chrono]
+
+        current_c    = temps_c[-1]
+        max_obs_c    = max(temps_c)
+        max_obs_f    = round(max_obs_c * 9 / 5 + 32, 1)
+        current_f    = round(current_c * 9 / 5 + 32, 1)
+
+        # Tendance : différence entre la 1re et la dernière mesure (>0.5°C = significatif)
+        delta = current_c - temps_c[0] if len(temps_c) > 1 else 0
+        if delta > 0.5:
+            trend = "rising"
+        elif delta < -0.5:
+            trend = "falling"
+        else:
+            trend = "stable"
+
+        # Peak passé : si la temp actuelle est >2°C en-dessous du max
+        peak_passed = (max_obs_c - current_c) >= 2.0
+
+        return {
+            "station":       station,
+            "current_c":     round(current_c, 1),
+            "current_f":     current_f,
+            "max_observed_c": round(max_obs_c, 1),
+            "max_observed_f": max_obs_f,
+            "trend":         trend,
+            "peak_passed":   peak_passed,
+            "obs_count":     len(obs_chrono),
+            "observations":  obs_chrono,
+        }
+    except Exception:
+        return None
+
+
 def _fetch_metar_temp(city_slug: str) -> dict | None:
     """
     Température actuelle depuis la station METAR (ICAO) que Polymarket utilise pour résoudre.
@@ -782,19 +864,33 @@ def get_rich_weather_context(city_slug: str, question: str, slug: str) -> dict |
         curr_data  = f_current.result() or {}
         metar_data = f_metar.result()
 
-        # Température actuelle : préférer METAR (station exacte Polymarket) sur Open-Meteo
+        # Température actuelle + tendance : préférer METAR (station exacte Polymarket) sur Open-Meteo
+        curr_data = curr_data if isinstance(curr_data, dict) else {}
         if metar_data:
             current_temp = metar_data["temp_f"] if unit == "fahrenheit" else metar_data["temp_c"]
+            # max_today METAR = max observé sur la journée à la station de résolution
+            max_today_metar = metar_data.get("max_observed_f") if unit == "fahrenheit" else metar_data.get("max_observed_c")
+            # Si le pic est passé (temp en baisse depuis >2°C), remaining_max = max observé
+            if metar_data.get("peak_passed"):
+                remaining_max = max_today_metar   # on ne peut plus monter plus haut
+            else:
+                # Pic pas encore passé : garder Open-Meteo pour les heures restantes
+                remaining_max = curr_data.get("remaining_max")
+            metar_trend = metar_data.get("trend")
         else:
-            current_temp = curr_data.get("current") if isinstance(curr_data, dict) else curr_data
+            current_temp  = curr_data.get("current")
+            max_today_metar = None
+            remaining_max = curr_data.get("remaining_max")
+            metar_trend   = None
 
         raw = {
             "current_temp":     current_temp,
-            "max_today":        curr_data.get("max_today") if isinstance(curr_data, dict) else None,
-            "remaining_max":    curr_data.get("remaining_max") if isinstance(curr_data, dict) else None,
-            "trend":            curr_data.get("trend") if isinstance(curr_data, dict) else None,
-            "local_hour":       curr_data.get("local_hour") if isinstance(curr_data, dict) else None,
-            "metar":            metar_data,   # station ICAO exacte + temp brute
+            "max_today":        max_today_metar or curr_data.get("max_today"),
+            "remaining_max":    remaining_max,
+            "trend":            metar_trend or curr_data.get("trend"),
+            "peak_passed":      metar_data.get("peak_passed") if metar_data else False,
+            "local_hour":       curr_data.get("local_hour"),
+            "metar":            metar_data,   # station ICAO exacte, observations brutes
             "ensemble_members": f_ensemble.result(),
             "models":           models,
             "risk":             f_risk.result(),

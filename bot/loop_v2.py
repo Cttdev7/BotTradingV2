@@ -486,16 +486,11 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
                 continue
             m["_hours_left"] = hours_left  # transmis à Claude pour contexte
 
-        # Marché du jour même → n'acheter qu'après 15h heure locale (temp max déjà atteinte)
-        if day_offset == 0 and local_hour is not None and local_hour < 15:
-            log(f"  🕐 {city} marché J+0 mais {local_hour}h locale — attendre 15h")
-            continue
-
         # Prix NO dans la zone cible
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
             continue
 
-        # Parse les bornes une seule fois (réutilisé pour remaining_max ET gap)
+        # Parse les bornes une seule fois (réutilisé pour tous les filtres suivants)
         bounds = _parse_range_bounds(q)
 
         # Marchés à valeur unique °C (ex: "be 21°C") → BLOQUÉS
@@ -504,20 +499,45 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
             log(f"  🌡️  {city} marché valeur unique °C — trop volatil, ignoré")
             continue
 
+        # ── Signal "pic confirmé" (METAR) ──────────────────────────────────────
+        # Si la station METAR montre que la temp a clairement chuté depuis le max journalier
+        # → on connaît le max réel → on peut trader même avant 15h
+        peak_passed  = wx.get("peak_passed", False)
+        max_today    = wx.get("max_today")     # max journalier à la station exacte (°F ou °C)
+        is_peak_no   = False                   # max < range → NO quasi-certain
+
+        if peak_passed and bounds and max_today is not None:
+            low_b, high_b = bounds
+            if max_today < low_b:
+                # Le max journalier est en-dessous du range → NO mathématiquement certain
+                is_peak_no = True
+                m["_peak_confirmed_no"] = True
+                m["_max_observed"]      = max_today
+                log(f"  🏔️  PIC CONFIRMÉ {city} : max_station={max_today} < range {low_b}-{high_b} → NO certain")
+            elif low_b <= max_today <= high_b:
+                # Max dans le range → information (on ne trade pas YES ici)
+                m["_peak_in_range"] = True
+                log(f"  🏔️  PIC DANS RANGE {city} : max_station={max_today} dans {low_b}-{high_b}")
+
+        # ── Filtre timing J+0 ──────────────────────────────────────────────────
+        # Attendre 15h heure locale SAUF si le pic est déjà confirmé par METAR
+        if day_offset == 0 and local_hour is not None and local_hour < 15:
+            if is_peak_no:
+                log(f"  🏔️  {city} avant 15h mais pic METAR confirmé → trade autorisé")
+            elif cid not in cascade_signals:
+                log(f"  🕐 {city} marché J+0 mais {local_hour}h locale — attendre 15h")
+                continue
+
         # Trajectoire temps réel — si remaining_max peut atteindre la fourchette → trop risqué
-        if bounds and wx.get("remaining_max") is not None:
+        if bounds and wx.get("remaining_max") is not None and not is_peak_no:
             low, high = bounds
             remaining_max = wx["remaining_max"]
             if remaining_max >= low:
-                log(f"  🌡️  {city} remaining_max {remaining_max}°F ≥ fourchette basse {low}°F — trop risqué")
+                log(f"  🌡️  {city} remaining_max {remaining_max} ≥ fourchette basse {low} — trop risqué")
                 continue
-            # Si max déjà observé est très au-dessus de la fourchette → signal fort NO
-            max_today = wx.get("max_today")
             if max_today is not None and max_today > high + 3:
                 m["_no_confirmed"] = True  # marché déjà gagné en temps réel
-        elif day_offset == 0 and cid not in cascade_signals:
-            # Marché J+0 sans données remaining_max → on ne sait pas si la temp peut encore monter
-            # Exception : signaux cascade (le marché lui-même confirme la direction)
+        elif day_offset == 0 and not is_peak_no and cid not in cascade_signals:
             log(f"  ⚠️  {city} J+0 sans données temp réelle — ignoré")
             continue
 
@@ -735,8 +755,13 @@ def run_cycle():
             if certainty != old:
                 log(f"  🔍 Deko boost : certitude {old} → {certainty} (sailor82 confirme)")
 
-        # On joue UNIQUEMENT les signaux high — pas de medium ni low
-        if certainty != "high":
+        # Pic METAR confirmé → on accepte medium aussi (max journalier connu = quasi-certitude)
+        if mkt.get("_peak_confirmed_no") and certainty == "medium":
+            log(f"  🏔️  Pic confirmé : certitude medium → accepté (max_station={mkt.get('_max_observed')})")
+            certainty = "high"   # traiter comme high pour le calcul de mise
+
+        # On joue UNIQUEMENT les signaux high — pas de low
+        if certainty not in ("high",):
             log(f"  ⏭️  {city} certitude={certainty} — ignoré (on veut uniquement high)")
             continue
 
