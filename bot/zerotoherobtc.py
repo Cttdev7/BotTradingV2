@@ -238,7 +238,11 @@ def resolve_pending_trades() -> None:
     for trade in pending:
         if now < trade["end_epoch"] + 60:
             continue
-        actual = fetch_market_outcome(trade["slug"])
+        try:
+            actual = fetch_market_outcome(trade["slug"])
+        except Exception as e:
+            log.warning(f"resolve_pending_trades fetch_outcome slug={trade['slug']} : {e}")
+            continue
         if actual is None:
             continue
         win = (actual == trade["outcome"])

@@ -22,8 +22,8 @@ trades = r.json()
 
 resolved = [t for t in trades if t["resolved"]]
 pending  = [t for t in trades if not t["resolved"]]
-wins     = [t for t in resolved if t["win"]]
-losses   = [t for t in resolved if not t["win"]]
+wins     = [t for t in resolved if t["win"] is True]
+losses   = [t for t in resolved if t["win"] is False]
 
 print(f"Total trades       : {len(trades)}")
 print(f"Résolus            : {len(resolved)}")
