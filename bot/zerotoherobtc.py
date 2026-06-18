@@ -196,8 +196,73 @@ def insert_trade(slug: str, end_epoch: int, condition_id: str, outcome: str, pri
         log.warning(f"insert_trade : {e}")
 
 
+def fetch_market_outcome(slug: str) -> str | None:
+    """Retourne le côté gagnant ('Up' ou 'Down') si le marché est résolu, sinon None."""
+    r = requests.get(f"{GAMMA_API}/events/slug/{slug}", timeout=TIMEOUT)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    event = r.json()
+    markets = event.get("markets", [])
+    if not markets:
+        return None
+    market = markets[0]
+    raw_prices   = market.get("outcomePrices", "[]")
+    raw_outcomes = market.get("outcomes", "[]")
+    prices   = json.loads(raw_prices)   if isinstance(raw_prices, str)   else raw_prices
+    outcomes = json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
+    if len(prices) != 2 or len(outcomes) != 2:
+        return None
+    for outcome, price in zip(outcomes, prices):
+        if float(price) >= 0.99:
+            return outcome
+    return None
+
+
+def resolve_pending_trades() -> None:
+    """Vérifie les trades non résolus dont la fenêtre est terminée depuis >60s et enregistre le résultat réel."""
+    now = time.time()
+    try:
+        r = requests.get(
+            f"{SB_URL}/rest/v1/zerotoherobtc_trades",
+            params={"resolved": "eq.false", "select": "id,slug,end_epoch,outcome"},
+            headers=_sb_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        pending = r.json()
+    except Exception as e:
+        log.warning(f"resolve_pending_trades fetch : {e}")
+        return
+
+    for trade in pending:
+        if now < trade["end_epoch"] + 60:
+            continue
+        actual = fetch_market_outcome(trade["slug"])
+        if actual is None:
+            continue
+        win = (actual == trade["outcome"])
+        try:
+            requests.patch(
+                f"{SB_URL}/rest/v1/zerotoherobtc_trades",
+                params={"id": f"eq.{trade['id']}"},
+                json={
+                    "resolved": True,
+                    "actual_outcome": actual,
+                    "win": win,
+                    "resolved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                },
+                headers={**_sb_headers(), "Prefer": "return=minimal"},
+                timeout=10,
+            )
+        except Exception as e:
+            log.warning(f"resolve_pending_trades update id={trade['id']} : {e}")
+
+
 def run_cycle() -> None:
     """Traite un cycle de marché complet : attend T-30s, vérifie le seuil, trade si besoin."""
+    resolve_pending_trades()
+
     end_epoch = current_window_end_epoch()
     slug = slug_for_end_epoch(end_epoch)
     log.info(f"Cycle en cours : {slug} (fin dans {end_epoch - time.time():.0f}s)")
