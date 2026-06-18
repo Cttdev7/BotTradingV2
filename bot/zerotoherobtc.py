@@ -121,3 +121,39 @@ def get_zth_balance_usdc() -> float:
     r.raise_for_status()
     result_hex = r.json().get("result", "0x0")
     return int(result_hex, 16) / 1_000_000
+
+
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        from polymarket.clients.secure import SecureClient
+        from polymarket.models.clob.api_key import ApiKeyCreds
+        creds = ApiKeyCreds(apiKey=ZTH_API_KEY, secret=ZTH_API_SECRET, passphrase=ZTH_API_PASSPHRASE)
+        _client = SecureClient.create(
+            private_key=ZTH_PRIVATE_KEY,
+            wallet=ZTH_WALLET_ADDRESS,
+            credentials=creds,
+        )
+    return _client
+
+
+def place_buy(token_id: str, amount_usdc: float) -> dict:
+    """Achète amount_usdc de ce token. Simule si ZTH_DRY_RUN=true."""
+    if ZTH_DRY_RUN:
+        log.info(f"[DRY RUN] BUY token {token_id[:12]}… | ${amount_usdc:.2f} USDC")
+        return {"dry_run": True, "token_id": token_id, "amount_usdc": amount_usdc, "status": "simulated"}
+
+    client = _get_client()
+    resp = client.place_market_order(token_id=token_id, side="BUY", amount=amount_usdc)
+    making = float(resp.making_amount or 0)
+    taking = float(resp.taking_amount or 0)
+    price = (making / taking) if taking > 0 else 0.0
+    return {
+        "ok": resp.ok,
+        "order_id": resp.order_id,
+        "status": resp.status,
+        "amount_usdc": amount_usdc,
+        "price": price,
+    }
