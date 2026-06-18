@@ -96,3 +96,14 @@ def fetch_market_tokens(slug: str) -> dict | None:
         "up_token_id":   up_token,
         "down_token_id": down_token,
     }
+
+
+def best_ask_price(token_id: str) -> float | None:
+    """Meilleur prix d'achat disponible (best ask) pour ce token, ou None si carnet vide."""
+    r = requests.get(f"{CLOB}/book", params={"token_id": token_id}, timeout=TIMEOUT)
+    r.raise_for_status()
+    book = r.json()
+    asks = book.get("asks", [])
+    if not asks:
+        return None
+    return min(float(a["price"]) for a in asks)
