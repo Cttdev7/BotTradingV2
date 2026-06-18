@@ -16,7 +16,7 @@ Nouveau bot de trading autonome sur Polymarket, indépendant de ProfitWeather V2
 ## Stratégie de trading
 - **Détection du marché courant** : la fin de la fenêtre en cours correspond toujours au prochain multiple de 300 secondes en epoch Unix. Le slug se construit ainsi : `btc-updown-5m-{end_epoch}`.
 - **Récupération des données marché** : `GET https://gamma-api.polymarket.com/events/slug/{slug}` pour obtenir les `clobTokenIds` des issues "Up" et "Down".
-- **Timing de déclenchement** : le bot attend jusqu'à ~30 secondes avant la fin de la fenêtre (tolérance ~20-32s restantes pour absorber la latence réseau/calcul), avec garde anti-double-trade par marché (un seul achat par `condition_id`/fenêtre).
+- **Timing de déclenchement** : le bot surveille en continu de 60 secondes restantes jusqu'à la clôture (toutes les 2s), et achète dès qu'un côté franchit le seuil à n'importe quel moment dans cette fenêtre — avec garde anti-double-trade par marché (un seul achat par `condition_id`/fenêtre). *(Mis à jour le 2026-06-18 : initialement 30s avec une fenêtre étroite, élargi à 60s→0 pour un suivi continu.)*
 - **Règle de décision (codée en dur, non modifiable)** :
   - Lire le carnet d'ordres (`GET /book?token_id=...` sur `clob.polymarket.com`) des deux tokens Up et Down, prendre le meilleur prix d'achat (best ask) de chacun.
   - Si le prix d'achat d'un côté est **≥ 95%** → ce côté est acheté.

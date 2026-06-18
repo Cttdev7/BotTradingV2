@@ -30,8 +30,8 @@ PUSD_CONTRACT = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb"
 TIMEOUT = 10
 
 WINDOW_SECONDS         = 300   # marché toutes les 5 minutes
-TRIGGER_MAX_REMAINING  = 32    # on commence à regarder à partir de 32s restantes
-TRIGGER_MIN_REMAINING  = 20    # on arrête de regarder en dessous de 20s restantes
+TRIGGER_MAX_REMAINING  = 60    # on commence à surveiller en continu à partir de 60s restantes
+TRIGGER_MIN_REMAINING  = 2     # on arrête juste avant la clôture (marge pour l'exécution de l'ordre)
 PRICE_THRESHOLD        = 0.95
 BET_PCT                = 0.05
 POLL_INTERVAL          = 2     # secondes entre 2 vérifications dans la fenêtre de déclenchement
