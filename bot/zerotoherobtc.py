@@ -43,6 +43,10 @@ ZTH_API_SECRET     = os.getenv("ZTH_API_SECRET", "")
 ZTH_API_PASSPHRASE = os.getenv("ZTH_API_PASSPHRASE", "")
 ZTH_DRY_RUN        = os.getenv("ZTH_DRY_RUN", "true").lower() == "true"
 
+SB_URL = os.getenv("SUPABASE_URL", "")
+SB_KEY = os.getenv("SUPABASE_KEY", "")
+SIMULATED_BALANCE_USDC = 100.0  # solde fictif utilisé pour la mise en DRY_RUN (vrai solde on-chain = 0)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -159,6 +163,39 @@ def place_buy(token_id: str, amount_usdc: float) -> dict:
     }
 
 
+def _sb_headers() -> dict:
+    return {
+        "apikey": SB_KEY,
+        "Authorization": f"Bearer {SB_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def insert_trade(slug: str, end_epoch: int, condition_id: str, outcome: str, price: float, amount_usdc: float) -> None:
+    """Enregistre un trade (simulé ou réel) dans Supabase pour calcul ultérieur du taux de victoire."""
+    payload = {
+        "slug": slug,
+        "end_epoch": end_epoch,
+        "condition_id": condition_id,
+        "outcome": outcome,
+        "price_at_buy": price,
+        "amount_usdc": amount_usdc,
+        "dry_run": ZTH_DRY_RUN,
+        "resolved": False,
+    }
+    try:
+        r = requests.post(
+            f"{SB_URL}/rest/v1/zerotoherobtc_trades",
+            json=payload,
+            headers={**_sb_headers(), "Prefer": "return=minimal"},
+            timeout=10,
+        )
+        if r.status_code not in (200, 201):
+            log.warning(f"insert_trade erreur {r.status_code} : {r.text[:200]}")
+    except Exception as e:
+        log.warning(f"insert_trade : {e}")
+
+
 def run_cycle() -> None:
     """Traite un cycle de marché complet : attend T-30s, vérifie le seuil, trade si besoin."""
     end_epoch = current_window_end_epoch()
@@ -197,7 +234,7 @@ def run_cycle() -> None:
 
         if candidate:
             outcome, token_id, price = candidate
-            balance = get_zth_balance_usdc()
+            balance = SIMULATED_BALANCE_USDC if ZTH_DRY_RUN else get_zth_balance_usdc()
             bet = round(balance * BET_PCT, 2)
             if bet <= 0:
                 log.warning(f"Solde insuffisant ({balance} USDC) — pas de trade")
@@ -205,6 +242,7 @@ def run_cycle() -> None:
                 log.info(f"  -> ACHAT {outcome} @ {price:.2f} pour ${bet} USDC")
                 result = place_buy(token_id, bet)
                 log.info(f"  Résultat: {result}")
+                insert_trade(slug, end_epoch, tokens["condition_id"], outcome, price, bet)
             traded = True
 
         time.sleep(POLL_INTERVAL)
