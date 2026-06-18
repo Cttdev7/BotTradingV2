@@ -107,3 +107,17 @@ def best_ask_price(token_id: str) -> float | None:
     if not asks:
         return None
     return min(float(a["price"]) for a in asks)
+
+
+def get_zth_balance_usdc() -> float:
+    """Solde pUSD disponible on-chain pour le wallet ZeroToHeroBTC."""
+    data = "0x70a08231" + ZTH_WALLET_ADDRESS[2:].lower().zfill(64)
+    r = requests.post(
+        POLYGON_RPC,
+        json={"jsonrpc": "2.0", "method": "eth_call",
+              "params": [{"to": PUSD_CONTRACT, "data": data}, "latest"], "id": 1},
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    result_hex = r.json().get("result", "0x0")
+    return int(result_hex, 16) / 1_000_000
