@@ -157,3 +157,70 @@ def place_buy(token_id: str, amount_usdc: float) -> dict:
         "amount_usdc": amount_usdc,
         "price": price,
     }
+
+
+def run_cycle() -> None:
+    """Traite un cycle de marché complet : attend T-30s, vérifie le seuil, trade si besoin."""
+    end_epoch = current_window_end_epoch()
+    slug = slug_for_end_epoch(end_epoch)
+    log.info(f"Cycle en cours : {slug} (fin dans {end_epoch - time.time():.0f}s)")
+
+    traded = False
+    while True:
+        remaining = end_epoch - time.time()
+        if remaining <= 0:
+            break
+        if remaining > TRIGGER_MAX_REMAINING:
+            time.sleep(min(POLL_INTERVAL, remaining - TRIGGER_MAX_REMAINING))
+            continue
+        if remaining < TRIGGER_MIN_REMAINING:
+            break
+        if traded:
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        tokens = fetch_market_tokens(slug)
+        if not tokens:
+            log.warning(f"Marché {slug} introuvable à {remaining:.0f}s restantes — skip")
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        up_price   = best_ask_price(tokens["up_token_id"])
+        down_price = best_ask_price(tokens["down_token_id"])
+        log.info(f"  T-{remaining:.0f}s | Up={up_price} Down={down_price}")
+
+        candidate = None
+        if up_price is not None and up_price >= PRICE_THRESHOLD:
+            candidate = ("Up", tokens["up_token_id"], up_price)
+        elif down_price is not None and down_price >= PRICE_THRESHOLD:
+            candidate = ("Down", tokens["down_token_id"], down_price)
+
+        if candidate:
+            outcome, token_id, price = candidate
+            balance = get_zth_balance_usdc()
+            bet = round(balance * BET_PCT, 2)
+            if bet <= 0:
+                log.warning(f"Solde insuffisant ({balance} USDC) — pas de trade")
+            else:
+                log.info(f"  -> ACHAT {outcome} @ {price:.2f} pour ${bet} USDC")
+                result = place_buy(token_id, bet)
+                log.info(f"  Résultat: {result}")
+            traded = True
+
+        time.sleep(POLL_INTERVAL)
+
+    log.info(f"Fin du cycle {slug}")
+
+
+def main() -> None:
+    log.info(f"ZeroToHeroBTC démarré — DRY_RUN={ZTH_DRY_RUN}")
+    while True:
+        try:
+            run_cycle()
+        except Exception as e:
+            log.error(f"Erreur cycle: {e}")
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()
