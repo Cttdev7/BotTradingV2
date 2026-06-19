@@ -491,6 +491,21 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         if vol < MIN_VOLUME:
             continue
 
+        # Parse les bornes une seule fois (réutilisé pour tous les filtres suivants) —
+        # calculé ici, avant les verrous temporels, car l'entrée précoce ci-dessous en a besoin
+        bounds = _parse_range_bounds(q)
+
+        # Entrée précoce (pratique manuelle de l'utilisateur) : si le range est déjà
+        # clairement EN-DESSOUS de la prévision (gap >= MIN_FORECAST_GAP_DOWN), on sait
+        # déjà que ce range est dépassé → pas besoin d'attendre 15h locale ni la fenêtre
+        # des 20h restantes, on peut trader dès que le marché ouvre.
+        forecast_mean = wx.get("models_avg") or wx.get("current_temp")
+        early_entry_down = False
+        if forecast_mean is not None and bounds:
+            _low_e, _high_e = bounds
+            if forecast_mean > _high_e and (forecast_mean - _high_e) >= MIN_FORECAST_GAP_DOWN:
+                early_entry_down = True
+
         # Temps restant avant clôture
         hours_left = _hours_remaining(m.get("end_date_iso", ""))
         if hours_left is not None:
@@ -498,7 +513,7 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
                 label = "déjà fermé" if hours_left < 0 else f"ferme dans {hours_left:.1f}h"
                 log(f"  ⏰ {city} {label} — ignoré")
                 continue
-            if hours_left > MAX_HOURS_REMAINING:
+            if hours_left > MAX_HOURS_REMAINING and not early_entry_down:
                 log(f"  ⏰ {city} ferme dans {hours_left:.1f}h — trop tôt, ignoré")
                 continue
             m["_hours_left"] = hours_left  # transmis à Claude pour contexte
@@ -506,9 +521,6 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         # Prix NO dans la zone cible
         if not (MIN_NO_PRICE <= no_price <= MAX_NO_PRICE):
             continue
-
-        # Parse les bornes une seule fois (réutilisé pour tous les filtres suivants)
-        bounds = _parse_range_bounds(q)
 
         # ── Signal "pic confirmé" (METAR) ──────────────────────────────────────
         # Si la station METAR montre que la temp a clairement chuté depuis le max journalier
@@ -531,10 +543,13 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
                 log(f"  🏔️  PIC DANS RANGE {city} : max_station={max_today} dans {low_b}-{high_b}")
 
         # ── Filtre timing J+0 ──────────────────────────────────────────────────
-        # Attendre 15h heure locale SAUF si le pic est déjà confirmé par METAR
+        # Attendre 15h heure locale SAUF si le pic est déjà confirmé par METAR,
+        # SAUF signal cascade, SAUF entrée précoce (range déjà sous la prévision)
         if day_offset == 0 and local_hour is not None and local_hour < 15:
             if is_peak_no:
                 log(f"  🏔️  {city} avant 15h mais pic METAR confirmé → trade autorisé")
+            elif early_entry_down:
+                log(f"  🌙 {city} avant 15h mais entrée précoce (range sous prévision) → trade autorisé")
             elif cid not in cascade_signals:
                 log(f"  🕐 {city} marché J+0 mais {local_hour}h locale — attendre 15h")
                 continue
@@ -582,7 +597,6 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         # Si le range est AU-DESSUS de la prévision → la temp peut encore monter → gap strict (8°F)
         # Si le range est EN-DESSOUS de la prévision → la temp dépasse déjà ce range → gap souple (4°F)
         # Exception : signaux cascade → le marché lui-même est le signal, pas besoin d'ECMWF
-        forecast_mean = wx.get("models_avg") or wx.get("current_temp")
         if forecast_mean is not None and bounds and cid not in cascade_signals:
             low, high = bounds
             if forecast_mean < low:
