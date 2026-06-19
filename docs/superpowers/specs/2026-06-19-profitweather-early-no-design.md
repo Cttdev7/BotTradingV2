@@ -24,10 +24,10 @@ Dans `_prefilter()` :
 4. **Le chemin "up" (range au-dessus de la prévision) garde son blocage strict actuel** — ce changement ne concerne que la direction "down".
 5. **Claude Haiku continue de valider** chaque candidat retenu, exactement comme aujourd'hui — pas d'achat automatique sans passage par `brain.py`.
 
-## Changement 2 — Seuil cascade abaissé 60% → 40%
-L'utilisateur observe aussi cette pratique manuelle : si une fourchette devient dominante (YES le plus haut du groupe ville/jour) même à seulement ~40%, il regarde les fourchettes adjacentes et achète NO sur celle dont le prix est dans la bonne tranche.
+## Changement 2 — Seuil cascade abaissé 60% → 35%
+L'utilisateur observe aussi cette pratique manuelle : si une fourchette devient dominante (YES le plus haut du groupe ville/jour) même à seulement ~35%, il regarde les fourchettes adjacentes et achète NO sur celle dont le prix est dans la bonne tranche.
 
-Le bot a déjà ce mécanisme (`_detect_cascade()`, `CASCADE_TRIGGER`) mais avec un seuil de déclenchement à 60%. Changement : `CASCADE_TRIGGER = 0.60` → `CASCADE_TRIGGER = 0.40` (ligne ~61 de `loop_v2.py`). Aucune autre logique ne change — `_detect_cascade()` continue de marquer toutes les fourchettes non-dominantes du groupe ville/jour, et le filtre de prix (75-96¢, voir Changement 3) s'applique toujours avant tout achat.
+Le bot a déjà ce mécanisme (`_detect_cascade()`, `CASCADE_TRIGGER`) mais avec un seuil de déclenchement à 60%. Changement : `CASCADE_TRIGGER = 0.60` → `CASCADE_TRIGGER = 0.35` (ligne ~61 de `loop_v2.py`). Aucune autre logique ne change — `_detect_cascade()` continue de marquer toutes les fourchettes non-dominantes du groupe ville/jour, et le filtre de prix (75-96¢, voir Changement 3) s'applique toujours avant tout achat.
 
 ## Changement 3 — Plafond prix NO 95¢ → 96¢
 Alignement sur la pratique manuelle de l'utilisateur ("tranche 75%-96%"). `MAX_NO_PRICE = 0.95` → `MAX_NO_PRICE = 0.96` (ligne ~40 de `loop_v2.py`). Ce plafond est utilisé à plusieurs endroits (prefilter ligne ~507, double vérification avant exécution ligne ~815) — un seul changement de constante suffit, pas de logique à dupliquer.
@@ -44,5 +44,5 @@ Pas de suite pytest dans ce projet (convention existante). Vérification via un 
 - un marché fictif fermant dans 25h (donc hors fenêtre actuelle), même conditions sous-prévision → doit être retenu.
 - un marché fictif équivalent mais avec range AU-DESSUS de la prévision → doit rester rejeté (comportement inchangé).
 - un marché fictif sous-prévision mais fermant dans 0.5h (`MIN_HOURS_REMAINING` non respecté) → doit rester rejeté.
-- `_detect_cascade()` avec un groupe ville/jour dont le YES dominant est à 45% (sous l'ancien seuil 60%, au-dessus du nouveau 40%) → les ranges adjacentes doivent être marquées `_cascade` (alors qu'avant ce changement elles ne l'auraient pas été).
+- `_detect_cascade()` avec un groupe ville/jour dont le YES dominant est à 40% (sous l'ancien seuil 60%, au-dessus du nouveau 35%) → les ranges adjacentes doivent être marquées `_cascade` (alors qu'avant ce changement elles ne l'auraient pas été).
 - un candidat à 96¢ NO → doit passer le filtre prix (alors qu'avant ce changement, à 95¢ pile la limite, 96¢ aurait été rejeté) ; un candidat à 97¢ doit rester rejeté.
