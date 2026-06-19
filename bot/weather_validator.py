@@ -123,35 +123,35 @@ _MONTHS = {
 # Stations METAR (codes ICAO) utilisées par Polymarket/Weather Underground pour résoudre les marchés
 # Source : URL WU type wunderground.com/history/daily/{pays}/{ville}/{CODE}
 CITY_METAR_STATIONS = {
-    # Europe
-    'ankara':        'LTAC',   # Esenboğa Airport (confirmé user)
-    'istanbul':      'LTFM',   # Istanbul Airport (nouveau)
-    'london':        'EGLL',   # Heathrow
-    'paris':         'LFPG',   # CDG
+    # Europe — codes confirmés depuis descriptions marchés Polymarket (WU)
+    'ankara':        'LTAC',   # Esenboğa Airport
+    'istanbul':      'LTFM',   # Istanbul Airport (pas de marché actif — meilleure estimation)
+    'london':        'EGLC',   # London City Airport (WU: EGLC, pas Heathrow EGLL)
+    'paris':         'LFPB',   # Le Bourget (WU: LFPB, pas CDG LFPG)
     'madrid':        'LEMD',   # Barajas
     'amsterdam':     'EHAM',   # Schiphol
     'warsaw':        'EPWA',   # Chopin Airport
-    'milan':         'LIML',   # Linate
+    'milan':         'LIMC',   # Malpensa (WU: LIMC, pas Linate LIML)
     'munich':        'EDDM',   # Franz Josef Strauss
     'helsinki':      'EFHK',   # Helsinki-Vantaa
-    'moscow':        'UUEE',   # Sheremetyevo (principal WU Moscou)
-    'tel-aviv':      'LLBG',   # Ben Gurion
-    # USA
-    'nyc':           'KJFK',   # JFK
+    'moscow':        'UUEE',   # Sheremetyevo (pas de marché actif — meilleure estimation)
+    'tel-aviv':      'LLBG',   # Ben Gurion (pas de marché actif — meilleure estimation)
+    # USA — codes confirmés depuis descriptions marchés Polymarket (WU)
+    'nyc':           'KLGA',   # LaGuardia (WU: KLGA, pas JFK KJFK)
     'atlanta':       'KATL',   # Hartsfield-Jackson
     'chicago':       'KORD',   # O'Hare
     'houston':       'KHOU',   # Hobby Airport
-    'dallas':        'KDFW',   # DFW
-    'denver':        'KDEN',   # Denver International
+    'dallas':        'KDAL',   # Love Field (WU: KDAL, pas DFW KDFW)
+    'denver':        'KBKF',   # Buckley SFB Aurora (WU: KBKF, pas Denver Int'l KDEN)
     'miami':         'KMIA',   # Miami International
     'seattle':       'KSEA',   # Seattle-Tacoma
     'san-francisco': 'KSFO',   # SFO
     'los-angeles':   'KLAX',   # LAX
     'toronto':       'CYYZ',   # Pearson International
     'mexico-city':   'MMMX',   # Benito Juarez
-    # Asie de l'Est
+    # Asie de l'Est — codes confirmés depuis descriptions marchés Polymarket (WU)
     'tokyo':         'RJTT',   # Haneda
-    'seoul':         'RKSS',   # Gimpo
+    'seoul':         'RKSI',   # Incheon (WU: RKSI, pas Gimpo RKSS)
     'busan':         'RKPK',   # Gimhae International
     'beijing':       'ZBAA',   # Capital Airport
     'shanghai':      'ZSPD',   # Pudong
@@ -161,8 +161,8 @@ CITY_METAR_STATIONS = {
     'chongqing':     'ZUCK',   # Jiangbei International
     'wuhan':         'ZHHH',   # Tianhe International
     'qingdao':       'ZSQD',   # Liuting International
-    'hong-kong':     'VHHH',   # HK International
-    'taipei':        'RCTP',   # Taoyuan International
+    'hong-kong':     'VHHH',   # HK International (pas de marché actif — meilleure estimation)
+    'taipei':        'RCSS',   # Songshan (WU: RCSS, pas Taoyuan RCTP)
     # Asie du Sud-Est / Pacifique
     'singapore':     'WSSS',   # Changi
     'kuala-lumpur':  'WMKK',   # KLIA

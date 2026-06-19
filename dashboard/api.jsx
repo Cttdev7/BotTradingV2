@@ -1,11 +1,11 @@
 // ============================================================
-// api.jsx — connexion dashboard ↔ serveur bot (localhost:5000)
+// api.jsx — connexion dashboard ↔ serveur bot (localhost:5050)
 // Récupère les données réelles et les convertit au format attendu
 // par les composants existants.
 // ============================================================
 
 const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'http://127.0.0.1:5000'
+  ? 'http://127.0.0.1:5050'
   : (window.BOT_API_URL || '');
 
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
@@ -107,4 +107,8 @@ function usePolymarketData(intervalMs = 30000) {
   return { ...data, loading, refresh };
 }
 
-Object.assign(window, { usePolymarketData, fetchBotData });
+async function fetchCalendarData() {
+  return apiFetch('/api/v2/calendar');
+}
+
+Object.assign(window, { usePolymarketData, fetchBotData, fetchCalendarData });

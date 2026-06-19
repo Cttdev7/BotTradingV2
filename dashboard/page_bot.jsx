@@ -138,7 +138,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   const [pnlHoraire, setPnlHoraire] = React.useState([]);
   React.useEffect(() => {
     if (tab !== 'apercu' || !isLocal) return;
-    const load = () => fetch('http://127.0.0.1:5000/api/pnl/hourly')
+    const load = () => fetch('http://127.0.0.1:5050/api/pnl/hourly')
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setPnlHoraire(d); }).catch(() => {});
     load();
     const id = setInterval(load, 60 * 60 * 1000);
@@ -159,7 +159,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
     setAnalyseError(null);
     setAnalyseResult(null);
     try {
-      const r = await fetch('http://127.0.0.1:5000/api/analyse', {
+      const r = await fetch('http://127.0.0.1:5050/api/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: analyseCategory, min_volume: analyseVolume, instructions: analyseInstructions }),

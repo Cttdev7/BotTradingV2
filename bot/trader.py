@@ -47,15 +47,38 @@ def get_token_id(condition_id: str, outcome: str) -> "str | None":
             return token.get("token_id")
     return None
 
+
+def get_token_balance(condition_id: str, outcome: str) -> float:
+    """
+    Solde réel détenu on-chain pour ce token (en nombre de tokens, pas en USDC).
+    Source de vérité avant une vente — le montant en DB (amount_usdc/prix d'entrée)
+    peut diverger du solde réel (constaté sur les marchés "negative risk" multi-fourchettes).
+    """
+    token_id = get_token_id(condition_id, outcome)
+    if not token_id:
+        return 0.0
+    client = _get_client()
+    bal = client.get_balance_allowance(asset_type="CONDITIONAL", token_id=token_id)
+    return float(bal.balance) / 1_000_000
+
 # ── Placement d'ordres ────────────────────────────────────────────────────────
 
-def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: float) -> dict:
+def place_market_order(condition_id: str, outcome: str, side: str,
+                        amount_usdc: float = None, shares: float = None) -> dict:
     """
     Place un ordre de marché via le nouveau polymarket-client SDK.
-    side    : "buy" ou "sell"
-    outcome : "Yes" ou "No"
-    amount_usdc : montant en USDC à engager
+    side        : "buy" ou "sell"
+    outcome     : "Yes" ou "No"
+    amount_usdc : montant en USDC à engager — requis pour un BUY
+    shares      : nombre de tokens à vendre — requis pour un SELL
+                  (le SDK exige des "shares", pas un montant USDC, pour une vente)
     """
+    is_sell = side.lower() == "sell"
+    if is_sell and shares is None:
+        raise ValueError("shares requis pour un ordre SELL (nombre de tokens détenus à vendre)")
+    if not is_sell and amount_usdc is None:
+        raise ValueError("amount_usdc requis pour un ordre BUY")
+
     if DRY_RUN:
         result = {
             "dry_run": True,
@@ -63,9 +86,11 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
             "outcome": outcome,
             "side": side,
             "amount_usdc": amount_usdc,
+            "shares": shares,
             "status": "simulated",
         }
-        print(f"[DRY RUN] {side.upper()} {outcome} sur {condition_id[:12]}… | ${amount_usdc:.2f} USDC")
+        qty = f"{shares:.4f} tokens" if is_sell else f"${amount_usdc:.2f} USDC"
+        print(f"[DRY RUN] {side.upper()} {outcome} sur {condition_id[:12]}… | {qty}")
         return result
 
     if not config.can_trade():
@@ -76,16 +101,20 @@ def place_market_order(condition_id: str, outcome: str, side: str, amount_usdc: 
         raise ValueError(f"Token introuvable : {condition_id} / {outcome}")
 
     client = _get_client()
-    is_sell = side.lower() == "sell"
     resp = client.place_market_order(
         token_id=token_id,
         side="SELL" if is_sell else "BUY",
         # BUY  : amount en USDC | SELL : shares = nombre de tokens à vendre
-        **{"shares": amount_usdc} if is_sell else {"amount": amount_usdc},
+        **({"shares": shares} if is_sell else {"amount": amount_usdc}),
     )
     making = float(resp.making_amount or 0)
     taking = float(resp.taking_amount or 0)
-    price  = (making / taking) if taking > 0 else 0.0  # 0 → loop.py utilisera yes_price comme fallback
+    # BUY  : making=USDC offert, taking=tokens reçus   → price = making/taking
+    # SELL : making=tokens offerts, taking=USDC reçu   → price = taking/making
+    if is_sell:
+        price = (taking / making) if making > 0 else 0.0
+    else:
+        price = (making / taking) if taking > 0 else 0.0
     return {
         "ok":            resp.ok,
         "order_id":      resp.order_id,

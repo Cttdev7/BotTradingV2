@@ -14,7 +14,7 @@ Bottrading V2/
 │   ├── index.html
 │   ├── styles.css
 │   ├── app.jsx         ← Shell, navigation, sidebar avec drapeaux pays
-│   ├── api.jsx         ← Fetch données réelles depuis localhost:5000
+│   ├── api.jsx         ← Fetch données réelles depuis localhost:5050
 │   ├── data.jsx        ← 45 bots température + ProfitWeather + Crypto
 │   ├── charts.jsx
 │   ├── icons.jsx
@@ -25,7 +25,8 @@ Bottrading V2/
 │   ├── page_stratege.jsx ← Page Mistral stratège (hero violet, stats par ville)
 │   ├── page_portfolio.jsx
 │   ├── page_settings.jsx
-│   └── page_history.jsx
+│   ├── page_history.jsx
+│   └── page_calendar.jsx ← Calendrier P&L ProfitWeather V2 (depuis PERF_RESET_DATE)
 ├── bot/                ← Backend Python
 │   ├── config.py       ← Charge .env
 │   ├── auth.py         ← Signature HMAC-SHA256
@@ -36,12 +37,19 @@ Bottrading V2/
 │   ├── loop.py         ← Ancienne boucle ProfitWeather (remplacée par loop_v2.py)
 │   ├── loop_v2.py      ← ⭐ ProfitWeather V2 — stratégie NO, ACTIF en local
 │   ├── agent_deko.py   ← ⭐ Surveille sailor82 (@sailor82) → table deko_trades
-│   ├── weather_validator.py ← Enrichissement ECMWF (band_prob, models_spread, models_avg)
-│   ├── server.py       ← Flask API port 5000
+│   ├── weather_validator.py ← Enrichissement ECMWF (band_prob, models_spread, models_avg) + stations METAR/WU
+│   ├── server.py       ← Flask API port 5050 (+ /api/v2/trades, /api/v2/calendar) — pas 5000 (AirPlay macOS le bloque)
 │   ├── agent_temperature_cloud.py ← 45 villes, Railway 24/7 ← ACTIF
 │   ├── derive_api_key.py ← Régénère credentials Polymarket si expirés
+│   ├── close_all.py    ← Ferme manuellement toutes les positions ouvertes polyedge2 (script ponctuel)
+│   ├── fetch_wu_stations.py ← Scrape les codes stations WU réels depuis les descriptions de marchés Polymarket
+│   ├── wu_stations.json ← Résultat du scraping ci-dessus (cache local)
+│   ├── test_order.py   ← Script de test ponctuel pour passer un ordre via SecureClient
+│   ├── postmortems.log ← Log des analyses post-mortem générées par postmortem.py
 │   ├── requirements.txt
 │   └── .env            ← Toutes les clés (jamais committé)
+├── STRATEGIE_BOT.md    ← Doc stratégie en langage simple pour l'utilisateur (non-dev)
+├── notes               ← Idées d'amélioration brutes (brouillon, voir section "Améliorations futures")
 ├── Procfile            ← Railway : python3 bot/agent_temperature_cloud.py
 ├── requirements.txt    ← Dépendances Railway
 └── scripts/
@@ -56,7 +64,7 @@ Bottrading V2/
 cd dashboard && python3 -m http.server 8080   # → http://localhost:8080
 
 # Serveur bot (données temps réel dashboard)
-python3 bot/server.py                          # → http://localhost:5000
+python3 bot/server.py                          # → http://localhost:5050
 
 # ProfitWeather V2 — TRADING RÉEL
 source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/loop_v2.py
@@ -99,18 +107,29 @@ source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/agent_deko.py
 
 ### Paramètres hard-codés loop_v2.py (NE PAS laisser Claude Haiku les modifier)
 ```python
-MIN_NO_PRICE      = 0.70    # NO minimum 70¢
-MAX_NO_PRICE      = 0.95    # NO maximum 95¢ (leçon Dallas : 97¢ = marge trop faible)
-MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
-MAX_BET_PCT       = 0.06    # jamais plus de 6% du solde sur 1 trade
-MIN_FORECAST_GAP  = 3.0     # écart minimum °F entre prévision et fourchette
-MAX_ENSEMBLE_PROB = 40      # si ECMWF prédit >40% dans ce range → interdit
-MAX_BAND_PROB     = 30      # band_prob max (None = données absentes = refus)
-MAX_MODELS_SPREAD = 12.0    # si modèles ECMWF divergent >12°F → trop incertain
-MIN_VOLUME        = 1_000   # volume minimum USDC
-NO_STOP_LOSS_PCT  = -0.25   # -25% → vente automatique
-NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99¢ → lock profit
+MIN_NO_PRICE          = 0.75    # NO minimum 75¢
+MAX_NO_PRICE          = 0.95    # NO maximum 95¢ (leçon Dallas : 97¢ = marge trop faible)
+MAX_EXPOSURE_PCT      = 1.0     # 100% du portefeuille (cash + positions ouvertes) peut être exposé
+MAX_BET_PCT           = 0.05    # jamais plus de 5% du solde sur 1 trade
+MIN_FORECAST_GAP_DOWN = 2.0     # range EN-DESSOUS prévision (déjà dépassée → safe) : 2°F suffisent
+MIN_FORECAST_GAP_UP   = 8.0     # range AU-DESSUS prévision : gap mini si jamais autorisé (cascade/pic confirmé)
+MAX_ENSEMBLE_PROB     = 30      # si ECMWF prédit >30% dans ce range → interdit
+MAX_BAND_PROB         = 20      # band_prob max (None = données absentes = refus)
+MAX_MODELS_SPREAD     = 10.0    # si modèles ECMWF divergent >10°F → trop incertain
+MIN_VOLUME            = 1_500   # volume minimum USDC
+NO_STOP_LOSS_PCT      = -0.50   # -50% → déclenche le hedge/post-mortem (pas de vente, voir ci-dessous)
+NO_TAKE_PROFIT        = 0.96    # NO ≥ 96¢ → considéré comme gagné (lock profit estimé)
+CASCADE_TRIGGER       = 0.60    # range YES dominant >60% → cascade NO sur les ranges adjacents
+HEDGE_YES_TRIGGER      = 0.60   # YES ≥ 60% (et < 90%) sur notre NO perdant → auto-hedge YES
+HEDGE_MULTIPLIER       = 1.10   # mise hedge calculée pour +10% si le YES gagne
+PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard repartent de 0 à cette date
 ```
+
+### ⚠️ Le SDK ne supporte pas la vente (important)
+`polymarket-client` (SecureClient) ne propose pas d'ordre de vente sur CTF Exchange V2. Donc :
+- **Stop-loss et take-profit ne vendent plus** — ils attendent la résolution naturelle du marché
+- Le P&L est enregistré dans `trade_history` seulement quand le prix touche ~0 (perdu) ou ~1 (gagné), ou via `check_market_outcomes`
+- La seule action active possible en cours de position perdante = **l'auto-hedge** (acheter le YES en face, voir plus bas)
 
 ### Règles de trading V2
 - **NO uniquement** — pas de YES (trop complexe, focus sur ce qui marche)
@@ -118,6 +137,15 @@ NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99¢ → lock profit
 - **1 trade max par ville en position ouverte** — `open_cities` bloqué dans `_prefilter`
 - **Signal Deko** : consultatif uniquement — Claude analyse avant de décider. Si sailor82 est NO sur le même marché → boost de certitude d'un niveau (low→medium, medium→high)
 - **Double vérification prix** : T1 puis T2 (4s après) — annulé si prix chute >2¢ entre les deux
+- **Règle directionnelle (leçon Chicago/canicule)** :
+  - Range EN-DESSOUS de la prévision → autorisé (2°F gap min) — la temp dépasse déjà ce range, c'est safe
+  - Range AU-DESSUS de la prévision → **toujours BLOQUÉ** dans le filtre normal (`_prefilter`), même en cascade, sauf si le **signal "pic METAR confirmé"** dit que le max journalier est déjà tombé (température ne peut plus monter)
+  - Exemple : prévision Paris 37°C → on achète NO sur 34°C (en-dessous) ✅, jamais NO sur 39°C (au-dessus) ❌ sauf pic confirmé
+- **Signal "pic METAR confirmé"** : si la station METAR montre que la température a baissé depuis son max du jour → le max est considéré comme verrouillé → permet de trader immédiatement (même avant 15h, même sur un range au-dessus) car on connaît déjà le résultat
+- **Cascade** (`CASCADE_TRIGGER = 0.60`) : si un range atteint **60%** YES → les ranges adjacents reçoivent un signal NO automatique (le marché dit déjà où sera la température)
+- **Auto-hedge** (leçon Cape Town/London) : si un NO acheté perd et que le YES en face monte entre 60% et 90%, le bot achète automatiquement le YES avec une mise calculée pour ressortir +10% si le YES gagne — transforme une perte quasi-certaine en position neutre/légèrement gagnante. **Pas de hedge si YES ≥ 90%** (marché quasi-résolu, plus rien à gagner). Un hedge par position max (`_hedged_cids_session` + colonne en DB)
+- **Stations WU exactes** (source de résolution Polymarket, confirmées via `fetch_wu_stations.py` sur les descriptions de marchés) : London=EGLC, Paris=LFPB, NYC=KLGA, Dallas=KDAL, Denver=KBKF, Seoul=RKSI, Taipei=RCSS, Milan=LIMC (pas les aéroports principaux !)
+- **Marchés valeur unique °C** (ex: "be 34°C") ne sont plus bloqués par défaut — ils sont traités comme une fourchette d'1°C par `_parse_range_bounds` (ancienne règle de blocage retirée le 17/06)
 
 ## Agent Deko (`agent_deko.py`)
 - **But** : surveiller les trades de sailor82 (@sailor82, Polymarket, addr `0xbbb72a812c…`)
@@ -168,6 +196,13 @@ NO_TAKE_PROFIT    = 0.9999  # NO ≥ 99.99¢ → lock profit
 - Lancer : `source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/loop_v2.py`
 - Premier ordre réel : Toronto 31°C YES — 10 USDC → 10.64 tokens, tx `0xdfb26ab1...` (2026-06-11)
 - Performance V2 (au 2026-06-16) : ~75% win rate, ~17+ trades, -$0.34 net (perte principale : Dallas 97¢ — corrigé)
+- **Reset stats le 2026-06-17 15:34** (`PERF_RESET_DATE`) : le calendrier P&L et les stats affichées dans les logs/dashboard ne comptent que les trades à partir de cette date (positions précédentes ignorées dans les compteurs, mais toujours en DB)
+
+## Dashboard — page Calendrier (`page_calendar.jsx`)
+- Nouvelle page accessible depuis la sidebar (`nav.page === 'calendar'`, icône `calendar-days`)
+- Affiche le P&L jour par jour de ProfitWeather V2 depuis `PERF_RESET_DATE`
+- Données via `fetchCalendarData()` (`api.jsx`) → `GET /api/v2/calendar` (`server.py`) → groupe `trade_history` (bot_id=`polyedge2`) par jour : pnl, wins, losses, trades ouverts
+- Il existe aussi `GET /api/v2/trades` pour la liste brute des trades récents (même filtre `PERF_RESET_DATE`)
 
 ## Si les credentials API Polymarket expirent
 Lancer : `~/.pyenv/versions/3.11.9/bin/python3 bot/derive_api_key.py`
@@ -185,6 +220,12 @@ Lancer : `~/.pyenv/versions/3.11.9/bin/python3 bot/derive_api_key.py`
 2. **Temps restant avant clôture du marché** — NO à 90¢ avec 2h restantes ≠ 14h restantes
 3. **Analyse ranges adjacents** — si 74-75°F ET 76-77°F ET 78-79°F sont tous NO>90% pour la même ville → signal très fort
 4. **Historique résolutions Polymarket** — taux de résolution passé par ville + fourchette
+
+## Scripts utilitaires ponctuels (bot/)
+- **`close_all.py`** : ferme manuellement toutes les positions ouvertes polyedge2 (utile si on veut tout liquider à la main — mais voir note SDK ne supporte pas la vente, donc ce script peut échouer pour les positions encore actives)
+- **`fetch_wu_stations.py`** : scrape les vraies stations Weather Underground depuis les descriptions de marchés Polymarket (`gamma-api.polymarket.com/events`) → écrit `wu_stations.json` → a servi à corriger les codes ICAO dans `weather_validator.py` (ex: Paris LFPG→LFPB, London EGLL→EGLC)
+- **`test_order.py`** : script ponctuel de test d'ordre direct via `SecureClient` (hors boucle), garder comme référence si les credentials API doivent être re-testés manuellement
+- **`STRATEGIE_BOT.md`** : explication complète de la stratégie en langage simple (sans jargon code) pour l'utilisateur — à tenir à jour en parallèle de cette section si les règles changent significativement
 
 ## Préférences utilisateur
 - L'utilisateur ne code pas — expliquer simplement

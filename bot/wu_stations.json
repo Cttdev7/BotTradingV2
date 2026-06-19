@@ -1,0 +1,182 @@
+{
+  "amsterdam": {
+    "url": "https://www.wunderground.com/history/daily/nl/schiphol/EHAM",
+    "station": "EHAM"
+  },
+  "london": {
+    "url": "https://www.wunderground.com/history/daily/gb/london/EGLC",
+    "station": "EGLC"
+  },
+  "madrid": {
+    "url": "https://www.wunderground.com/history/daily/es/madrid/LEMD",
+    "station": "LEMD"
+  },
+  "warsaw": {
+    "url": "https://www.wunderground.com/history/daily/pl/warsaw/EPWA",
+    "station": "EPWA"
+  },
+  "ankara": {
+    "url": "https://www.wunderground.com/history/daily/tr/%C3%A7ubuk/LTAC",
+    "station": "LTAC"
+  },
+  "istanbul": {
+    "url": null,
+    "station": null
+  },
+  "munich": {
+    "url": "https://www.wunderground.com/history/daily/de/munich/EDDM",
+    "station": "EDDM"
+  },
+  "tel-aviv": {
+    "url": null,
+    "station": null
+  },
+  "moscow": {
+    "url": null,
+    "station": null
+  },
+  "nyc": {
+    "url": "https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA",
+    "station": "KLGA"
+  },
+  "atlanta": {
+    "url": "https://www.wunderground.com/history/daily/us/ga/atlanta/KATL",
+    "station": "KATL"
+  },
+  "chicago": {
+    "url": "https://www.wunderground.com/history/daily/us/il/chicago/KORD",
+    "station": "KORD"
+  },
+  "houston": {
+    "url": "https://www.wunderground.com/history/daily/us/tx/houston/KHOU",
+    "station": "KHOU"
+  },
+  "seattle": {
+    "url": "https://www.wunderground.com/history/daily/us/wa/seatac/KSEA",
+    "station": "KSEA"
+  },
+  "san-francisco": {
+    "url": "https://www.wunderground.com/history/daily/us/ca/san-francisco/KSFO",
+    "station": "KSFO"
+  },
+  "miami": {
+    "url": "https://www.wunderground.com/history/daily/us/fl/miami/KMIA",
+    "station": "KMIA"
+  },
+  "milan": {
+    "url": "https://www.wunderground.com/history/daily/it/milan/LIMC",
+    "station": "LIMC"
+  },
+  "toronto": {
+    "url": "https://www.wunderground.com/history/daily/ca/mississauga/CYYZ",
+    "station": "CYYZ"
+  },
+  "denver": {
+    "url": "https://www.wunderground.com/history/daily/us/co/aurora/KBKF",
+    "station": "KBKF"
+  },
+  "mexico-city": {
+    "url": "https://www.wunderground.com/history/daily/mx/mexico-city/MMMX",
+    "station": "MMMX"
+  },
+  "paris": {
+    "url": "https://www.wunderground.com/history/daily/fr/bonneuil-en-france/LFPB",
+    "station": "LFPB"
+  },
+  "beijing": {
+    "url": "https://www.wunderground.com/history/daily/cn/beijing/ZBAA",
+    "station": "ZBAA"
+  },
+  "tokyo": {
+    "url": "https://www.wunderground.com/history/daily/jp/tokyo/RJTT",
+    "station": "RJTT"
+  },
+  "los-angeles": {
+    "url": "https://www.wunderground.com/history/daily/us/ca/los-angeles/KLAX",
+    "station": "KLAX"
+  },
+  "seoul": {
+    "url": "https://www.wunderground.com/history/daily/kr/incheon/RKSI",
+    "station": "RKSI"
+  },
+  "shanghai": {
+    "url": "https://www.wunderground.com/history/daily/cn/shanghai/ZSPD",
+    "station": "ZSPD"
+  },
+  "dallas": {
+    "url": "https://www.wunderground.com/history/daily/us/tx/dallas/KDAL",
+    "station": "KDAL"
+  },
+  "busan": {
+    "url": "https://www.wunderground.com/history/daily/kr/busan/RKPK",
+    "station": "RKPK"
+  },
+  "helsinki": {
+    "url": "https://www.wunderground.com/history/daily/fi/vantaa/EFHK",
+    "station": "EFHK"
+  },
+  "guangzhou": {
+    "url": "https://www.wunderground.com/history/daily/cn/guangzhou/ZGGG",
+    "station": "ZGGG"
+  },
+  "wuhan": {
+    "url": "https://www.wunderground.com/history/daily/cn/wuhan/ZHHH",
+    "station": "ZHHH"
+  },
+  "chengdu": {
+    "url": "https://www.wunderground.com/history/daily/cn/chengdu/ZUUU",
+    "station": "ZUUU"
+  },
+  "chongqing": {
+    "url": "https://www.wunderground.com/history/daily/cn/chongqing/ZUCK",
+    "station": "ZUCK"
+  },
+  "qingdao": {
+    "url": "https://www.wunderground.com/history/daily/cn/qingdao/ZSQD",
+    "station": "ZSQD"
+  },
+  "hong-kong": {
+    "url": null,
+    "station": null
+  },
+  "singapore": {
+    "url": "https://www.wunderground.com/history/daily/sg/singapore/WSSS",
+    "station": "WSSS"
+  },
+  "wellington": {
+    "url": "https://www.wunderground.com/history/daily/nz/wellington/NZWN",
+    "station": "NZWN"
+  },
+  "manila": {
+    "url": "https://www.wunderground.com/history/daily/ph/manila/RPLL",
+    "station": "RPLL"
+  },
+  "jeddah": {
+    "url": "https://www.wunderground.com/history/daily/sa/jeddah/OEJN",
+    "station": "OEJN"
+  },
+  "taipei": {
+    "url": "https://www.wunderground.com/history/daily/tw/taipei/RCSS",
+    "station": "RCSS"
+  },
+  "cape-town": {
+    "url": "https://www.wunderground.com/history/daily/za/matroosfontein/FACT",
+    "station": "FACT"
+  },
+  "lucknow": {
+    "url": "https://www.wunderground.com/history/daily/in/lucknow/VILK",
+    "station": "VILK"
+  },
+  "kuala-lumpur": {
+    "url": "https://www.wunderground.com/history/daily/my/sepang-district/WMKK",
+    "station": "WMKK"
+  },
+  "karachi": {
+    "url": "https://www.wunderground.com/history/daily/pk/karachi/OPKC",
+    "station": "OPKC"
+  },
+  "shenzhen": {
+    "url": "https://www.wunderground.com/history/daily/cn/shenzhen/ZGSZ",
+    "station": "ZGSZ"
+  }
+}

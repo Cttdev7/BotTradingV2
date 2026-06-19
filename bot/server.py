@@ -1,7 +1,8 @@
 """
 Serveur API local — TradingBot Polymarket
 Lance avec : python3 bot/server.py
-Écoute sur  : http://localhost:5000
+Écoute sur  : http://localhost:5050
+(port 5000 évité — capté par AirPlay Receiver / ControlCenter sur macOS, renvoie 403)
 """
 
 from flask import Flask, jsonify, request
@@ -16,7 +17,8 @@ import datetime
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080"])
 
-STRATEGY_FILE = os.path.join(os.path.dirname(__file__), "strategy.json")
+STRATEGY_FILE   = os.path.join(os.path.dirname(__file__), "strategy.json")
+PERF_RESET_DATE = "2026-06-17T15:34:00"  # stats V2 remises à 0 à cette heure
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -296,12 +298,79 @@ def crypto_tracking():
     data = _supabase_get("crypto_tracking", order="created_at", limit=100)
     return _ok(data if data is not None else [])
 
+# ── ProfitWeather V2 ──────────────────────────────────────────────────────────
+
+def _supabase_get_filtered(table, params: dict):
+    """Requête Supabase avec paramètres de filtre custom."""
+    try:
+        import urllib.request, urllib.parse
+        qs  = urllib.parse.urlencode(params)
+        url = f"{SUPABASE_URL}/rest/v1/{table}?{qs}"
+        req = urllib.request.Request(url, headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+        })
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read())
+    except Exception:
+        return []
+
+@app.route("/api/v2/trades")
+def v2_trades():
+    """Derniers trades de ProfitWeather V2 depuis PERF_RESET_DATE."""
+    data = _supabase_get_filtered("trade_history", {
+        "bot_id": "eq.polyedge2",
+        "time":   f"gte.{PERF_RESET_DATE}",
+        "order":  "time.desc",
+        "limit":  "200",
+    })
+    return _ok(data if data else [])
+
+@app.route("/api/v2/calendar")
+def v2_calendar():
+    """Statistiques journalières ProfitWeather V2 pour le calendrier PNL."""
+    data = _supabase_get_filtered("trade_history", {
+        "bot_id": "eq.polyedge2",
+        "time":   f"gte.{PERF_RESET_DATE}",
+        "order":  "time.asc",
+        "limit":  "500",
+    })
+    if not data:
+        return _ok({})
+
+    # Groupement par jour (YYYY-MM-DD)
+    days = {}
+    for t in data:
+        pnl  = t.get("pnl")
+        ts   = t.get("time", "")
+        day  = ts[:10] if ts else None
+        if not day:
+            continue
+        if day not in days:
+            days[day] = {"pnl": 0.0, "wins": 0, "losses": 0, "open": 0, "trades": 0}
+        days[day]["trades"] += 1
+        if pnl is None:
+            days[day]["open"] += 1
+        elif pnl > 0:
+            days[day]["wins"]   += 1
+            days[day]["pnl"]    += pnl
+        elif pnl < 0:
+            days[day]["losses"] += 1
+            days[day]["pnl"]    += pnl
+        # pnl == 0 → résolu sans gain/perte (rare)
+
+    # Arrondi
+    for d in days.values():
+        d["pnl"] = round(d["pnl"], 2)
+
+    return _ok(days)
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("🤖 TradingBot — serveur Polymarket")
     print("   Dashboard : http://localhost:8080")
-    print("   API       : http://localhost:5000")
+    print("   API       : http://localhost:5050")
     print()
     try:
         config.validate()
@@ -313,4 +382,4 @@ if __name__ == "__main__":
         print(f"⚠️  {e}")
         print("   → Crée bot/.env à partir de bot/.env.example")
     print()
-    app.run(port=5000, debug=True, use_reloader=False)
+    app.run(port=5050, debug=True, use_reloader=False)

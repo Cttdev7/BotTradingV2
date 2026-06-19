@@ -184,7 +184,7 @@ def _format_markets(markets: list) -> tuple:
                 parts.append(f"prob:{wx['ensemble_prob']}%({n}mbr)")
             if "band_prob" in wx:
                 bp = wx["band_prob"]
-                flag = "⚠️" if bp < 40 else "✅"
+                flag = "✅" if bp >= 40 else "⚠️"  # ≥40% dans la fourchette = signal fort YES
                 parts.append(f"{flag}fourchette:{bp}%")
             if wx.get("models"):
                 avg    = wx.get("models_avg", "?")
@@ -515,8 +515,7 @@ def _format_markets_v2(markets: list) -> tuple:
         yes_price = next((t.get("price", 0) for t in tokens if t.get("outcome") == "Yes"), 0)
         no_price  = next((t.get("price", 0) for t in tokens if t.get("outcome") == "No"),  0)
         if no_price < 0.60:
-            idx += 1
-            continue
+            continue  # marché non affiché → idx inchangé, pas de gap dans la numérotation
         volume    = float(m.get("volume") or 0)
         city      = m.get("city", "?")
 
@@ -604,13 +603,17 @@ CRITÈRES D'ENTRÉE (tous obligatoires) :
 - Écart évident entre temp actuelle/max_jour et les bornes de la fourchette
 - Volume minimum : 1 000 USDC
 
-TAILLE DES POSITIONS (solde disponible : sera fourni) :
-- Cas évident  (NO > 0.80, fourchette < 15%) : 25% du solde, min $20, max $1 400
-- Cas clair    (NO > 0.70, fourchette < 30%) : 15% du solde, min $20, max $500
-- JAMAIS plus de 40% du solde total engagé simultanément
+TAILLE DES POSITIONS (calculée automatiquement par le code selon "certainty") :
+- "high"   (NO > 0.80, fourchette < 10%, écart > 10°F) → 5% du solde
+- "medium" (NO > 0.70, fourchette < 20%, écart > 5°F)  → 3% du solde
+- "low"    (NO > 0.70, fourchette < 30%, écart > 3°F)  → 2% du solde
+- Maximum 6% du solde par trade, maximum 100% du solde total exposé simultanément
 
 VILLES PRÉFÉRÉES (US) : san-francisco, miami, nyc, houston, atlanta, los-angeles, seattle, chicago, dallas
-Autres villes : acceptées si signal très évident (NO > 0.85, fourchette < 10%)
+VILLES EUROPÉENNES/ASIE (données °C) : paris, london, amsterdam, madrid, milan, munich, warsaw, etc.
+- Acceptées si signal clair et marché J+1 (lendemain) — CANICULE en Europe = grandes opportunités NO
+- Exemple Paris 18 juin : prévision 37°C → acheter NO sur 34°C (3°C d'écart = "medium" certitude)
+- En été canicule : ranges en-dessous de la prévision sont des NO quasi-certains
 
 INTERPRÉTATION DES DONNÉES MÉTÉO :
 - actuel:X°C/F   = température observée maintenant
@@ -619,9 +622,15 @@ INTERPRÉTATION DES DONNÉES MÉTÉO :
   → < 15% = NO évident (🎯) | 15-30% = NO clair (✅) | > 30% = trop risqué, ignorer
 
 NIVEAUX DE CERTITUDE (tu dois les évaluer pour chaque trade) :
+Marchés °F (US) :
 - "high"   : band_prob < 10% ET écart prévision/fourchette > 10°F → cas évident
 - "medium" : band_prob < 20% ET écart > 5°F → cas clair
 - "low"    : band_prob < 30% ET écart > 3°F → cas acceptable
+Marchés °C (Europe/Asie) — 1°C = 1.8°F, seuils adaptés :
+- "high"   : band_prob < 10% ET écart > 4°C → cas évident (ex: prévision 37°C, fourchette 30-31°C = 6°C d'écart)
+- "medium" : band_prob < 20% ET écart > 2°C → cas clair (ex: prévision 37°C, fourchette 34-35°C = 2°C d'écart ✅)
+- "low"    : band_prob < 30% ET écart > 1°C → cas acceptable
+Note : l'écart se mesure entre la prévision (models_avg) et la borne la plus proche du range.
 
 ⚠️  Ne PAS inclure "amount_usdc" — la mise est calculée automatiquement selon le solde.
 ⚠️  Ne PAS jouer les ranges proches de la prévision (< 3°F d'écart) — c'est là que sailor82 a perdu $2 500.

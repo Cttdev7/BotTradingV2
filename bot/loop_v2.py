@@ -50,7 +50,9 @@ MAX_MODELS_SPREAD = 10.0    # °F — si modèles ECMWF divergent >10°F → tro
 MIN_VOLUME        = 1_500   # volume minimum USDC
 
 NO_STOP_LOSS_PCT  = -0.50   # SL à -50%
-NO_TAKE_PROFIT    = 0.96    # NO ≥ 96¢ → vendre et lock profit
+NO_TAKE_PROFIT    = 0.99    # NO ≥ 99¢ → vendre et lock profit
+
+PERF_RESET_DATE   = "2026-06-17T15:34:00"  # stats remises à 0 à cette heure
 
 # Villes à exclure si canicule ECMWF > 30% (durci de 35%)
 HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami", "san-francisco"}
@@ -180,9 +182,10 @@ def log(msg: str):
     print(f"[V2][{ts}] {msg}", flush=True)
 
 def _stats(history: list) -> str:
-    wins   = len([t for t in history if (t.get("pnl") or 0) > 0])
-    losses = len([t for t in history if (t.get("pnl") or 0) < 0])
-    pnl    = sum(t.get("pnl") or 0 for t in history)
+    recent = [t for t in history if (t.get("time") or t.get("created_at") or "") >= PERF_RESET_DATE]
+    wins   = len([t for t in recent if (t.get("pnl") or 0) > 0])
+    losses = len([t for t in recent if (t.get("pnl") or 0) < 0])
+    pnl    = sum(t.get("pnl") or 0 for t in recent)
     return f"{wins}W / {losses}L / P&L ${pnl:.2f}"
 
 def _get_current_no_price(condition_id: str) -> float | None:
@@ -211,18 +214,35 @@ def _calc_bet(usdc: float, certainty: str) -> float:
     """
     pct = {"high": 0.05, "medium": 0.03, "low": 0.02}.get(certainty, 0.025)
     raw = usdc * pct
-    min_bet = max(1.5, usdc * 0.02)    # au moins 2% du solde (ou $1.5)
-    max_bet = min(usdc * MAX_BET_PCT, 5.0)  # jamais plus de 5$ par trade
-    return round(max(min_bet, min(raw, max_bet)), 2)
+    max_bet = usdc * MAX_BET_PCT  # jamais plus de 5% du solde réel (pas de plafond fixe en $)
+    bet = round(min(raw, max_bet), 2)
+    # Polymarket exige un montant minimum (~$1) par ordre. Si 5% du solde ne suffit pas
+    # à l'atteindre, on ne force pas un pari disproportionné : on ne trade pas du tout.
+    return bet if bet >= 1.0 else 0.0
 
 def _parse_range_bounds(question: str) -> tuple[float, float] | None:
-    """Extrait les bornes (low, high) depuis 'be between X and Y' ou 'X-YF'."""
+    """Extrait les bornes (low, high) depuis 'be between X and Y', 'X-YF', 'X or higher', 'X or lower', 'be XC'."""
+    # Fourchette standard : "between X and Y"
     m = re.search(r'between\s+([\d.]+)\s+and\s+([\d.]+)', question, re.I)
     if m:
         return float(m.group(1)), float(m.group(2))
+    # Fourchette avec tiret : "X-Y°F" ou "X-Y°C"
     m = re.search(r'([\d.]+)[–\-]([\d.]+)\s*[°]?[FC]', question)
     if m:
         return float(m.group(1)), float(m.group(2))
+    # "X or higher" / "X°C or higher" → borne haute = +999 (sans limite)
+    m = re.search(r'([\d.]+)\s*[°]?[CF]?\s+or\s+higher', question, re.I)
+    if m:
+        return float(m.group(1)), float(m.group(1)) + 999
+    # "X or below" / "X°C or lower" → borne basse = -999 (sans limite)
+    m = re.search(r'([\d.]+)\s*[°]?[CF]?\s+or\s+(below|lower)', question, re.I)
+    if m:
+        return -999, float(m.group(1))
+    # Valeur unique : "be 34°C" ou "be 34C"
+    m = re.search(r'\bbe\s+([\d.]+)\s*[°]?[CF]\b', question, re.I)
+    if m:
+        v = float(m.group(1))
+        return v, v + 1   # traité comme fourchette d'1 degré
     return None
 
 def _is_single_value_celsius(question: str) -> bool:
@@ -298,10 +318,20 @@ def check_stop_loss(history: list):
                 and cid not in _hedged_cids_session
                 and cid not in hedged_in_db):
             stake_yes = round(amount_usdc * entry_price / (1 - current_yes) * HEDGE_MULTIPLIER, 2)
+            city = t.get("city", "?")
+            # Garde-fou : le diviseur (1-current_yes) rétrécit vite près de 90%, ce qui peut
+            # faire grossir stake_yes bien au-delà de la mise d'origine. On ne risque jamais
+            # plus que le cash réellement disponible sur ce seul hedge.
+            try:
+                cash_available = float(polymarket.get_balance().get("usdc", 0) or 0)
+            except Exception:
+                cash_available = 0.0
+            if stake_yes > cash_available:
+                log(f"  ⛔ HEDGE {city} ignoré : mise calculée ${stake_yes:.2f} > solde disponible ${cash_available:.2f}")
+                continue
             breakeven_no = round(amount_usdc * (1 - entry_price) / entry_price, 2)
             gain_if_yes  = round(stake_yes * (1 - current_yes) / current_yes - amount_usdc, 2)
             loss_if_no   = round(-(stake_yes - breakeven_no), 2)
-            city = t.get("city", "?")
             log(f"  🔄 HEDGE AUTO {city} | NO={current_price:.3f} YES={current_yes:.3f}")
             log(f"     Achat YES ${stake_yes:.2f} → si YES gagne: +${gain_if_yes:.2f}  si NO gagne: {loss_if_no:+.2f}$")
             try:
@@ -332,26 +362,27 @@ def check_stop_loss(history: list):
                 log(f"     → Acheter manuellement YES ${stake_yes:.2f} sur {cid[:16]}…")
 
         if current_price >= NO_TAKE_PROFIT:
-            tokens_held = amount_usdc / entry_price
-            pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
-            log(f"  💰 TAKE-PROFIT NO {t.get('condition_id','')[:12]}… | {current_price:.4f} | +${pnl_usd:.2f}")
-            if current_price >= 1.0:
+            city = t.get("city", "?")
+            log(f"  💰 TAKE-PROFIT NO {city} {t.get('condition_id','')[:12]}… | {current_price:.4f}")
+            # Solde réel on-chain — le montant en DB (amount_usdc/entry_price) peut diverger
+            # du solde réel sur ces marchés "negative risk" multi-fourchettes (constaté 2026-06-18)
+            real_shares = trader.get_token_balance(cid, "No")
+            # Polymarket rejette les ordres trop petits ("invalid maker amount") — pas la peine
+            # d'essayer en dessous d'1 token, ça correspond aux positions déjà "rétrécies"
+            # par le bug negative-risk constaté le 18/06 (solde réel ≪ montant enregistré en DB)
+            if real_shares < 1.0:
+                log(f"    ⚠️  Solde réel quasi nul ({real_shares:.4f} token) — maintien jusqu'à résolution naturelle")
+                continue
+            try:
+                result = trader.place_market_order(
+                    condition_id=cid, outcome="No", side="sell", shares=real_shares,
+                )
+                proceeds = round(real_shares * result.get("price", current_price), 2)
+                pnl_usd  = round(proceeds - amount_usdc, 2)
                 update_trade_pnl(t["id"], pnl_usd)
-            else:
-                try:
-                    result = trader.place_market_order(
-                        condition_id=t["condition_id"], outcome="No",
-                        side="sell", amount_usdc=tokens_held,
-                    )
-                    taking   = float(result.get("taking_amount") or 0)
-                    real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
-                    update_trade_pnl(t["id"], real_pnl)
-                    log(f"    ✅ Vendu +${real_pnl:.2f}")
-                except Exception as e:
-                    if "resting liquidity" in str(e).lower():
-                        log(f"    ⏳ Pas de liquidité — réessai au prochain cycle")
-                    else:
-                        log(f"    ❌ {e}")
+                log(f"    ✅ VENDU {real_shares:.4f} tokens à {result.get('price', current_price):.3f} | PnL ${pnl_usd:+.2f}")
+            except Exception as e:
+                log(f"    ❌ Vente échouée : {e} — maintien jusqu'à résolution naturelle")
             continue
 
         if pnl_pct >= NO_STOP_LOSS_PCT:
@@ -360,6 +391,8 @@ def check_stop_loss(history: list):
         tokens_held = amount_usdc / entry_price
         pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
         log(f"  🛑 STOP-LOSS NO {t.get('condition_id','')[:12]}… | {entry_price:.3f}→{current_price:.3f} ({pnl_pct*100:+.1f}%) | ${pnl_usd:.2f}")
+        # Le SDK ne permet pas les ventes — on attend la résolution naturelle
+        # (le marché se résoudra YES → NO tombe à 0, PnL sera calculé par check_market_outcomes)
         if current_price <= 0.005:
             update_trade_pnl(t["id"], pnl_usd)
             try:
@@ -367,27 +400,8 @@ def check_stop_loss(history: list):
                 log(f"  📋 Post-mortem généré pour {t.get('city','?')}")
             except Exception:
                 pass
-            continue
-        try:
-            result = trader.place_market_order(
-                condition_id=t["condition_id"], outcome="No",
-                side="sell", amount_usdc=tokens_held,
-            )
-            taking   = float(result.get("taking_amount") or 0)
-            real_pnl = round(taking - amount_usdc, 2) if taking else pnl_usd
-            update_trade_pnl(t["id"], real_pnl)
-            log(f"    ✅ Vendu ${real_pnl:.2f}")
-            try:
-                report = postmortem.analyze_loss(t, current_price, reason="stop_loss")
-                log(f"  📋 Post-mortem généré pour {t.get('city','?')}")
-                log(report[:400])  # aperçu dans les logs
-            except Exception:
-                pass
-        except Exception as e:
-            if "resting liquidity" in str(e).lower():
-                log(f"    ⏳ Pas de liquidité — réessai au prochain cycle")
-            else:
-                log(f"    ❌ {e}")
+        else:
+            log(f"    ⏳ Attente résolution (SDK vente non supporté) — P&L estimé ${pnl_usd:.2f}")
 
 # ── Logique cascade ──────────────────────────────────────────────────────────
 
@@ -443,6 +457,8 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         for t in history if t.get("pnl") is None
     )
     total_exposed = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    # Portefeuille total = cash + positions ouvertes
+    total_portfolio = usdc + total_exposed
     cascade_signals = _detect_cascade(markets)
     deko_cids = deko_cids or set()
 
@@ -466,9 +482,9 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         if open_city_date_count.get(f"{city}|{market_date}", 0) >= 2:
             continue
 
-        # Exposition totale dépassée
-        if total_exposed >= usdc * MAX_EXPOSURE_PCT:
-            log(f"  ⛔ Exposition max atteinte ({total_exposed:.0f}$ / {usdc*MAX_EXPOSURE_PCT:.0f}$)")
+        # Exposition totale dépassée (calculée sur portefeuille total, pas juste le cash)
+        if total_exposed >= total_portfolio * MAX_EXPOSURE_PCT:
+            log(f"  ⛔ Exposition max atteinte ({total_exposed:.0f}$ / {total_portfolio*MAX_EXPOSURE_PCT:.0f}$)")
             break
 
         # Volume minimum
@@ -493,12 +509,6 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
 
         # Parse les bornes une seule fois (réutilisé pour tous les filtres suivants)
         bounds = _parse_range_bounds(q)
-
-        # Marchés à valeur unique °C (ex: "be 21°C") → BLOQUÉS
-        # Raison : 1 seul degré peut tout basculer, volatilité extrême (leçon Cape Town)
-        if _is_single_value_celsius(q):
-            log(f"  🌡️  {city} marché valeur unique °C — trop volatil, ignoré")
-            continue
 
         # ── Signal "pic confirmé" (METAR) ──────────────────────────────────────
         # Si la station METAR montre que la temp a clairement chuté depuis le max journalier
@@ -576,11 +586,10 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         if forecast_mean is not None and bounds and cid not in cascade_signals:
             low, high = bounds
             if forecast_mean < low:
-                # Prévision EN-DESSOUS du range — la température doit encore monter pour l'atteindre
-                # Exemple : forecast=68°F, range=72-73°F → risqué si matinée, temp peut grimper
-                gap = low - forecast_mean
-                min_gap = MIN_FORECAST_GAP_UP
-                m["_gap_direction"] = "up"
+                # Range AU-DESSUS de la prévision → TOUJOURS BLOQUÉ
+                # Règle stricte : on achète UNIQUEMENT des ranges en-dessous de la prévision
+                log(f"  ⛔ {city} range {low:.0f} AU-DESSUS prévision {forecast_mean:.1f} — bloqué (règle: toujours en-dessous)")
+                continue
             elif forecast_mean > high:
                 # Prévision AU-DESSUS du range — la température dépasse déjà ce range → safe
                 # Exemple : forecast=74°F, range=66-67°F → clairement en-dessous, NO sûr
@@ -599,7 +608,14 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
                 continue
             m["_gap"] = gap
         elif cid in cascade_signals:
-            m["_gap"] = 0  # cascade : pas besoin du gap ECMWF
+            # Cascade : vérifier quand même la direction si on a une prévision
+            # Ne jamais trader en cascade si le range est AU-DESSUS de la prévision (trop risqué en canicule)
+            if forecast_mean is not None and bounds:
+                low_c, high_c = bounds
+                if forecast_mean < low_c and not is_peak_no:
+                    log(f"  ⛔ CASCADE {city} bloqué : range {low_c}-{high_c} au-dessus prévision {forecast_mean:.1f} (pic non confirmé)")
+                    continue
+            m["_gap"] = 0
         elif day_offset == 0:
             # J+0 sans données météo = trop risqué, on ne trade pas dans le flou
             log(f"  ⚠️  {city} J+0 sans forecast météo — ignoré")
@@ -736,8 +752,9 @@ def run_cycle():
     open_cids = {t.get("condition_id") for t in history if t.get("pnl") is None}
     decisions = [d for d in decisions if d.get("condition_id") not in open_cids]
 
-    market_lookup  = {m["condition_id"]: m for m in candidates}
-    total_exposed  = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    market_lookup   = {m["condition_id"]: m for m in candidates}
+    total_exposed   = sum(float(t.get("amount_usdc") or 0) for t in history if t.get("pnl") is None)
+    total_portfolio = usdc + total_exposed
     traded_city_dates = []  # trades par ville+date ce cycle (max 2 par ville par jour)
 
     for d in decisions:
@@ -761,9 +778,9 @@ def run_cycle():
             log(f"  🏔️  Pic confirmé : certitude medium → accepté (max_station={mkt.get('_max_observed')})")
             certainty = "high"   # traiter comme high pour le calcul de mise
 
-        # On joue UNIQUEMENT les signaux high — pas de low
-        if certainty not in ("high",):
-            log(f"  ⏭️  {city} certitude={certainty} — ignoré (on veut uniquement high)")
+        # On joue high et medium — low ignoré (trop peu de marge)
+        if certainty not in ("high", "medium"):
+            log(f"  ⏭️  {city} certitude={certainty} — ignoré (on veut high ou medium)")
             continue
 
         # Max 2 trades par ville par jour : 1 normal + 1 cascade
@@ -778,13 +795,16 @@ def run_cycle():
             log(f"  ⛔ {city} J{mkt_date} déjà 2 trades (max/jour) — ignoré")
             continue
 
-        # Vérif exposition globale
-        if total_exposed >= usdc * MAX_EXPOSURE_PCT:
+        # Vérif exposition globale (sur portefeuille total)
+        if total_exposed >= total_portfolio * MAX_EXPOSURE_PCT:
             log(f"  ⛔ Exposition max atteinte — stop")
             break
 
         # Calcul de la mise NO basée sur % du solde
         amount = _calc_bet(usdc, certainty)
+        if amount <= 0:
+            log(f"  ⛔ Solde ${usdc:.2f} trop faible pour respecter MAX_BET_PCT — pas de trade")
+            continue
         log(f"  💰 Mise calculée : ${amount:.2f} ({certainty}) sur solde ${usdc:.2f}")
 
         # Double vérif prix NO en temps réel

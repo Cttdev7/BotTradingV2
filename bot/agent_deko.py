@@ -100,8 +100,9 @@ def sb_insert(table: str, data):
     except Exception as e:
         log(f"⚠️  Supabase insert {table}: {e}")
 
-def sb_upsert(table: str, data):
-    _sb("POST", table, json=data)
+def sb_upsert(table: str, data, on_conflict: str = None):
+    params = {"on_conflict": on_conflict} if on_conflict else None
+    _sb("POST", table, json=data, params=params)
 
 # ── Polymarket ─────────────────────────────────────────────────────────────────
 
@@ -115,18 +116,6 @@ def fetch_positions(address: str) -> list:
             return d if isinstance(d, list) else []
     except Exception as e:
         log(f"⚠️  fetch_positions: {e}")
-    return []
-
-def fetch_activity(address: str, limit=500) -> list:
-    try:
-        r = requests.get(f"{DATA_API}/activity",
-            params={"user": address, "limit": limit},
-            timeout=TIMEOUT)
-        if r.status_code == 200:
-            d = r.json()
-            return [x for x in d if isinstance(d, list)] if isinstance(d, list) else []
-    except Exception as e:
-        log(f"⚠️  fetch_activity: {e}")
     return []
 
 # ── Parsing ────────────────────────────────────────────────────────────────────
@@ -282,7 +271,7 @@ def detect_new_positions(trader: str, address: str) -> int:
             "analysis":      analysis,
             "certainty":     certainty,
             "detected_at":   datetime.datetime.now(UTC).isoformat(),
-        })
+        }, on_conflict="trader,condition_id")
         count += 1
         gap_s = f" | gap={gap:+.1f}°F" if gap is not None else ""
         log(f"  🆕 [{trader}] {outcome} {city or '?'} {r_low}-{r_high}°F "

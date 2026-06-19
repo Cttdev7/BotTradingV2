@@ -10,7 +10,7 @@ function DashboardPage({ bots, onToggle, onOpen, onNewBot, portfolio }) {
 
   React.useEffect(() => {
     if (!isLocal) return;
-    const load = () => fetch('http://127.0.0.1:5000/api/pnl/hourly')
+    const load = () => fetch('http://127.0.0.1:5050/api/pnl/hourly')
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setPwHistory(d); }).catch(() => {});
     load();
     const id = setInterval(load, 5 * 60 * 1000);

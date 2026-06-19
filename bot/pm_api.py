@@ -223,7 +223,7 @@ def get_weather_markets() -> list:
                 if r.status_code != 200:
                     continue
                 events = r.json()
-                if not events:
+                if not isinstance(events, list) or not events:
                     continue
                 event = events[0]
                 if event.get("closed"):
@@ -258,8 +258,7 @@ def get_weather_markets() -> list:
                     seen.add(cid)
                     found_open = True
 
-                if found_open:
-                    break  # J+0 a des marchés ouverts, pas besoin de J+1
+                # On scanne toujours J+0 ET J+1 — loop_v2.py filtre par _hours_remaining
 
             except Exception as e:
                 print(f"[weather_markets] {city} J+{delta}: {e}")

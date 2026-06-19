@@ -13,6 +13,10 @@ function Icon({ name, size = 22, stroke = 1.8, style, fill }) {
     case 'sliders': return (<svg {...p}><path d="M5 7h7M16 7h3"/><path d="M5 12h3M12 12h7"/><path d="M5 17h9M18 17h1"/><circle cx="14" cy="7" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="16" cy="17" r="2"/></svg>);
     case 'plus': return (<svg {...p}><path d="M12 5v14M5 12h14"/></svg>);
     case 'chevron': return (<svg {...p}><path d="M9 5l7 7-7 7"/></svg>);
+    case 'chevron-right': return (<svg {...p}><path d="M9 5l7 7-7 7"/></svg>);
+    case 'chevron-left': return (<svg {...p}><path d="M15 5l-7 7 7 7"/></svg>);
+    case 'chevron-down': return (<svg {...p}><path d="M5 9l7 7 7-7"/></svg>);
+    case 'calendar-days': return (<svg {...p}><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18"/><path d="M8 2v4M16 2v4"/><circle cx="8" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="14" r="1" fill="currentColor" stroke="none"/><circle cx="16" cy="14" r="1" fill="currentColor" stroke="none"/></svg>);
     case 'chevdown': return (<svg {...p}><path d="M5 9l7 7 7-7"/></svg>);
     case 'play': return (<svg {...p}><path d="M7 5.5l11 6.5-11 6.5z" fill="currentColor" stroke="none"/></svg>);
     case 'pause': return (<svg {...p}><rect x="6.5" y="5.5" width="3.4" height="13" rx="1.3" fill="currentColor" stroke="none"/><rect x="14.1" y="5.5" width="3.4" height="13" rx="1.3" fill="currentColor" stroke="none"/></svg>);
