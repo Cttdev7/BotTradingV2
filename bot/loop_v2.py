@@ -58,7 +58,7 @@ PERF_RESET_DATE   = "2026-06-17T15:34:00"  # stats remises à 0 à cette heure
 HEATWAVE_RISK_CITIES = {"nyc", "houston", "austin", "miami", "san-francisco"}
 
 # Cascade : si un range YES dépasse ce seuil → les ranges adjacents sont des NO quasi-certains
-CASCADE_TRIGGER = 0.60   # range dominant YES > 60% → signaux cascade activés sur le reste (40%)
+CASCADE_TRIGGER = 0.35   # range dominant YES > 35% → signaux cascade activés sur le reste
 
 # Fenêtre de temps optimale : refuser si trop tôt (>20h restantes) ou trop tard (<1h)
 MIN_HOURS_REMAINING = 1.0   # marché qui ferme dans moins d'1h → liquidité trop faible
