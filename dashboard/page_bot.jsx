@@ -155,6 +155,10 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   };
 
   const runBotAnalysis = async () => {
+    if (!isLocal) {
+      setAnalyseError('Analyse disponible uniquement en local (serveur bot/server.py requis).');
+      return;
+    }
     setAnalyseLoading(true);
     setAnalyseError(null);
     setAnalyseResult(null);
