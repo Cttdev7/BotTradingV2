@@ -1,6 +1,6 @@
 """
 zerotoherobtc.py — Bot de trading Polymarket BTC Up/Down 5 minutes.
-Stratégie 100% mécanique : achète le côté >= 95% à T-30s de la clôture.
+Stratégie 100% mécanique : achète le côté >= 90% à T-30s de la clôture.
 Compte Polymarket dédié, séparé de ProfitWeather V2 (variables ZTH_*).
 """
 
@@ -32,7 +32,7 @@ TIMEOUT = 10
 WINDOW_SECONDS         = 300   # marché toutes les 5 minutes
 TRIGGER_MAX_REMAINING  = 60    # on commence à surveiller en continu à partir de 60s restantes
 TRIGGER_MIN_REMAINING  = 2     # on arrête juste avant la clôture (marge pour l'exécution de l'ordre)
-PRICE_THRESHOLD        = 0.95
+PRICE_THRESHOLD        = 0.90
 BET_PCT                = 0.05
 POLL_INTERVAL          = 2     # secondes entre 2 vérifications dans la fenêtre de déclenchement
 
