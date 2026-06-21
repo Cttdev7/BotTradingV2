@@ -15,7 +15,7 @@ from supabase import create_client
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 SB_URL  = os.getenv("SUPABASE_URL")
-SB_KEY  = os.getenv("SUPABASE_KEY")
+SB_KEY  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
 GAMMA   = "https://gamma-api.polymarket.com"
 TIMEOUT = 8
 

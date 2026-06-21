@@ -16,7 +16,7 @@ import datetime
 import requests
 
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
-SB_KEY = os.getenv("SUPABASE_KEY", "")
+SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 
 LOG_FILE = os.path.join(os.path.dirname(__file__), "postmortems.log")
 

@@ -29,7 +29,7 @@ REPORT_EVERY = 36     # cycles avant rapport (36 × 10min = 6h)
 TIMEOUT   = 12
 
 SB_URL        = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
-SB_KEY        = os.getenv("SUPABASE_KEY", "")
+SB_KEY        = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MISTRAL_KEY   = os.getenv("MISTRAL_API_KEY", "")
 

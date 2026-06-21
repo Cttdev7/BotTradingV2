@@ -222,7 +222,7 @@ def analyse_history():
 # ── Agent Météo (Supabase + fallback JSON local) ──────────────────────────────
 
 SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY     = os.getenv("SUPABASE_KEY", "")
+SUPABASE_KEY     = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 METEO_RAPPORTS   = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
 METEO_TRACKING   = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
 METEO_RESUMES    = os.path.join(os.path.dirname(__file__), "meteo_resumes.json")

@@ -17,7 +17,7 @@ GAMMA_EVENTS_API = "https://gamma-api.polymarket.com/events"
 # ── Supabase ──────────────────────────────────────────────────────────────────
 
 def get_db():
-    return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    return create_client(os.environ["SUPABASE_URL"], os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_KEY"])
 
 # ── Wallet Polygon ────────────────────────────────────────────────────────────
 

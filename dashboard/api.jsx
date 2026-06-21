@@ -8,6 +8,11 @@ const API = (window.location.hostname === 'localhost' || window.location.hostnam
   ? 'http://127.0.0.1:5050'
   : (window.BOT_API_URL || '');
 
+// ── Supabase (lecture publique côté navigateur — clé anon, voir RLS côté Supabase) ──
+
+const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
+
 // ── Fetch helpers ─────────────────────────────────────────────────────────────
 
 async function apiFetch(path) {
@@ -111,4 +116,4 @@ async function fetchCalendarData() {
   return apiFetch('/api/v2/calendar');
 }
 
-Object.assign(window, { usePolymarketData, fetchBotData, fetchCalendarData });
+Object.assign(window, { usePolymarketData, fetchBotData, fetchCalendarData, SB_URL, SB_KEY });

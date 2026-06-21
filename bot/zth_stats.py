@@ -7,7 +7,7 @@ load_dotenv(".env")
 import requests
 
 SB_URL = os.getenv("SUPABASE_URL", "")
-SB_KEY = os.getenv("SUPABASE_KEY", "")
+SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 
 headers = {"apikey": SB_KEY, "Authorization": f"Bearer {SB_KEY}"}
 

@@ -44,7 +44,7 @@ ZTH_API_PASSPHRASE = os.getenv("ZTH_API_PASSPHRASE", "")
 ZTH_DRY_RUN        = os.getenv("ZTH_DRY_RUN", "true").lower() == "true"
 
 SB_URL = os.getenv("SUPABASE_URL", "")
-SB_KEY = os.getenv("SUPABASE_KEY", "")
+SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 SIMULATED_BALANCE_USDC = 100.0  # solde fictif utilisé pour la mise en DRY_RUN (vrai solde on-chain = 0)
 
 logging.basicConfig(

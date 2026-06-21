@@ -33,7 +33,7 @@ IMPROVE_HOURS    = int(os.getenv("BOT_IMPROVE_HOURS", "6"))
 IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
 
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
-SB_KEY = os.getenv("SUPABASE_KEY", "")
+SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 
 # Villes blacklistées — jamais de trade, peu importe le signal
 CITY_BLACKLIST = {"jeddah"}

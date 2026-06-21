@@ -125,11 +125,12 @@ HEDGE_MULTIPLIER       = 1.10   # mise hedge calculée pour +10% si le YES gagne
 PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard repartent de 0 à cette date
 ```
 
-### ⚠️ Le SDK ne supporte pas la vente (important)
-`polymarket-client` (SecureClient) ne propose pas d'ordre de vente sur CTF Exchange V2. Donc :
-- **Stop-loss et take-profit ne vendent plus** — ils attendent la résolution naturelle du marché
-- Le P&L est enregistré dans `trade_history` seulement quand le prix touche ~0 (perdu) ou ~1 (gagné), ou via `check_market_outcomes`
-- La seule action active possible en cours de position perdante = **l'auto-hedge** (acheter le YES en face, voir plus bas)
+### Vente via le SDK (corrigé le 21/06 — l'ancienne note disait l'inverse)
+`polymarket-client` (SecureClient) supporte bien la vente (`side="sell"`). Take-profit ET stop-loss vendent désormais activement dès que possible :
+- **Take-profit** (`NO_TAKE_PROFIT`) : vend dès que le prix NO atteint le seuil.
+- **Stop-loss** (`NO_STOP_LOSS_PCT`) : vend dès que la perte atteint le seuil, au lieu d'attendre la résolution — limite la perte au lieu de la laisser courir jusqu'à -100%.
+- Si la vente échoue (solde réel quasi nul, erreur API) → fallback sur l'ancien comportement : attente de la résolution naturelle, P&L enregistré dans `trade_history` quand le prix touche ~0 (perdu) ou ~1 (gagné), ou via `check_market_outcomes`.
+- L'**auto-hedge** (acheter le YES en face, voir plus bas) reste disponible en complément, déclenché avant le test stop-loss.
 
 ### Règles de trading V2
 - **NO uniquement** — pas de YES (trop complexe, focus sur ce qui marche)

@@ -34,7 +34,7 @@ IMPROVE_HOURS    = int(os.getenv("BOT_V2_IMPROVE_HOURS", "6"))
 IMPROVE_INTERVAL = IMPROVE_HOURS * 60 * 60
 
 SB_URL = os.getenv("SUPABASE_URL", "https://obqkqhlqlowxrxbyvktl.supabase.co")
-SB_KEY = os.getenv("SUPABASE_KEY", "")
+SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 
 # ── Règles hard-codées ────────────────────────────────────────────────────────
 
@@ -127,8 +127,8 @@ def load_deko_trades(hours: int = 4) -> set:
     try:
         since = (datetime.datetime.utcnow() - datetime.timedelta(hours=hours)).isoformat()
         r = requests.get(
-            f"{SB_URL}/rest/v1/deko_trades",
-            params={"outcome": "eq.NO", "created_at": f"gte.{since}", "select": "condition_id"},
+            f"{SB_URL}/rest/v1/positions_tracker",
+            params={"trader": "eq.sailor82", "outcome": "eq.No", "detected_at": f"gte.{since}", "select": "condition_id"},
             headers=_sb_headers(), timeout=5,
         )
         if r.status_code == 200:
@@ -391,8 +391,28 @@ def check_stop_loss(history: list):
         tokens_held = amount_usdc / entry_price
         pnl_usd     = round(tokens_held * (current_price - entry_price), 2)
         log(f"  🛑 STOP-LOSS NO {t.get('condition_id','')[:12]}… | {entry_price:.3f}→{current_price:.3f} ({pnl_pct*100:+.1f}%) | ${pnl_usd:.2f}")
-        # Le SDK ne permet pas les ventes — on attend la résolution naturelle
-        # (le marché se résoudra YES → NO tombe à 0, PnL sera calculé par check_market_outcomes)
+
+        real_shares = trader.get_token_balance(cid, "No")
+        if real_shares >= 1.0:
+            try:
+                result = trader.place_market_order(
+                    condition_id=cid, outcome="No", side="sell", shares=real_shares,
+                )
+                proceeds = round(real_shares * result.get("price", current_price), 2)
+                pnl_usd  = round(proceeds - amount_usdc, 2)
+                update_trade_pnl(t["id"], pnl_usd)
+                log(f"    ✅ VENDU (stop-loss) {real_shares:.4f} tokens à {result.get('price', current_price):.3f} | PnL ${pnl_usd:+.2f}")
+                try:
+                    postmortem.analyze_loss(t, current_price, reason="stop_loss_sell")
+                except Exception:
+                    pass
+                continue
+            except Exception as e:
+                log(f"    ❌ Vente stop-loss échouée : {e} — maintien jusqu'à résolution naturelle")
+        else:
+            log(f"    ⚠️  Solde réel quasi nul ({real_shares:.4f} token) — maintien jusqu'à résolution naturelle")
+
+        # Résolution naturelle si la vente n'a pas pu se faire
         if current_price <= 0.005:
             update_trade_pnl(t["id"], pnl_usd)
             try:
@@ -401,7 +421,7 @@ def check_stop_loss(history: list):
             except Exception:
                 pass
         else:
-            log(f"    ⏳ Attente résolution (SDK vente non supporté) — P&L estimé ${pnl_usd:.2f}")
+            log(f"    ⏳ Attente résolution — P&L estimé ${pnl_usd:.2f}")
 
 # ── Logique cascade ──────────────────────────────────────────────────────────
 
@@ -674,7 +694,6 @@ def run_cycle():
                 # Post-mortem automatique sur les pertes résolues
                 if pnl_val < 0:
                     try:
-                        exit_price = float(t_old.get("price", 0)) + pnl_val / (float(t_old.get("amount_usdc") or 1) / float(t_old.get("price", 1)))
                         report = postmortem.analyze_loss(t_old, 0.0, reason="resolution_yes")
                         log(f"  📋 Post-mortem : {t_old.get('city','?')}")
                     except Exception:
@@ -864,7 +883,7 @@ def run_cycle():
                 "market":       "polymarket",
                 "condition_id": cid,
                 "city":         mkt.get("city", ""),
-                "sym":          "No",
+                "sym":          "NO",
                 "side":         "buy",
                 "amount_usdc":  amount,
                 "price":        float(result.get("price", 0) or price_t2),

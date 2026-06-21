@@ -187,8 +187,8 @@ function App() {
 
   // Sync solde wallet depuis Supabase (mis à jour toutes les 30min par l'agent météo)
   useEffect(() => {
-    const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
-    const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
+    const SB_URL = window.SB_URL;
+    const SB_KEY = window.SB_KEY;
 
     const fetchWallet = () =>
       fetch(`${SB_URL}/rest/v1/bot_status?id=eq.polyedge&limit=1`, {

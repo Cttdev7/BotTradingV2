@@ -47,7 +47,7 @@ def _load_analysis_context() -> str:
     - Signaux actifs non résolus = opportunités détectées
     """
     supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_KEY", "")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
     if not supabase_url or not supabase_key:
         return "Données d'analyse non disponibles (SUPABASE_URL/KEY manquants)."
 

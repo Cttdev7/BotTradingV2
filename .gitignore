@@ -6,6 +6,8 @@ bot/strategy.json
 bot/history.json
 bot/reflections.json
 bot/bot.log
+bot/*_runtime.log
+bot/postmortems.log
 __pycache__/
 *.pyc
 bot/meteo_tracking.json

@@ -1,6 +1,6 @@
 // page_luck.jsx — Analyse onlylucknobrain
-const SB_URL_L = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
-const SB_KEY_L = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9icWtxaGxxbG93eHJ4Ynl2a3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MDAyNzksImV4cCI6MjA5NjA3NjI3OX0.YhuQqvqxNJmjoBYdFnmTa1aa_v8mmh3uRjrg8I3c728';
+const SB_URL_L = window.SB_URL;
+const SB_KEY_L = window.SB_KEY;
 const LUCK_ADDR = '0x6a8d1709bfb718d8555d315a983c4816278350f9';
 
 function LuckPage({ onBack }) {

@@ -20,7 +20,7 @@ import datetime
 import config
 
 SB_URL = os.getenv("SUPABASE_URL", "")
-SB_KEY = os.getenv("SUPABASE_KEY", "")
+SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 BOT_ID = "polyedge2"
 
 def log(msg):

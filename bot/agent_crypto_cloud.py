@@ -19,7 +19,7 @@ CRYPTO_KEYWORDS = [
 
 def get_db():
     from supabase import create_client
-    return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    return create_client(os.environ["SUPABASE_URL"], os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_KEY"])
 
 # ── Fetch Polymarket ──────────────────────────────────────────────────────────
 

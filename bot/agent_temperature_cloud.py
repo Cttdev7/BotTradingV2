@@ -393,7 +393,7 @@ MONTHS = ["january","february","march","april","may","june",
 # ── Supabase ──────────────────────────────────────────────────────────────────
 
 def get_db():
-    return create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+    return create_client(os.environ["SUPABASE_URL"], os.environ.get("SUPABASE_SERVICE_KEY") or os.environ["SUPABASE_KEY"])
 
 def log(msg, ville=None):
     prefix = f"[{ville['label']}] " if ville else ""
