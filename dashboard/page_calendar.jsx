@@ -124,9 +124,12 @@
               <window.Icon name="chevron-left" size={18} stroke={2.3} />
             </button>
           )}
-          <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-.02em' }}>PNL Calendar</h1>
-            <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>ProfitWeather V2</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <window.Icon name="calendar-days" size={20} stroke={2.2} />
+            <div>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: '-.02em' }}>PNL Calendar</h1>
+              <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 1 }}>ProfitWeather V2</div>
+            </div>
           </div>
         </div>
 

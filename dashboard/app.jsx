@@ -156,6 +156,35 @@ function App() {
     document.documentElement.style.setProperty('--accent', t.accent);
   }, [t.theme, t.density, t.accent]);
 
+  // Sync données réelles (positions, activité, statut connexion) depuis le serveur bot
+  useEffect(() => {
+    let cancelled = false;
+    let failCount = 0;
+    let timeoutId = null;
+
+    const sync = async () => {
+      try {
+        const { connected, usdc, positions, activity } = await window.fetchBotData();
+        if (cancelled) return;
+        failCount = 0;
+        setApiConnected(connected);
+        setLivePositions({ polyedge: positions });
+        setLiveActivity(activity);
+        setBots((bs) => bs.map((b) => b.id === 'polyedge' ? {
+          ...b, capital: usdc || b.capital, openPos: positions.length,
+        } : b));
+      } catch {
+        if (!cancelled) { failCount++; setApiConnected(false); }
+      }
+      if (!cancelled) {
+        const delay = failCount === 0 ? 30000 : Math.min(30000 * Math.pow(2, failCount - 1), 300000);
+        timeoutId = setTimeout(sync, delay);
+      }
+    };
+    sync();
+    return () => { cancelled = true; if (timeoutId) clearTimeout(timeoutId); };
+  }, []);
+
   // Sync solde wallet depuis Supabase (mis à jour toutes les 30min par l'agent météo)
   useEffect(() => {
     const SB_URL = 'https://obqkqhlqlowxrxbyvktl.supabase.co';
