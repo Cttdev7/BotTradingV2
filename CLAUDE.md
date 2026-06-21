@@ -6,6 +6,7 @@ Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashbo
 - **Agent Deko** : surveille les trades de sailor82 en temps réel pour générer des signaux bonus
 - **Agent météo multi-villes** : 45 bots d'analyse qui trackent les options YES >75% sur les marchés température
 - **Stratège Mistral** : analyse cross-ville toutes les 15 min, apprend des analyses passées
+- **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — achète le côté ≥90% à T-30s de clôture, compte dédié séparé (variables `ZTH_*`), DRY_RUN actif
 
 ## Structure du projet
 ```
@@ -108,7 +109,7 @@ source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/agent_deko.py
 ### Paramètres hard-codés loop_v2.py (NE PAS laisser Claude Haiku les modifier)
 ```python
 MIN_NO_PRICE          = 0.75    # NO minimum 75¢
-MAX_NO_PRICE          = 0.95    # NO maximum 95¢ (leçon Dallas : 97¢ = marge trop faible)
+MAX_NO_PRICE          = 0.96    # NO maximum 96¢ (au-dessus = marge trop faible)
 MAX_EXPOSURE_PCT      = 1.0     # 100% du portefeuille (cash + positions ouvertes) peut être exposé
 MAX_BET_PCT           = 0.05    # jamais plus de 5% du solde sur 1 trade
 MIN_FORECAST_GAP_DOWN = 2.0     # range EN-DESSOUS prévision (déjà dépassée → safe) : 2°F suffisent
@@ -118,8 +119,8 @@ MAX_BAND_PROB         = 20      # band_prob max (None = données absentes = refu
 MAX_MODELS_SPREAD     = 10.0    # si modèles ECMWF divergent >10°F → trop incertain
 MIN_VOLUME            = 1_500   # volume minimum USDC
 NO_STOP_LOSS_PCT      = -0.50   # -50% → déclenche le hedge/post-mortem (pas de vente, voir ci-dessous)
-NO_TAKE_PROFIT        = 0.96    # NO ≥ 96¢ → considéré comme gagné (lock profit estimé)
-CASCADE_TRIGGER       = 0.60    # range YES dominant >60% → cascade NO sur les ranges adjacents
+NO_TAKE_PROFIT        = 0.99    # NO ≥ 99¢ → vend et lock profit
+CASCADE_TRIGGER       = 0.35    # range YES dominant >35% → cascade NO sur les ranges adjacents
 HEDGE_YES_TRIGGER      = 0.60   # YES ≥ 60% (et < 90%) sur notre NO perdant → auto-hedge YES
 HEDGE_MULTIPLIER       = 1.10   # mise hedge calculée pour +10% si le YES gagne
 PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard repartent de 0 à cette date
@@ -152,12 +153,23 @@ PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard rep
 - **But** : surveiller les trades de sailor82 (@sailor82, Polymarket, addr `0xbbb72a812c…`)
 - **Cycle** : toutes les 15 min
 - **API** : `data-api.polymarket.com/activity?user=...` (type `TRADE`, pas `BUY`)
-- **Tables Supabase** :
-  - `deko_trades` : chaque trade détecté (tx_hash UNIQUE, outcome, city, range, price, amount_usdc, certainty, hour_et…)
-  - `deko_stats` : stats cumulatives (win rate, P&L, distribution par ville/heure)
-  - `deko_rapports` : analyses Mistral périodiques
+- **Table Supabase** : `positions_tracker` (réécrit le 21/06 — `deko_trades` est une table morte, ne plus l'utiliser)
+- `loop_v2.py` lit le signal sailor82 via `load_deko_trades()` qui interroge `positions_tracker`, pas `deko_trades`
 - **Bug corrigé** : l'API retourne `type=TRADE` pas `type=BUY` — le filtre était `not in ("BUY",)` → corrigé en `not in ("BUY", "TRADE")`
 - **Stratégie de sailor82 observée** : NO à 84-96¢ sur NYC, Houston, SF, LA, Austin, Seattle + YES spéculatifs à 38-48¢ (Atlanta, Austin, SF) — mise $7-$130 par trade
+
+## ZeroToHeroBTC (`bot/zerotoherobtc.py`)
+- **Stratégie** : marché BTC up/down toutes les 5 min — surveille en continu de T-60s à T-2s, achète si un côté atteint `PRICE_THRESHOLD` (0.90, abaissé de 0.95 le 21/06)
+- **Mise** : `BET_PCT = 0.05` du solde
+- **Compte dédié** : variables `ZTH_WALLET_ADDRESS`, `ZTH_PRIVATE_KEY`, `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN` (séparées de ProfitWeather V2)
+- **DRY_RUN** : solde simulé `SIMULATED_BALANCE_USDC = 100.0` (le vrai solde on-chain est à 0)
+- **Persistance** : table Supabase `zerotoherobtc_trades` (lisible côté anon, RLS OK) — `bot/zth_stats.py` calcule le win rate
+- **Dashboard** : `dashboard/page_zerotohero_results.jsx` — win rate + historique des trades simulés depuis Supabase
+
+## Sécurité Supabase (audit du 21/06)
+- **RLS verrouillé sur 190 tables** — lecture publique autorisée uniquement sur `bot_strategies` et `*_tracking`, tout le reste est privé
+- Le backend (`bot/*.py`, `server.py`) utilise désormais `SUPABASE_SERVICE_KEY` (pas la clé anon) — variable d'env à avoir dans `bot/.env`
+- Le dashboard centralise sa clé Supabase dans `dashboard/api.jsx` (1 source au lieu de 6 copies dispersées) — toujours modifier cette clé là, pas dans les fichiers page_*.jsx
 
 ## Architecture Polymarket SDK (important — a changé en 2026)
 - **Ancien SDK** : `py-clob-client` (archivé mai 2026) — ne fonctionne plus (CTF Exchange V2 incompatible)
