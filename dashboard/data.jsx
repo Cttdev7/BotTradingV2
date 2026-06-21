@@ -76,6 +76,14 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
+    id: 'zerotohero', name: 'ZeroToHeroBTC', market: 'crypto', glyph: '🚀',
+    strategy: 'BTC Up/Down 5 min — achat au-delà de 95%', venue: 'Polymarket',
+    status: 'running', capital: 0, allocPct: 0,
+    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
+    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
+    series: Array(90).fill(0),
+  },
+  {
     id: 'chengdu', name: 'Chengdu Temp', market: 'polymarket', glyph: '🌡️', flag: '🇨🇳',
     type: 'temperature', citySlug: 'chengdu',
     strategy: 'Température max Chengdu 80%+', venue: 'Polymarket',
