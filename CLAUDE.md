@@ -159,12 +159,28 @@ PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard rep
 - **Stratégie de sailor82 observée** : NO à 84-96¢ sur NYC, Houston, SF, LA, Austin, Seattle + YES spéculatifs à 38-48¢ (Atlanta, Austin, SF) — mise $7-$130 par trade
 
 ## ZeroToHeroBTC (`bot/zerotoherobtc.py`)
-- **Stratégie** : marché BTC up/down toutes les 5 min — surveille en continu de T-60s à T-2s, achète si un côté atteint `PRICE_THRESHOLD` (0.90, abaissé de 0.95 le 21/06)
-- **Mise** : `BET_PCT = 0.05` du solde
-- **Compte dédié** : variables `ZTH_WALLET_ADDRESS`, `ZTH_PRIVATE_KEY`, `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN` (séparées de ProfitWeather V2)
-- **DRY_RUN** : solde simulé `SIMULATED_BALANCE_USDC = 100.0` (le vrai solde on-chain est à 0)
-- **Persistance** : table Supabase `zerotoherobtc_trades` (lisible côté anon, RLS OK) — `bot/zth_stats.py` calcule le win rate
-- **Dashboard** : `dashboard/page_zerotohero_results.jsx` — win rate + historique des trades simulés depuis Supabase
+- **Stratégie** : marché BTC up/down toutes les 5 min — surveille en continu de T-120s à T-2s (`TRIGGER_MAX_REMAINING=120`), achète si un côté est entre `PRICE_THRESHOLD` (0.90) et `PRICE_CEILING` (0.97 — au-delà, profit quasi nul, pas la peine)
+- **Mise** : fixe, `BET_USDC = 10.0` par trade (pas un % du solde)
+- **Double vérification anti-fausse-alerte** : après détection, attend `RECHECK_DELAY` (2.5s) puis relit le prix — annule si le prix a baissé de plus de `RECHECK_MAX_DROP` (2¢) ou dépasse le plafond
+- **Coupe-circuit** : `MAX_CONSECUTIVE_LOSSES = 3` — pause le bot après 3 pertes d'affilée (vérifié via `get_consecutive_losses()` sur Supabase), uniquement en mode réel
+- **Compte dédié** : variables `ZTH_WALLET_ADDRESS` (wallet Safe, détient les fonds), `ZTH_PRIVATE_KEY` (clé de l'EOA propriétaire du Safe — **adresse différente** du wallet, ne pas confondre), `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN`
+- **Trading réel actif depuis le 21/06** : `ZTH_DRY_RUN=false`, wallet financé (~$100 USDC sur Polygon). Lancer : `source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/zerotoherobtc.py` (pas de service auto-start fonctionnel pour l'instant — tentative `launchd` du 21/06 a échoué silencieusement, à déboguer si besoin, sinon relancer à la main après crash/reboot)
+- **Persistance** : table Supabase `zerotoherobtc_trades` (`dry_run` distingue simulé/réel) — `bot/zth_stats.py` calcule le win rate
+- **Dashboard** : `dashboard/page_zerotohero_results.jsx` — win rate + historique des trades depuis Supabase
+
+### Bug critique corrigé le 21/06 — slug = début de fenêtre, pas fin
+Le numéro dans le slug Polymarket (`btc-updown-5m-{epoch}`) correspond au **début** de la fenêtre de 5 min, pas à sa fin (vérifié via `endDate` de l'API gamma = epoch+300). Le bot utilisait cet epoch comme fin de fenêtre → il suivait systématiquement le marché **suivant** (qui vient de démarrer, prix ~50/50) au lieu du marché en cours de résolution. Corrigé dans `slug_for_end_epoch()` (soustrait `WINDOW_SECONDS`). Avant ce fix, le bot ne voyait jamais les vrais pics de prix proches de la clôture.
+
+### Bug critique — la détection de résolution par seuil de prix est peu fiable
+`fetch_market_outcome()` marque un trade comme résolu/gagné dès que le prix affiché par l'API gamma touche ≥0.99 à un instant donné. Sur des marchés aussi volatils (5 min), ce seuil peut être franchi **momentanément** sans que le marché soit réellement et définitivement résolu — le prix peut ensuite revenir à ~50¢. La seule source fiable de résolution réelle est le champ `redeemable` retourné par `SecureClient.list_positions()` (API officielle de trading), pas un seuil de prix lu sur l'API gamma. **Les stats de win rate calculées avant le 21/06 (~97%) sont donc potentiellement faussées** par ce biais — à ne pas prendre pour argent comptant sans revérifier via `redeemable`.
+
+### Réclamer les gains (`bot/redeem_zth.py`)
+Une position gagnante doit être **réclamée (redeem)** pour que les fonds passent de "position résolue" à "espèces" utilisables — ce n'est pas automatique côté Polymarket (bouton "Échanger" sur le site = ça). `SecureClient.redeem_positions()` du SDK officiel ne fonctionne PAS pour un marché déjà clôturé pour deux raisons :
+1. Il appelle `list_markets()` sans `closed=True` en interne → ne trouve jamais le marché (`Expected exactly one market... got 0`)
+2. Même corrigé, le dispatch de transaction passe par un relayer gasless qui exige une **Builder/Relayer API Key** Polymarket qu'on n'a pas configurée
+
+`redeem_zth.py` contourne ça en construisant et signant nous-mêmes une transaction **Safe `execTransaction`** (le wallet `ZTH_WALLET_ADDRESS` est un Gnosis Safe v1.3.0, signé par l'EOA de `ZTH_PRIVATE_KEY` qui paie le gas en POL — vérifier qu'il a au moins ~0.05 POL). Piège important : l'adresse de contrat à appeler pour `redeemPositions` n'est **pas** `conditional_tokens` mais `context.adapter_address` (= `collateral_adapter` pour un marché non neg-risk, calculé via `normalize_market_position_context`) — appeler le mauvais contrat ne génère aucune erreur mais ne crédite rien (vécu le 21/06, ~$0.001 de gas perdu sans effet). Toujours **simuler via `eth_call` avant de broadcaster** pour vérifier que ça retourne `true`.
+**Appelé automatiquement** : `zerotoherobtc.py` importe `redeem_all_resolved()` de `redeem_zth.py` et l'exécute à chaque cycle (`run_cycle()`, uniquement si `ZTH_DRY_RUN=false`) — plus besoin de le lancer à la main, le redeem se fait seul après chaque résolution de marché. Lancement manuel toujours possible si besoin : `source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/redeem_zth.py` (réclame toutes les positions `redeemable=True` trouvées).
 
 ## Sécurité Supabase (audit du 21/06)
 - **RLS verrouillé sur 190 tables** — lecture publique autorisée uniquement sur `bot_strategies` et `*_tracking`, tout le reste est privé

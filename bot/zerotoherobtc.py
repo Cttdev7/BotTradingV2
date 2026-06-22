@@ -30,10 +30,14 @@ PUSD_CONTRACT = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb"
 TIMEOUT = 10
 
 WINDOW_SECONDS         = 300   # marché toutes les 5 minutes
-TRIGGER_MAX_REMAINING  = 60    # on commence à surveiller en continu à partir de 60s restantes
+TRIGGER_MAX_REMAINING  = 120   # on commence à surveiller en continu à partir de 120s restantes
 TRIGGER_MIN_REMAINING  = 2     # on arrête juste avant la clôture (marge pour l'exécution de l'ordre)
 PRICE_THRESHOLD        = 0.90
-BET_PCT                = 0.05
+PRICE_CEILING          = 0.97  # au-delà, le marché est quasi résolu : profit trop faible pour valoir le coup
+BET_USDC               = 10.0  # mise fixe par trade
+RECHECK_DELAY          = 2.5   # secondes d'attente avant la 2e lecture de prix (anti-fausse-alerte)
+RECHECK_MAX_DROP       = 0.02  # annule le trade si le prix a baissé de plus de 2¢ entre les 2 lectures
+MAX_CONSECUTIVE_LOSSES = 3     # pause du bot après N pertes d'affilée (sécurité capital réel)
 POLL_INTERVAL          = 2     # secondes entre 2 vérifications dans la fenêtre de déclenchement
 
 ZTH_WALLET_ADDRESS = os.getenv("ZTH_WALLET_ADDRESS", "")
@@ -66,7 +70,8 @@ def current_window_end_epoch(now: float | None = None) -> int:
 
 
 def slug_for_end_epoch(end_epoch: int) -> str:
-    return f"btc-updown-5m-{end_epoch}"
+    """Le numéro dans le slug Polymarket correspond au DÉBUT de la fenêtre, pas à sa fin."""
+    return f"btc-updown-5m-{end_epoch - WINDOW_SECONDS}"
 
 
 def fetch_market_tokens(slug: str) -> dict | None:
@@ -263,13 +268,49 @@ def resolve_pending_trades() -> None:
             log.warning(f"resolve_pending_trades update id={trade['id']} : {e}")
 
 
+def get_consecutive_losses() -> int:
+    """Compte les pertes d'affilée les plus récentes (s'arrête au premier gain)."""
+    try:
+        r = requests.get(
+            f"{SB_URL}/rest/v1/zerotoherobtc_trades",
+            params={"resolved": "eq.true", "select": "win", "order": "id.desc", "limit": "20"},
+            headers=_sb_headers(),
+            timeout=10,
+        )
+        r.raise_for_status()
+        rows = r.json()
+    except Exception as e:
+        log.warning(f"get_consecutive_losses : {e}")
+        return 0
+    streak = 0
+    for row in rows:
+        if row["win"]:
+            break
+        streak += 1
+    return streak
+
+
 def run_cycle() -> None:
     """Traite un cycle de marché complet : attend T-30s, vérifie le seuil, trade si besoin."""
     resolve_pending_trades()
 
+    if not ZTH_DRY_RUN:
+        try:
+            from redeem_zth import redeem_all_resolved
+            redeem_all_resolved(log=log)
+        except Exception as e:
+            log.warning(f"redeem_all_resolved : {e}")
+
     end_epoch = current_window_end_epoch()
     slug = slug_for_end_epoch(end_epoch)
     log.info(f"Cycle en cours : {slug} (fin dans {end_epoch - time.time():.0f}s)")
+
+    if not ZTH_DRY_RUN:
+        losses = get_consecutive_losses()
+        if losses >= MAX_CONSECUTIVE_LOSSES:
+            log.error(f"PAUSE : {losses} pertes d'affilée — bot en attente d'intervention manuelle")
+            time.sleep(max(0.0, end_epoch - time.time()))
+            return
 
     traded = False
     while True:
@@ -296,16 +337,26 @@ def run_cycle() -> None:
         log.info(f"  T-{remaining:.0f}s | Up={up_price} Down={down_price}")
 
         candidate = None
-        if up_price is not None and up_price >= PRICE_THRESHOLD:
+        if up_price is not None and PRICE_THRESHOLD <= up_price <= PRICE_CEILING:
             candidate = ("Up", tokens["up_token_id"], up_price)
-        elif down_price is not None and down_price >= PRICE_THRESHOLD:
+        elif down_price is not None and PRICE_THRESHOLD <= down_price <= PRICE_CEILING:
             candidate = ("Down", tokens["down_token_id"], down_price)
 
         if candidate:
             outcome, token_id, price = candidate
+
+            time.sleep(RECHECK_DELAY)
+            recheck_price = best_ask_price(token_id)
+            if recheck_price is None or recheck_price < price - RECHECK_MAX_DROP or recheck_price > PRICE_CEILING:
+                log.warning(f"  Annulé {outcome} : prix re-vérifié à {recheck_price} (était {price:.2f}) — fausse alerte probable")
+                traded = True
+                time.sleep(POLL_INTERVAL)
+                continue
+            price = recheck_price
+
             balance = SIMULATED_BALANCE_USDC if ZTH_DRY_RUN else get_zth_balance_usdc()
-            bet = round(balance * BET_PCT, 2)
-            if bet <= 0:
+            bet = min(BET_USDC, balance)
+            if bet < 1.0:
                 log.warning(f"Solde insuffisant ({balance} USDC) — pas de trade")
             else:
                 log.info(f"  -> ACHAT {outcome} @ {price:.2f} pour ${bet} USDC")
