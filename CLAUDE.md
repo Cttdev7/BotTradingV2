@@ -177,9 +177,12 @@ Railway (AWS US West) est **géobloqué par Polymarket** pour les ordres CLOB (4
 - **Python** : `/opt/zth_venv/bin/python3` (Python 3.14 système, venv à `/opt/zth_venv`)
 - **Lancer le bot** : `/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py`
 - **Variables d'env** : dans `/opt/bottrading/bot/.env` — même variables `ZTH_*` + `SUPABASE_URL`/`SUPABASE_KEY` (clé anon, policies RLS ajoutées pour autoriser INSERT)
-- **Géoblocage** : confirmé absent depuis l'IP Hetzner Allemagne — les ordres Polymarket passent sans VPN
+- **Géoblocage Allemagne** : l'IP Hetzner Germany EST géobloquée par Polymarket (403 "Trading restricted in your region") — NordVPN requis
+- **NordVPN** : installé sur le serveur, connecté à l'Espagne (`nordvpn connect Spain`). Login : `nordvpn login --token TOKEN` (token généré sur my.nordaccount.com → Access tokens). **NordVPN doit être connecté avant de lancer le bot.**
+- **Séquence de lancement** : `nordvpn connect Spain` → `/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py`
+- **Packages installés** : `polymarket-client`, `eth-account`, `eth-utils`, `eth-abi`, `hexbytes`, `pycryptodome` dans `/opt/zth_venv`
 - **Logs dashboard** : table Supabase `zerotoherobtc_logs` — le bot y envoie des logs temps réel via `sb_log()` (non-bloquant, threading), visibles dans la page Résultats ZeroToHero du dashboard
-- **Redémarrage** : si le bot crash, se reconnecter SSH et relancer la commande ci-dessus. Un service systemd peut être installé via `scripts/setup_hetzner_zth.sh` pour l'auto-restart.
+- **Redémarrage** : SSH → `nordvpn connect Spain` → relancer le bot
 
 **Rappel Railway** : les 2 services restants sur Railway (`fabulous-perception`=deko, `BotTradingV2`=worker température) continuent de tourner normalement — ils utilisent l'API gamma/data (pas CLOB) donc pas géobloqués.
 
