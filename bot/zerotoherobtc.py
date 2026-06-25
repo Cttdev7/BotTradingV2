@@ -30,7 +30,7 @@ PUSD_CONTRACT = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb"
 TIMEOUT = 10
 
 WINDOW_SECONDS         = 300   # marché toutes les 5 minutes
-TRIGGER_MAX_REMAINING  = 120   # on commence à surveiller en continu à partir de 120s restantes
+TRIGGER_MAX_REMAINING  = 60    # on commence à surveiller en continu à partir de 60s restantes
 TRIGGER_MIN_REMAINING  = 2     # on arrête juste avant la clôture (marge pour l'exécution de l'ordre)
 PRICE_THRESHOLD        = 0.90
 PRICE_CEILING          = 0.97  # au-delà, le marché est quasi résolu : profit trop faible pour valoir le coup
@@ -202,7 +202,12 @@ def insert_trade(slug: str, end_epoch: int, condition_id: str, outcome: str, pri
 
 
 def fetch_market_outcome(slug: str) -> str | None:
-    """Retourne le côté gagnant ('Up' ou 'Down') si le marché est résolu, sinon None."""
+    """Retourne le côté gagnant ('Up' ou 'Down') si le marché est définitivement résolu, sinon None.
+
+    Un prix qui touche momentanément ~1 ne suffit pas (peut revenir en arrière avant
+    résolution finale / litige UMA) : on exige closed=True ET umaResolutionStatus=resolved
+    ET un prix exactement 0/1, pas juste >=0.99.
+    """
     r = requests.get(f"{GAMMA_API}/events/slug/{slug}", timeout=TIMEOUT)
     if r.status_code == 404:
         return None
@@ -212,16 +217,18 @@ def fetch_market_outcome(slug: str) -> str | None:
     if not markets:
         return None
     market = markets[0]
+    if not market.get("closed") or market.get("umaResolutionStatus") != "resolved":
+        return None
     raw_prices   = market.get("outcomePrices", "[]")
     raw_outcomes = market.get("outcomes", "[]")
     prices   = json.loads(raw_prices)   if isinstance(raw_prices, str)   else raw_prices
     outcomes = json.loads(raw_outcomes) if isinstance(raw_outcomes, str) else raw_outcomes
     if len(prices) != 2 or len(outcomes) != 2:
         return None
-    for outcome, price in zip(outcomes, prices):
-        if float(price) >= 0.99:
-            return outcome
-    return None
+    prices = [float(p) for p in prices]
+    if not (prices[0] in (0.0, 1.0) and prices[1] in (0.0, 1.0) and prices[0] != prices[1]):
+        return None
+    return outcomes[prices.index(1.0)]
 
 
 def resolve_pending_trades() -> None:
@@ -362,7 +369,10 @@ def run_cycle() -> None:
                 log.info(f"  -> ACHAT {outcome} @ {price:.2f} pour ${bet} USDC")
                 result = place_buy(token_id, bet)
                 log.info(f"  Résultat: {result}")
-                insert_trade(slug, end_epoch, tokens["condition_id"], outcome, price, bet)
+                if result.get("ok", True):
+                    insert_trade(slug, end_epoch, tokens["condition_id"], outcome, price, bet)
+                else:
+                    log.error(f"  Ordre rejeté, trade NON enregistré : {result}")
             traded = True
 
         time.sleep(POLL_INTERVAL)

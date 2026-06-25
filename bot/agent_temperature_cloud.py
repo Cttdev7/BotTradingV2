@@ -437,14 +437,29 @@ def fetch_event(slug):
         return None, []
 
 def fetch_market_by_id(condition_id):
+    """Fetch un marché directement par condition_id.
+
+    Le paramètre 'conditionId' (singulier) de l'API gamma est ignoré silencieusement
+    (renvoie une page de marchés sans rapport) — le bon paramètre est 'condition_ids'
+    (pluriel), qui en plus ne renvoie que les marchés actifs par défaut : il faut
+    retenter avec closed=true si le marché est déjà fermé.
+    """
     try:
         r = requests.get(f"{GAMMA_API}/markets",
-                         params={"conditionId": condition_id},
+                         params={"condition_ids": condition_id},
                          timeout=TIMEOUT)
         r.raise_for_status()
         data = r.json()
+        if not data:
+            r = requests.get(f"{GAMMA_API}/markets",
+                             params={"condition_ids": condition_id, "closed": "true"},
+                             timeout=TIMEOUT)
+            r.raise_for_status()
+            data = r.json()
         if isinstance(data, list) and data:
             m = data[0]
+            if m.get("conditionId", "").lower() != condition_id.lower():
+                return None
             raw_p = m.get("outcomePrices", [])
             raw_o = m.get("outcomes", [])
             prices   = json.loads(raw_p) if isinstance(raw_p, str) else raw_p

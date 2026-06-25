@@ -78,6 +78,7 @@ def _parse_market(m):
         "yes_price":    yes_price,
         "volume":       float(m.get("volume24hr") or m.get("volume") or 0),
         "closed":       m.get("closed", False),
+        "uma_status":   m.get("umaResolutionStatus"),
     }
 
 def fetch_high_temp_markets():
@@ -182,24 +183,45 @@ def update_price(db, condition_id, yes_price_actuel):
     }).eq("condition_id", condition_id).execute()
 
 def update_terminated(db, condition_id, resultat, last_price_pct):
-    """Marque le marché comme GAGNANT, PERDANT ou TERMINÉ."""
+    """Marque le marché comme GAGNANT, PERDANT ou TERMINÉ.
+
+    Seuls GAGNANT/PERDANT comptent dans les stats globales : un "TERMINÉ: X%"
+    ambigu (marché disparu/fermé sans résolution finale confirmée) ne doit pas
+    grossir le dénominateur total_resolus, sinon le taux de victoire est sous-évalué.
+    """
     now = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     db.table("meteo_tracking").update({
         "resultat":  resultat,
         "resolu_le": now,
     }).eq("condition_id", condition_id).execute()
-    increment_global_stats(db, resultat)
+    if resultat in ("GAGNANT", "PERDANT"):
+        increment_global_stats(db, resultat)
 
 def fetch_market_by_id(condition_id):
-    """Fetch un marché directement par condition_id."""
+    """Fetch un marché directement par condition_id.
+
+    Le paramètre 'conditionId' (singulier) de l'API gamma est ignoré silencieusement
+    (renvoie une page de marchés sans rapport) — le bon paramètre est 'condition_ids'
+    (pluriel), qui en plus ne renvoie que les marchés actifs par défaut : il faut
+    retenter avec closed=true si le marché est déjà fermé.
+    """
     try:
         r = requests.get(f"{GAMMA_API}/markets",
-                        params={"conditionId": condition_id},
+                        params={"condition_ids": condition_id},
                         timeout=TIMEOUT)
         r.raise_for_status()
         data = r.json()
+        if not data:
+            r = requests.get(f"{GAMMA_API}/markets",
+                            params={"condition_ids": condition_id, "closed": "true"},
+                            timeout=TIMEOUT)
+            r.raise_for_status()
+            data = r.json()
         if isinstance(data, list) and data:
-            return _parse_market(data[0])
+            m = data[0]
+            if m.get("conditionId", "").lower() != condition_id.lower():
+                return None
+            return _parse_market(m)
     except Exception as e:
         print(f"⚠️  Fetch {condition_id[:16]}: {e}")
     return None
@@ -226,11 +248,14 @@ def check_and_update(db, tracking):
                 except:
                     pass
         if m is None or m.get("closed") or expired:
-            # Détermine GAGNANT ou PERDANT selon le prix final
+            # Détermine GAGNANT ou PERDANT seulement si le marché est réellement et
+            # définitivement résolu (closed + umaResolutionStatus) — un prix qui touche
+            # 0.95/0.05 momentanément ne suffit pas (litige UMA, marché pas encore final).
+            really_resolved = bool(m) and m.get("closed") and m.get("uma_status") == "resolved"
             final_price = m["yes_price"] if m else None
-            if final_price is not None and final_price >= 0.95:
+            if really_resolved and final_price is not None and final_price >= 0.95:
                 resultat = "GAGNANT"
-            elif final_price is not None and final_price <= 0.05:
+            elif really_resolved and final_price is not None and final_price <= 0.05:
                 resultat = "PERDANT"
             else:
                 resultat = f"TERMINÉ: {last_pct}%"

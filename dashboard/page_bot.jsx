@@ -52,6 +52,17 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
       body: JSON.stringify(data)
     });
 
+  // bot_strategies n'accepte plus l'écriture anon (faille corrigée le 23/06 — le prompt
+  // pilote le trading réel). L'écriture passe désormais par server.py (clé service, local uniquement).
+  const saveBotStrategy = (data) => {
+    if (!isLocal) return Promise.reject(new Error('Modification disponible uniquement en local (serveur bot/server.py requis).'));
+    return fetch(`http://127.0.0.1:5050/api/bot_strategies/${bot.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()).then(d => { if (d.error) throw new Error(d.error); return d; });
+  };
+
   const refreshMeteo = React.useCallback(() => {
     const tableRapports = bot.type === 'temperature' ? `${bot.id}_rapports`
       : bot.id === 'polycrypto' ? 'crypto_rapports' : bot.id === 'polycrypto4h' ? 'crypto_4h_rapports' : 'meteo_rapports';
@@ -146,11 +157,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
   }, [tab, bot.id, isLocal]);
 
   const saveAnalyseInstructions = () => {
-    sbUpsert('bot_strategies', {
-      bot_id: bot.id,
+    saveBotStrategy({
       analyse_instructions: analyseInstructions,
       analyse_category: analyseCategory,
-      updated_at: new Date().toISOString(),
     }).catch(() => {});
   };
 
@@ -219,11 +228,9 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
 
   const saveStrategy = () => {
     setStratStatus('saving');
-    sbUpsert('bot_strategies', {
-      bot_id: bot.id,
+    saveBotStrategy({
       prompt: stratPrompt,
       enabled: stratEnabled,
-      updated_at: new Date().toISOString(),
     })
       .then(() => setStratStatus('saved'))
       .catch(() => setStratStatus('error'));
@@ -488,7 +495,7 @@ function BotPage({ bot, onToggle, onBack, onSettings, onRename, livePositions, l
                 <Toggle on={stratEnabled} onChange={() => {
                   const next = !stratEnabled;
                   setStratEnabled(next);
-                  sbUpsert('bot_strategies', { bot_id: bot.id, enabled: next, updated_at: new Date().toISOString() });
+                  saveBotStrategy({ enabled: next }).catch(() => setStratEnabled(!next));
                 }} />
               </Card>
             </>

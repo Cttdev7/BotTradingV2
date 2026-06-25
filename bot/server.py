@@ -185,6 +185,41 @@ def save_strategy(bot_id):
     _save_strategy(bot_id, strategy)
     return _ok({"ok": True, "strategy": strategy})
 
+# ── bot_strategies (Supabase réel, lu par loop_v2.py) ────────────────────────
+# Écriture protégée : passe par la clé service (jamais exposée au navigateur).
+# bot_strategies n'autorise plus l'écriture anon depuis le 23/06 (faille corrigée :
+# n'importe qui pouvait sinon réécrire le prompt qui pilote le trading réel).
+
+@app.route("/api/bot_strategies/<bot_id>", methods=["POST"])
+def save_bot_strategy(bot_id):
+    data = request.get_json()
+    if not data:
+        return _err("Corps JSON manquant", 400)
+    allowed = {"prompt", "enabled", "analyse_instructions", "analyse_category"}
+    payload = {k: v for k, v in data.items() if k in allowed}
+    if not payload:
+        return _err("Aucun champ autorisé dans le corps", 400)
+    payload["bot_id"] = bot_id
+    payload["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{SUPABASE_URL}/rest/v1/bot_strategies",
+            data=json.dumps(payload).encode(),
+            method="POST",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+        return _ok({"ok": True})
+    except Exception as e:
+        return _err(e)
+
 # ── Analyse Mistral ───────────────────────────────────────────────────────────
 
 ANALYSES_FILE = os.path.join(os.path.dirname(__file__), "analyses.json")

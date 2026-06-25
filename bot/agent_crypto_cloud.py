@@ -40,6 +40,7 @@ def _parse_market(m):
         "volume":       float(m.get("volume24hr") or m.get("volume") or 0),
         "closed":       m.get("closed", False),
         "end_date":     m.get("endDate", ""),
+        "uma_status":   m.get("umaResolutionStatus"),
     }
 
 def _is_hourly(market):
@@ -80,15 +81,30 @@ def fetch_hourly_markets(limit=500):
         return []
 
 def fetch_market_by_id(condition_id):
-    """Fetch un marché directement par condition_id."""
+    """Fetch un marché directement par condition_id.
+
+    Le paramètre 'conditionId' (singulier) de l'API gamma est ignoré silencieusement
+    (renvoie une page de marchés sans rapport) — le bon paramètre est 'condition_ids'
+    (pluriel), qui en plus ne renvoie que les marchés actifs par défaut : il faut
+    retenter avec closed=true si le marché est déjà fermé.
+    """
     try:
         r = requests.get(f"{GAMMA_API}/markets",
-                        params={"conditionId": condition_id},
+                        params={"condition_ids": condition_id},
                         timeout=TIMEOUT)
         r.raise_for_status()
         data = r.json()
+        if not data:
+            r = requests.get(f"{GAMMA_API}/markets",
+                            params={"condition_ids": condition_id, "closed": "true"},
+                            timeout=TIMEOUT)
+            r.raise_for_status()
+            data = r.json()
         if isinstance(data, list) and data:
-            return _parse_market(data[0])
+            m = data[0]
+            if m.get("conditionId", "").lower() != condition_id.lower():
+                return None
+            return _parse_market(m)
     except Exception as e:
         print(f"⚠️  Fetch {condition_id[:16]}: {e}")
     return None
@@ -146,6 +162,11 @@ def check_resolved(db, tracking):
     for t in pending:
         m = fetch_market_by_id(t["condition_id"])
         if not m:
+            continue
+        # N'exige pas juste un prix extrême : le marché doit être réellement et
+        # définitivement résolu (closed + umaResolutionStatus), sinon un prix qui
+        # touche 0.99/0.01 momentanément pourrait revenir en arrière (litige UMA).
+        if not (m["closed"] and m.get("uma_status") == "resolved"):
             continue
         if m["yes_price"] >= 0.99:
             update_resolved(db, t["condition_id"], "GAGNE")
