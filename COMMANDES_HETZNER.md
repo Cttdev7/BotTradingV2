@@ -18,6 +18,23 @@ nordvpn connect Spain
 /opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py
 ```
 
+## ⚠️ Si "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED" au SSH
+Le rescue mode a changé la clé SSH du serveur. Vider l'ancienne :
+```bash
+ssh-keygen -R 178.105.136.96
+```
+Puis reconnecter normalement.
+
+## ⚠️ NordVPN bloque SSH — ce qui s'est passé le 25/06
+NordVPN + UFW ont bloqué le port 22 → plus d'accès SSH.
+Fix via rescue mode Hetzner :
+1. cloud.hetzner.com → ZerotoHero → Rescue → "Enable rescue & power cycle"
+2. SSH avec mot de passe rescue (sans -i ~/.ssh/id_hetzner)
+3. `mount /dev/sda1 /mnt && chroot /mnt systemctl disable nordvpnd ufw && reboot`
+
+NordVPN et UFW sont maintenant **désactivés au démarrage**.
+Toujours faire `nordvpn allowlist add port 22` AVANT `nordvpn connect Spain`.
+
 ## Connecter NordVPN (si déconnecté)
 ```bash
 nordvpn allowlist add port 22

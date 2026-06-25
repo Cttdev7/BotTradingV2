@@ -182,7 +182,9 @@ Railway (AWS US West) est **géobloqué par Polymarket** pour les ordres CLOB (4
 - **Séquence de lancement** : `nordvpn connect Spain` → `/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py`
 - **Packages installés** : `polymarket-client`, `eth-account`, `eth-utils`, `eth-abi`, `hexbytes`, `pycryptodome` dans `/opt/zth_venv`
 - **Logs dashboard** : table Supabase `zerotoherobtc_logs` — le bot y envoie des logs temps réel via `sb_log()` (non-bloquant, threading), visibles dans la page Résultats ZeroToHero du dashboard
-- **Redémarrage** : SSH → `nordvpn connect Spain` → relancer le bot
+- **Redémarrage** : SSH → `nordvpn allowlist add port 22` → `nordvpn connect Spain` → lancer le bot. **TOUJOURS faire allowlist AVANT connect sinon NordVPN bloque SSH.**
+- **UFW et nordvpnd désactivés au démarrage** (fix du 25/06 — bloquaient SSH). Si SSH inaccessible → rescue mode Hetzner (voir `COMMANDES_HETZNER.md`)
+- **Si "REMOTE HOST IDENTIFICATION HAS CHANGED"** au SSH : `ssh-keygen -R 178.105.136.96` puis reconnecter
 
 **Rappel Railway** : les 2 services restants sur Railway (`fabulous-perception`=deko, `BotTradingV2`=worker température) continuent de tourner normalement — ils utilisent l'API gamma/data (pas CLOB) donc pas géobloqués.
 
