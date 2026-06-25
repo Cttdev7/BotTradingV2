@@ -11,6 +11,7 @@ import time
 import math
 import json
 import logging
+import threading
 import requests
 
 _PYTHON311 = os.path.expanduser("~/.pyenv/versions/3.11.9/lib/python3.11/site-packages")
@@ -176,6 +177,21 @@ def _sb_headers() -> dict:
     }
 
 
+def sb_log(level: str, msg: str) -> None:
+    """Envoie un log important vers Supabase (non-bloquant)."""
+    def _send():
+        try:
+            requests.post(
+                f"{SB_URL}/rest/v1/zerotoherobtc_logs",
+                json={"level": level, "message": msg, "dry_run": ZTH_DRY_RUN},
+                headers={**_sb_headers(), "Prefer": "return=minimal"},
+                timeout=5,
+            )
+        except Exception:
+            pass
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def insert_trade(slug: str, end_epoch: int, condition_id: str, outcome: str, price: float, amount_usdc: float) -> None:
     """Enregistre un trade (simulé ou réel) dans Supabase pour calcul ultérieur du taux de victoire."""
     payload = {
@@ -311,11 +327,13 @@ def run_cycle() -> None:
     end_epoch = current_window_end_epoch()
     slug = slug_for_end_epoch(end_epoch)
     log.info(f"Cycle en cours : {slug} (fin dans {end_epoch - time.time():.0f}s)")
+    sb_log("INFO", f"Cycle : {slug} (fin dans {end_epoch - time.time():.0f}s)")
 
     if not ZTH_DRY_RUN:
         losses = get_consecutive_losses()
         if losses >= MAX_CONSECUTIVE_LOSSES:
             log.error(f"PAUSE : {losses} pertes d'affilée — bot en attente d'intervention manuelle")
+            sb_log("ERROR", f"PAUSE : {losses} pertes d'affilée — intervention manuelle requise")
             time.sleep(max(0.0, end_epoch - time.time()))
             return
 
@@ -356,6 +374,7 @@ def run_cycle() -> None:
             recheck_price = best_ask_price(token_id)
             if recheck_price is None or recheck_price < price - RECHECK_MAX_DROP or recheck_price > PRICE_CEILING:
                 log.warning(f"  Annulé {outcome} : prix re-vérifié à {recheck_price} (était {price:.2f}) — fausse alerte probable")
+                sb_log("WARNING", f"Annulé {outcome} @ {slug} : prix re-vérifié à {recheck_price} (était {price:.2f})")
                 traded = True
                 time.sleep(POLL_INTERVAL)
                 continue
@@ -365,14 +384,18 @@ def run_cycle() -> None:
             bet = min(BET_USDC, balance)
             if bet < 1.0:
                 log.warning(f"Solde insuffisant ({balance} USDC) — pas de trade")
+                sb_log("WARNING", f"Solde insuffisant ({balance} USDC) — pas de trade")
             else:
                 log.info(f"  -> ACHAT {outcome} @ {price:.2f} pour ${bet} USDC")
+                sb_log("INFO", f"ACHAT {outcome} @ {price:.2f} pour ${bet:.2f} USDC | {slug}")
                 result = place_buy(token_id, bet)
                 log.info(f"  Résultat: {result}")
                 if result.get("ok", True):
                     insert_trade(slug, end_epoch, tokens["condition_id"], outcome, price, bet)
+                    sb_log("INFO", f"Trade enregistré : {outcome} @ {price:.2f} — {result.get('status','?')}")
                 else:
                     log.error(f"  Ordre rejeté, trade NON enregistré : {result}")
+                    sb_log("ERROR", f"Ordre rejeté {outcome} @ {slug} : {result}")
             traded = True
 
         time.sleep(POLL_INTERVAL)
@@ -382,11 +405,13 @@ def run_cycle() -> None:
 
 def main() -> None:
     log.info(f"ZeroToHeroBTC démarré — DRY_RUN={ZTH_DRY_RUN}")
+    sb_log("INFO", f"ZeroToHeroBTC démarré — DRY_RUN={ZTH_DRY_RUN}")
     while True:
         try:
             run_cycle()
         except Exception as e:
             log.error(f"Erreur cycle: {e}")
+            sb_log("ERROR", f"Erreur cycle : {e}")
             time.sleep(5)
 
 
