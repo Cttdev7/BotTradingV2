@@ -11,8 +11,16 @@ nordvpn connect Spain
 /opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py
 ```
 
+## Séquence complète après reboot serveur
+```bash
+nordvpn allowlist add port 22   # ← TOUJOURS faire ça en premier sinon SSH se bloque
+nordvpn connect Spain
+/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py
+```
+
 ## Connecter NordVPN (si déconnecté)
 ```bash
+nordvpn allowlist add port 22
 nordvpn connect Spain
 ```
 
