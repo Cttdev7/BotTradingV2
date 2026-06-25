@@ -6,7 +6,7 @@ Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashbo
 - **Agent Deko** : surveille les trades de sailor82 en temps réel pour générer des signaux bonus
 - **Agent météo multi-villes** : 45 bots d'analyse qui trackent les options YES >75% sur les marchés température
 - **Stratège Mistral** : analyse cross-ville toutes les 15 min, apprend des analyses passées
-- **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — achète le côté ≥90% à T-30s de clôture, compte dédié séparé (variables `ZTH_*`), DRY_RUN actif
+- **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — surveille à partir de T-120s, achète le côté ≥90%, compte dédié séparé (variables `ZTH_*`), tourne 24/7 sur Hetzner Allemagne
 
 ## Structure du projet
 ```
@@ -164,19 +164,24 @@ PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard rep
 - **Double vérification anti-fausse-alerte** : après détection, attend `RECHECK_DELAY` (2.5s) puis relit le prix — annule si le prix a baissé de plus de `RECHECK_MAX_DROP` (2¢) ou dépasse le plafond
 - **Coupe-circuit** : `MAX_CONSECUTIVE_LOSSES = 3` — pause le bot après 3 pertes d'affilée (vérifié via `get_consecutive_losses()` sur Supabase), uniquement en mode réel
 - **Compte dédié** : variables `ZTH_WALLET_ADDRESS` (wallet Safe, détient les fonds), `ZTH_PRIVATE_KEY` (clé de l'EOA propriétaire du Safe — **adresse différente** du wallet, ne pas confondre), `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN`
-- **Trading réel actif depuis le 21/06** : `ZTH_DRY_RUN=false` en local, wallet financé (~$100 USDC sur Polygon). Lancer en local : `source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/zerotoherobtc.py`
+- **Trading réel actif depuis le 21/06** : `ZTH_DRY_RUN=false`, wallet financé (~$100 USDC sur Polygon). Tourne 24/7 sur **Hetzner VPS** (Allemagne — pas géobloqué par Polymarket, contrairement à Railway/AWS).
 - **Persistance** : table Supabase `zerotoherobtc_trades` (`dry_run` distingue simulé/réel) — `bot/zth_stats.py` calcule le win rate
 - **Dashboard** : `dashboard/page_zerotohero_results.jsx` — win rate + historique des trades depuis Supabase
 
-### Déploiement Railway (24/06 — en test)
-Pour éviter de devoir relancer le bot à la main après crash/reboot (le `launchd` local du 21/06 avait échoué silencieusement), ZeroToHeroBTC a été déployé sur Railway, projet `lucid-encouragement` :
-- **Service** : `blissful-integrity` (nom auto-généré par Railway) — service existant mais inutilisé depuis le 11/06 (ancienne tentative `loop.py` qui plantait, faute de `WALLET_ADDRESS`), réutilisé pour ZeroToHeroBTC plutôt que d'en créer un nouveau
-- **Start Command** : override manuel dans Settings → Deploy → Custom Start Command = `python3 bot/zerotoherobtc.py` (ne pas compter sur le `Procfile` seul — Railway ne lance pas tous les process types d'un Procfile comme Heroku, un override explicite par service est nécessaire)
-- **Procfile** : entrée `zth: python3 bot/zerotoherobtc.py` ajoutée (documente l'intention même si le Start Command override est ce qui compte vraiment)
-- **requirements.txt** (racine, lu par Railway) : ajout `polymarket-client`, `eth-account`, `eth-utils`, `eth-abi`, `hexbytes`, `pycryptodome` (nécessaires à `trader.py`/`redeem_zth.py`, absents avant car seul `agent_temperature_cloud.py`/`agent_deko.py` tournaient sur Railway)
-- **Variables Railway dédiées** : `ZTH_WALLET_ADDRESS`, `ZTH_PRIVATE_KEY`, `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN`, `SUPABASE_SERVICE_KEY` — les anciennes variables ProfitWeather (`PRIVATE_KEY`, `API_KEY`, `API_SECRET`, `API_PASSPHRASE`, `DRY_RUN`) ont été supprimées de ce service pour éviter la confusion
-- **Statut** : déployé en **`ZTH_DRY_RUN=true`** pour valider d'abord que l'API CLOB Polymarket n'est pas géobloquée depuis l'IP Railway (le géoblocage vise la France ; Railway pourrait être hébergé hors UE, à confirmer en observant les logs) — repasser en `false` seulement après validation
-- Les 3 services Railway (`fabulous-perception`=deko, `BotTradingV2`=worker température, `blissful-integrity`=zth) partagent le même repo/branche `main` : un push redéploie les 3
+### Déploiement Hetzner (25/06 — ACTIF, trading réel)
+Railway (AWS US West) est **géobloqué par Polymarket** pour les ordres CLOB (403 Forbidden) — impossible de trader depuis Railway. Le bot tourne désormais sur un VPS **Hetzner CX23 en Allemagne**, qui n'est pas géobloqué.
+
+- **Serveur** : Hetzner CX23 — IP `178.105.136.96`, Ubuntu 24.04
+- **SSH** : `ssh -i ~/.ssh/id_hetzner root@178.105.136.96`
+- **Repo** : `/opt/bottrading` (cloné depuis GitHub `Cttdev7/BotTradingV2`)
+- **Python** : `/opt/zth_venv/bin/python3` (Python 3.14 système, venv à `/opt/zth_venv`)
+- **Lancer le bot** : `/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py`
+- **Variables d'env** : dans `/opt/bottrading/bot/.env` — même variables `ZTH_*` + `SUPABASE_URL`/`SUPABASE_KEY` (clé anon, policies RLS ajoutées pour autoriser INSERT)
+- **Géoblocage** : confirmé absent depuis l'IP Hetzner Allemagne — les ordres Polymarket passent sans VPN
+- **Logs dashboard** : table Supabase `zerotoherobtc_logs` — le bot y envoie des logs temps réel via `sb_log()` (non-bloquant, threading), visibles dans la page Résultats ZeroToHero du dashboard
+- **Redémarrage** : si le bot crash, se reconnecter SSH et relancer la commande ci-dessus. Un service systemd peut être installé via `scripts/setup_hetzner_zth.sh` pour l'auto-restart.
+
+**Rappel Railway** : les 2 services restants sur Railway (`fabulous-perception`=deko, `BotTradingV2`=worker température) continuent de tourner normalement — ils utilisent l'API gamma/data (pas CLOB) donc pas géobloqués.
 
 ### Bug critique corrigé le 21/06 — slug = début de fenêtre, pas fin
 Le numéro dans le slug Polymarket (`btc-updown-5m-{epoch}`) correspond au **début** de la fenêtre de 5 min, pas à sa fin (vérifié via `endDate` de l'API gamma = epoch+300). Le bot utilisait cet epoch comme fin de fenêtre → il suivait systématiquement le marché **suivant** (qui vient de démarrer, prix ~50/50) au lieu du marché en cours de résolution. Corrigé dans `slug_for_end_epoch()` (soustrait `WINDOW_SECONDS`). Avant ce fix, le bot ne voyait jamais les vrais pics de prix proches de la clôture.
@@ -195,6 +200,8 @@ Une position gagnante doit être **réclamée (redeem)** pour que les fonds pass
 ## Sécurité Supabase (audit du 21/06)
 - **RLS verrouillé sur 190 tables** — lecture publique autorisée uniquement sur `bot_strategies` et `*_tracking`, tout le reste est privé
 - Le backend (`bot/*.py`, `server.py`) utilise désormais `SUPABASE_SERVICE_KEY` (pas la clé anon) — variable d'env à avoir dans `bot/.env`
+- **Exception Hetzner** : le bot ZeroToHeroBTC sur Hetzner utilise la clé **anon** (`SUPABASE_KEY`) — des policies RLS d'écriture `anon INSERT/UPDATE` ont été ajoutées sur `zerotoherobtc_trades` et `zerotoherobtc_logs` pour l'autoriser
+- **Table `zerotoherobtc_logs`** : logs temps réel envoyés par le bot via `sb_log()` (non-bloquant, threading). Politique : lecture publique + INSERT anon autorisé. Visible dans la page Résultats ZeroToHero du dashboard.
 - Le dashboard centralise sa clé Supabase dans `dashboard/api.jsx` (1 source au lieu de 6 copies dispersées) — toujours modifier cette clé là, pas dans les fichiers page_*.jsx
 
 ## Architecture Polymarket SDK (important — a changé en 2026)
@@ -271,4 +278,5 @@ Lancer : `~/.pyenv/versions/3.11.9/bin/python3 bot/derive_api_key.py`
 - Toujours tester en local avant de déclarer terminé
 - Bot actif principal : `agent_temperature_cloud.py` sur Railway
 - ProfitWeather V2 (`loop_v2.py`) tourne en local avec agent_deko.py en parallèle
-- VPN requis pour les ordres Polymarket depuis la France (CLOB API géobloké)
+- **ZeroToHeroBTC tourne 24/7 sur Hetzner** (IP `178.105.136.96`, Allemagne) — pas de VPN nécessaire depuis Hetzner
+- VPN requis uniquement pour les ordres Polymarket **depuis la France en local** (CLOB API géobloké pour les IPs françaises et AWS)
