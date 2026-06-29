@@ -6,7 +6,7 @@ Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashbo
 - **Agent Deko** : surveille les trades de sailor82 en temps réel pour générer des signaux bonus
 - **Agent météo multi-villes** : 45 bots d'analyse qui trackent les options YES >75% sur les marchés température
 - **Stratège Mistral** : analyse cross-ville toutes les 15 min, apprend des analyses passées
-- **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — surveille à partir de T-120s, achète le côté ≥90%, compte dédié séparé (variables `ZTH_*`), tourne 24/7 sur Hetzner Allemagne
+- **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — surveille à partir de T-120s, achète le côté ≥90%, compte dédié séparé (variables `ZTH_*`), tourne 24/7 sur **Fly.io Toronto (`yyz`)**
 
 ## Structure du projet
 ```
@@ -164,27 +164,22 @@ PERF_RESET_DATE        = "2026-06-17T15:34:00"  # stats/calendrier dashboard rep
 - **Double vérification anti-fausse-alerte** : après détection, attend `RECHECK_DELAY` (2.5s) puis relit le prix — annule si le prix a baissé de plus de `RECHECK_MAX_DROP` (2¢) ou dépasse le plafond
 - **Coupe-circuit** : `MAX_CONSECUTIVE_LOSSES = 3` — pause le bot après 3 pertes d'affilée (vérifié via `get_consecutive_losses()` sur Supabase), uniquement en mode réel
 - **Compte dédié** : variables `ZTH_WALLET_ADDRESS` (wallet Safe, détient les fonds), `ZTH_PRIVATE_KEY` (clé de l'EOA propriétaire du Safe — **adresse différente** du wallet, ne pas confondre), `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN`
-- **Trading réel actif depuis le 21/06** : `ZTH_DRY_RUN=false`, wallet financé (~$100 USDC sur Polygon). Tourne 24/7 sur **Hetzner VPS** (Allemagne — pas géobloqué par Polymarket, contrairement à Railway/AWS).
+- **Trading réel actif depuis le 21/06** : `ZTH_DRY_RUN=false`, wallet financé (~$100 USDC sur Polygon). Tourne 24/7 sur **Fly.io (Londres, région `lhr`)**.
 - **Persistance** : table Supabase `zerotoherobtc_trades` (`dry_run` distingue simulé/réel) — `bot/zth_stats.py` calcule le win rate
 - **Dashboard** : `dashboard/page_zerotohero_results.jsx` — win rate + historique des trades depuis Supabase
 
-### Déploiement Hetzner (25/06 — ACTIF, trading réel)
-Railway (AWS US West) est **géobloqué par Polymarket** pour les ordres CLOB (403 Forbidden) — impossible de trader depuis Railway. Le bot tourne désormais sur un VPS **Hetzner CX23 en Allemagne**, qui n'est pas géobloqué.
+### Déploiement Fly.io (29/06 — ACTIF, trading réel)
+Railway (AWS US West) et Hetzner Allemagne sont géobloqués par Polymarket. Le bot tourne désormais sur **Fly.io région Londres (`lhr`)**, qui n'est pas géobloqué et ne nécessite pas de VPN.
 
-- **Serveur** : Hetzner CX23 — IP `178.105.136.96`, Ubuntu 24.04
-- **SSH** : `ssh -i ~/.ssh/id_hetzner root@178.105.136.96`
-- **Repo** : `/opt/bottrading` (cloné depuis GitHub `Cttdev7/BotTradingV2`)
-- **Python** : `/opt/zth_venv/bin/python3` (Python 3.14 système, venv à `/opt/zth_venv`)
-- **Lancer le bot** : `/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py`
-- **Variables d'env** : dans `/opt/bottrading/bot/.env` — même variables `ZTH_*` + `SUPABASE_URL`/`SUPABASE_KEY` (clé anon, policies RLS ajoutées pour autoriser INSERT)
-- **Géoblocage Allemagne** : l'IP Hetzner Germany EST géobloquée par Polymarket (403 "Trading restricted in your region") — NordVPN requis
-- **NordVPN** : installé sur le serveur, connecté à l'Espagne (`nordvpn connect Spain`). Login : `nordvpn login --token TOKEN` (token généré sur my.nordaccount.com → Access tokens). **NordVPN doit être connecté avant de lancer le bot.**
-- **Séquence de lancement** : `nordvpn connect Spain` → `/opt/zth_venv/bin/python3 /opt/bottrading/bot/zerotoherobtc.py`
-- **Packages installés** : `polymarket-client`, `eth-account`, `eth-utils`, `eth-abi`, `hexbytes`, `pycryptodome` dans `/opt/zth_venv`
+- **App Fly.io** : `zth-bot` — dashboard : fly.io/apps/zth-bot
+- **Région** : Toronto `yyz` (Canada) — London `lhr` et Singapore `sin` étaient géobloqués
+- **Logs temps réel** : `/Users/clementctt/.fly/bin/fly logs --app zth-bot`
+- **Redéployer** : `cd "Bottrading V2" && /Users/clementctt/.fly/bin/fly deploy --app zth-bot`
+- **Changer de région** : modifier `primary_region` dans `fly.toml`, puis cloner la machine (`fly machine clone <id> --region <region>`), vérifier les logs, puis supprimer l'ancienne (`fly machine destroy <id> --force`)
+- **Modifier un secret** : `/Users/clementctt/.fly/bin/fly secrets set CLE=valeur --app zth-bot`
+- **Fichiers de config** : `fly.toml` (région, VM) + `Dockerfile` + `requirements-zth.txt` à la racine du projet
+- **Pas de VPN nécessaire** — IPs Fly.io Toronto non géobloquées par Polymarket
 - **Logs dashboard** : table Supabase `zerotoherobtc_logs` — le bot y envoie des logs temps réel via `sb_log()` (non-bloquant, threading), visibles dans la page Résultats ZeroToHero du dashboard
-- **Redémarrage** : SSH → `nordvpn allowlist add port 22` → `nordvpn connect Spain` → lancer le bot. **TOUJOURS faire allowlist AVANT connect sinon NordVPN bloque SSH.**
-- **UFW et nordvpnd désactivés au démarrage** (fix du 25/06 — bloquaient SSH). Si SSH inaccessible → rescue mode Hetzner (voir `COMMANDES_HETZNER.md`)
-- **Si "REMOTE HOST IDENTIFICATION HAS CHANGED"** au SSH : `ssh-keygen -R 178.105.136.96` puis reconnecter
 
 **Rappel Railway** : les 2 services restants sur Railway (`fabulous-perception`=deko, `BotTradingV2`=worker température) continuent de tourner normalement — ils utilisent l'API gamma/data (pas CLOB) donc pas géobloqués.
 

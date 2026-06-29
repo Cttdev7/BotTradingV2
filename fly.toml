@@ -1,0 +1,9 @@
+app = "zth-bot"
+primary_region = "yyz"
+
+[build]
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

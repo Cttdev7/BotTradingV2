@@ -31,7 +31,7 @@ PUSD_CONTRACT = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb"
 TIMEOUT = 10
 
 WINDOW_SECONDS         = 300   # marché toutes les 5 minutes
-TRIGGER_MAX_REMAINING  = 120   # on commence à surveiller en continu à partir de 120s restantes
+TRIGGER_MAX_REMAINING  = 180   # on commence à surveiller en continu à partir de 180s restantes
 TRIGGER_MIN_REMAINING  = 2     # on arrête juste avant la clôture (marge pour l'exécution de l'ordre)
 PRICE_THRESHOLD        = 0.90
 PRICE_CEILING          = 0.97  # au-delà, le marché est quasi résolu : profit trop faible pour valoir le coup
@@ -296,7 +296,7 @@ def get_consecutive_losses() -> int:
     try:
         r = requests.get(
             f"{SB_URL}/rest/v1/zerotoherobtc_trades",
-            params={"resolved": "eq.true", "select": "win", "order": "id.desc", "limit": "20"},
+            params={"resolved": "eq.true", "dry_run": "eq.false", "select": "win", "order": "id.desc", "limit": "20"},
             headers=_sb_headers(),
             timeout=10,
         )
@@ -314,7 +314,7 @@ def get_consecutive_losses() -> int:
 
 
 def run_cycle() -> None:
-    """Traite un cycle de marché complet : attend T-30s, vérifie le seuil, trade si besoin."""
+    """Traite un cycle de marché complet : attend T-180s, vérifie le seuil, trade si besoin."""
     resolve_pending_trades()
 
     if not ZTH_DRY_RUN:
