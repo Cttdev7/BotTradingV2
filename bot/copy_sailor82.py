@@ -499,20 +499,8 @@ def run_cycle():
                   "no_price", forecast, analysis, confidence)
             continue
 
-        max_drift = get_max_drift(s_price)
         drift = abs(current_price - s_price)
-
-        if drift > max_drift:
-            log(f"   ⏭ Dérive {drift:.2f}¢ trop grande pour ce tier (max={max_drift:.2f}, sailor={s_price:.2f} → now={current_price:.2f})")
-            _save(cid, title, outcome, token_id, s_price, current_price, s_amount, 0.0,
-                  "skipped_drift", forecast, analysis, confidence)
-            continue
-
-        if confidence < MIN_CONFIDENCE:
-            log(f"   ⏭ Confiance trop faible ({confidence}/5) — trade ignoré")
-            _save(cid, title, outcome, token_id, s_price, current_price, s_amount, 0.0,
-                  "skipped_confidence", forecast, analysis, confidence)
-            continue
+        log(f"   ℹ️ Dérive {drift:.2f}¢ (sailor={s_price:.2f} → now={current_price:.2f}) | conf={confidence}/5 — copié quand même (filtres désactivés)")
 
         log(f"   💰 Copie → ${TRADE_SIZE:.2f} (mise fixe)")
 
