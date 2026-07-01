@@ -10,10 +10,8 @@ La clé ANTHROPIC_API_KEY doit être dans .env.
 from __future__ import annotations
 import json
 import os
-import requests
 import anthropic
 import config
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 _client = None
 
@@ -25,109 +23,6 @@ def get_client():
             raise ValueError("ANTHROPIC_API_KEY manquante dans .env")
         _client = anthropic.Anthropic(api_key=api_key)
     return _client
-
-
-_WEATHER_VILLES = [
-    "chengdu", "seoul", "hong_kong", "nyc", "london", "tokyo",
-    "atlanta", "seattle", "miami", "singapore", "madrid", "shanghai",
-    "los_angeles", "guangzhou", "mexico_city", "amsterdam",
-    "paris", "toronto", "chicago", "denver", "houston",
-    "taipei", "beijing", "san_francisco", "dallas",
-    "wellington", "chongqing", "wuhan", "ankara", "moscow", "lucknow",
-    "istanbul", "warsaw", "milan", "helsinki", "karachi", "cape_town",
-    "jeddah", "shenzhen", "busan", "qingdao", "kuala_lumpur",
-    "tel_aviv", "manila", "munich",
-]
-
-def _load_analysis_context() -> str:
-    """
-    Charge depuis Supabase les données des bots d'analyse météo :
-    - Dernière analyse stratégique Mistral cross-ville
-    - Performance (taux victoire) par ville
-    - Signaux actifs non résolus = opportunités détectées
-    """
-    supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
-    if not supabase_url or not supabase_key:
-        return "Données d'analyse non disponibles (SUPABASE_URL/KEY manquants)."
-
-    headers = {
-        "apikey": supabase_key,
-        "Authorization": f"Bearer {supabase_key}",
-    }
-    base = f"{supabase_url}/rest/v1"
-    sections = []
-
-    # 1. Dernière analyse stratégique Mistral cross-ville
-    try:
-        r = requests.get(
-            f"{base}/strategie_analyses",
-            params={"order": "created_at.desc", "limit": "1"},
-            headers=headers, timeout=5,
-        )
-        if r.status_code == 200 and r.json():
-            a = r.json()[0]
-            sections.append(
-                f"=== ANALYSE STRATÉGIQUE MISTRAL ({a.get('date', '?')}) ===\n"
-                + (a.get("analyse_text") or "")[:600]
-            )
-    except Exception:
-        pass
-
-    # 2+3. Performance et signaux actifs par ville — requêtes parallèles
-    def _fetch_ville(ville):
-        stat_line   = None
-        ville_sigs  = []
-        try:
-            r = requests.get(f"{base}/{ville}_stats", params={"limit": "1"}, headers=headers, timeout=3)
-            if r.status_code == 200 and r.json():
-                s      = r.json()[0]
-                resolus = int(s.get("resolus") or 0)
-                gagnes  = int(s.get("gagnes") or 0)
-                taux    = s.get("taux_victoire")
-                if resolus > 0:
-                    stat_line = f"  {ville}: {taux}% victoire ({gagnes}/{resolus} résolus)"
-        except Exception:
-            pass
-        try:
-            r = requests.get(
-                f"{base}/{ville}_tracking",
-                params={"resultat": "is.null", "limit": "5", "order": "detecte_le.desc"},
-                headers=headers, timeout=3,
-            )
-            if r.status_code == 200:
-                for sig in r.json():
-                    price     = float(sig.get("yes_price_actuel") or sig.get("yes_price_au_signal") or 0)
-                    price_pct = price if price > 1 else price * 100
-                    if price_pct < 75:  # seuil cohérent avec la stratégie
-                        continue
-                    ville_sigs.append(
-                        f"  [{ville}] {(sig.get('question') or '')[:70]}"
-                        f" → YES {price_pct:.0f}%"
-                        f" | détecté {(sig.get('detecte_le') or '')[:10]}"
-                    )
-        except Exception:
-            pass
-        return ville, stat_line, ville_sigs
-
-    with ThreadPoolExecutor(max_workers=10) as pool:
-        results = list(pool.map(_fetch_ville, _WEATHER_VILLES))
-
-    stats_lines  = [sl  for _, sl, _  in results if sl]
-    signal_lines = [sig for _, _,  sv in results for sig in sv]
-
-    if stats_lines:
-        sections.append(
-            "=== PERFORMANCE DES BOTS D'ANALYSE PAR VILLE ===\n"
-            + "\n".join(stats_lines)
-        )
-    if signal_lines:
-        sections.append(
-            "=== SIGNAUX ACTIFS DES BOTS D'ANALYSE (opportunités non résolues) ===\n"
-            + "\n".join(signal_lines[:20])
-        )
-
-    return "\n\n".join(sections) if sections else "Aucune donnée d'analyse disponible."
 
 
 def _format_markets(markets: list) -> tuple:
@@ -334,7 +229,6 @@ Tu réponds UNIQUEMENT en JSON valide, sans texte autour :
 "market_index" est le numéro #N du marché dans la liste ci-dessous. Ne recopie jamais le condition_id hex.
 Si aucun signal qualifié → retourner []"""
 
-    analysis_ctx      = _load_analysis_context()
     markets_text, index_map = _format_markets(markets)
 
     user_message = f"""STRATÉGIE :
@@ -342,16 +236,13 @@ Si aucun signal qualifié → retourner []"""
 
 SOLDE DISPONIBLE : ${balance_usdc:.2f} USDC
 
-DONNÉES DES BOTS D'ANALYSE MÉTÉO (signaux actifs, performance par ville, analyse Mistral) :
-{analysis_ctx}
-
 MARCHÉS MÉTÉO DISPONIBLES (utilise le numéro #N dans market_index) :
 {markets_text}
 
 HISTORIQUE DES TRADES (apprends de tes erreurs) :
 {_format_history(history)}
 
-Croise les signaux actifs des bots d'analyse avec les marchés disponibles et retourne tes décisions en JSON."""
+Retourne tes décisions en JSON."""
 
     response = get_client().messages.create(
         model=config.CLAUDE_MODEL,
@@ -440,8 +331,6 @@ Réponds en JSON :
   "reason": "explication courte de ce que tu as changé et pourquoi"
 }"""
 
-    analysis_ctx = _load_analysis_context()
-
     user = f"""STRATÉGIE ACTUELLE (version {version}) :
 {current_prompt}
 
@@ -453,14 +342,7 @@ BILAN DES TRADES :
 HISTORIQUE DÉTAILLÉ (30 derniers) :
 {_format_history(history[-30:])}
 
-DONNÉES BOTS D'ANALYSE MÉTÉO (signaux, performance par ville, analyse Mistral) :
-{analysis_ctx}
-
-Réécris la stratégie en combinant :
-1. Ce qui a marché/raté dans l'historique des trades
-2. Les opportunités et patterns identifiés par Mistral
-3. Les stratégies suggérées par Mistral
-
+Réécris la stratégie en te basant sur l'historique des trades.
 Sois précis sur : marchés à cibler, probabilités d'entrée, taille des positions, critères de sortie."""
 
     response = get_client().messages.create(
@@ -565,8 +447,6 @@ def _format_markets_v2(markets: list) -> tuple:
                 )
         if m.get("_no_confirmed"):
             market_line += "\n    ✅ NO CONFIRMÉ EN TEMPS RÉEL : max observé aujourd'hui dépasse déjà la fourchette haute"
-        if m.get("_deko"):
-            market_line += "\n    🔍 SIGNAL DEKO : sailor82 est NO sur ce marché (win rate 86%)"
         hours_left = m.get("_hours_left")
         if hours_left is not None:
             if hours_left <= 4:

@@ -11,6 +11,7 @@ import time
 import math
 import json
 import logging
+import signal
 import threading
 import requests
 
@@ -31,15 +32,20 @@ PUSD_CONTRACT = "0xc011a7e12a19f7b1f670d46f03b03f3342e82dfb"
 TIMEOUT = 10
 
 WINDOW_SECONDS         = 300   # marché toutes les 5 minutes
-TRIGGER_MAX_REMAINING  = 180   # on commence à surveiller en continu à partir de 180s restantes
+TRIGGER_MAX_REMAINING  = 90    # sweet spot validé sur 250 trades réels : T≤90s = 95.37% win rate +$27.53, T≤60s = +$18.76, T≤120s = +$19.54, T≤180s = -$8.20
 TRIGGER_MIN_REMAINING  = 2     # on arrête juste avant la clôture (marge pour l'exécution de l'ordre)
-PRICE_THRESHOLD        = 0.90
-PRICE_CEILING          = 0.97  # au-delà, le marché est quasi résolu : profit trop faible pour valoir le coup
+PRICE_THRESHOLD        = 0.85  # zone 0.85-0.90 : gain +$1.76 si win, seuil rentabilité 85% — plus de marge que 0.90
+PRICE_CEILING          = 0.95  # coupé à 0.95 : au-dessus le gain (+$0.53) ne compense pas le risque ($10)
 BET_USDC               = 10.0  # mise fixe par trade
 RECHECK_DELAY          = 2.5   # secondes d'attente avant la 2e lecture de prix (anti-fausse-alerte)
 RECHECK_MAX_DROP       = 0.02  # annule le trade si le prix a baissé de plus de 2¢ entre les 2 lectures
 MAX_CONSECUTIVE_LOSSES = 3     # pause du bot après N pertes d'affilée (sécurité capital réel)
-POLL_INTERVAL          = 2     # secondes entre 2 vérifications dans la fenêtre de déclenchement
+POLL_INTERVAL          = 1     # secondes entre 2 vérifications dans la fenêtre de déclenchement
+POLL_INTERVAL_SL       = 0.5   # secondes entre 2 vérifications du stop loss après un achat
+TIMEOUT_SL             = 2     # timeout HTTP court pour le monitoring stop loss (0.5s polling incompatible avec TIMEOUT=10s)
+STOP_LOSS_PCT          = 0.25  # vend si le prix bid baisse de 25% par rapport au prix d'achat
+MIN_BALANCE_USDC       = 40.0  # arrêt définitif si le solde du wallet tombe à ou sous ce seuil
+BLACKOUT_HOURS_UTC     = {7, 8, 9, 10, 22, 23}  # heures UTC à ne pas trader (ouverture EU 7-10h, clôture US 22-23h)
 
 ZTH_WALLET_ADDRESS = os.getenv("ZTH_WALLET_ADDRESS", "")
 ZTH_PRIVATE_KEY    = os.getenv("ZTH_PRIVATE_KEY", "")
@@ -117,6 +123,36 @@ def best_ask_price(token_id: str) -> float | None:
     if not asks:
         return None
     return min(float(a["price"]) for a in asks)
+
+
+def best_bid_price(token_id: str) -> float | None:
+    """Meilleur prix de vente disponible (best bid) pour ce token, ou None si carnet vide."""
+    r = requests.get(f"{CLOB}/book", params={"token_id": token_id}, timeout=TIMEOUT)
+    r.raise_for_status()
+    bids = r.json().get("bids", [])
+    if not bids:
+        return None
+    return max(float(b["price"]) for b in bids)
+
+
+def best_bid_price_sl(token_id: str) -> float | None:
+    """Variante avec timeout court pour le monitoring stop loss (échec rapide > précision)."""
+    r = requests.get(f"{CLOB}/book", params={"token_id": token_id}, timeout=TIMEOUT_SL)
+    r.raise_for_status()
+    bids = r.json().get("bids", [])
+    if not bids:
+        return None
+    return max(float(b["price"]) for b in bids)
+
+
+def place_sell(token_id: str, tokens: float) -> dict:
+    """Vend tokens du token donné. Simule si ZTH_DRY_RUN=true."""
+    if ZTH_DRY_RUN:
+        log.info(f"[DRY RUN] SELL {tokens:.4f} tokens {token_id[:12]}…")
+        return {"dry_run": True, "status": "simulated"}
+    client = _get_client()
+    resp = client.place_market_order(token_id=token_id, side="SELL", amount=tokens)
+    return {"ok": resp.ok, "order_id": getattr(resp, "order_id", None), "status": resp.status}
 
 
 def get_zth_balance_usdc() -> float:
@@ -303,8 +339,8 @@ def get_consecutive_losses() -> int:
         r.raise_for_status()
         rows = r.json()
     except Exception as e:
-        log.warning(f"get_consecutive_losses : {e}")
-        return 0
+        log.warning(f"get_consecutive_losses : {e} — retourne MAX par sécurité (fail-safe)")
+        return MAX_CONSECUTIVE_LOSSES
     streak = 0
     for row in rows:
         if row["win"]:
@@ -320,7 +356,8 @@ def run_cycle() -> None:
     if not ZTH_DRY_RUN:
         try:
             from redeem_zth import redeem_all_resolved
-            redeem_all_resolved(log=log)
+            t = threading.Thread(target=redeem_all_resolved, kwargs={"log": log}, daemon=True, name="redeem-worker")
+            t.start()
         except Exception as e:
             log.warning(f"redeem_all_resolved : {e}")
 
@@ -330,14 +367,33 @@ def run_cycle() -> None:
     sb_log("INFO", f"Cycle : {slug} (fin dans {end_epoch - time.time():.0f}s)")
 
     if not ZTH_DRY_RUN:
+        balance = get_zth_balance_usdc()
+        if balance <= MIN_BALANCE_USDC:
+            msg = f"ARRÊT DÉFINITIF : solde {balance:.2f} USDC ≤ seuil {MIN_BALANCE_USDC} USDC — bot en veille permanente"
+            log.error(msg)
+            sb_log("ERROR", msg)
+            while True:
+                time.sleep(3600)  # veille permanente — Fly.io ne redémarre pas (pas de crash), fly stop pour arrêter
+
         losses = get_consecutive_losses()
         if losses >= MAX_CONSECUTIVE_LOSSES:
             log.error(f"PAUSE : {losses} pertes d'affilée — bot en attente d'intervention manuelle")
             sb_log("ERROR", f"PAUSE : {losses} pertes d'affilée — intervention manuelle requise")
-            time.sleep(max(0.0, end_epoch - time.time()))
+            time.sleep(1800)  # vraie pause 30 min (avant : juste fin du cycle de 5 min = inefficace)
             return
 
+    current_hour_utc = time.gmtime().tm_hour
+    if current_hour_utc in BLACKOUT_HOURS_UTC:
+        log.info(f"Blackout UTC {current_hour_utc}h (ouverture EU/clôture US) — cycle ignoré")
+        time.sleep(WINDOW_SECONDS)
+        return
+
     traded = False
+    sl_token_id  = None   # token acheté — surveillé pour stop loss
+    sl_price     = None   # seuil de déclenchement du stop loss (prix bid)
+    sl_tokens    = None   # nombre de tokens à revendre
+    sl_triggered = False  # True dès que le stop loss a été exécuté
+
     while True:
         remaining = end_epoch - time.time()
         if remaining <= 0:
@@ -346,19 +402,47 @@ def run_cycle() -> None:
             time.sleep(min(POLL_INTERVAL, remaining - TRIGGER_MAX_REMAINING))
             continue
         if remaining < TRIGGER_MIN_REMAINING:
+            time.sleep(max(0, remaining) + 1)  # attend la fin de la fenêtre — évite la boucle rapide au prochain run_cycle()
             break
+
+        # ── Stop loss : surveille le prix bid toutes les 0.5s après un achat ──
+        if traded and sl_token_id and not sl_triggered:
+            try:
+                bid = best_bid_price_sl(sl_token_id)
+                if bid is not None and bid <= sl_price:
+                    msg = f"STOP LOSS déclenché : bid {bid:.3f} ≤ seuil {sl_price:.3f} (achat @ {bid/((1-STOP_LOSS_PCT) or 1):.2f})"
+                    log.warning(msg)
+                    sb_log("WARNING", msg)
+                    sell_result = place_sell(sl_token_id, sl_tokens)
+                    log.info(f"  Vente stop loss : {sell_result}")
+                    sl_triggered = True
+            except Exception as e:
+                log.warning(f"  Stop loss check erreur : {e}")
+            time.sleep(POLL_INTERVAL_SL)
+            continue
+
         if traded:
             time.sleep(POLL_INTERVAL)
             continue
 
-        tokens = fetch_market_tokens(slug)
+        try:
+            tokens = fetch_market_tokens(slug)
+        except Exception as e:
+            log.warning(f"fetch_market_tokens erreur ({e}) — retry dans {POLL_INTERVAL}s")
+            time.sleep(POLL_INTERVAL)
+            continue
         if not tokens:
             log.warning(f"Marché {slug} introuvable à {remaining:.0f}s restantes — skip")
             time.sleep(POLL_INTERVAL)
             continue
 
-        up_price   = best_ask_price(tokens["up_token_id"])
-        down_price = best_ask_price(tokens["down_token_id"])
+        try:
+            up_price   = best_ask_price(tokens["up_token_id"])
+            down_price = best_ask_price(tokens["down_token_id"])
+        except Exception as e:
+            log.warning(f"best_ask_price erreur ({e}) — skip itération")
+            time.sleep(POLL_INTERVAL)
+            continue
         log.info(f"  T-{remaining:.0f}s | Up={up_price} Down={down_price}")
 
         candidate = None
@@ -371,7 +455,13 @@ def run_cycle() -> None:
             outcome, token_id, price = candidate
 
             time.sleep(RECHECK_DELAY)
-            recheck_price = best_ask_price(token_id)
+            try:
+                recheck_price = best_ask_price(token_id)
+            except Exception as e:
+                log.warning(f"Erreur recheck ({e}) — annulation par précaution")
+                traded = True
+                time.sleep(POLL_INTERVAL)
+                continue
             if recheck_price is None or recheck_price < price - RECHECK_MAX_DROP or recheck_price > PRICE_CEILING:
                 log.warning(f"  Annulé {outcome} : prix re-vérifié à {recheck_price} (était {price:.2f}) — fausse alerte probable")
                 sb_log("WARNING", f"Annulé {outcome} @ {slug} : prix re-vérifié à {recheck_price} (était {price:.2f})")
@@ -393,6 +483,11 @@ def run_cycle() -> None:
                 if result.get("ok", True):
                     insert_trade(slug, end_epoch, tokens["condition_id"], outcome, price, bet)
                     sb_log("INFO", f"Trade enregistré : {outcome} @ {price:.2f} — {result.get('status','?')}")
+                    # Arme le stop loss
+                    sl_token_id = token_id
+                    sl_price    = round(price * (1 - STOP_LOSS_PCT), 4)
+                    sl_tokens   = round(bet / price, 6)
+                    log.info(f"  Stop loss armé : vente si bid ≤ {sl_price:.4f} ({sl_tokens:.4f} tokens)")
                 else:
                     log.error(f"  Ordre rejeté, trade NON enregistré : {result}")
                     sb_log("ERROR", f"Ordre rejeté {outcome} @ {slug} : {result}")
@@ -403,16 +498,28 @@ def run_cycle() -> None:
     log.info(f"Fin du cycle {slug}")
 
 
+_shutdown_requested = False
+
+def _sigterm_handler(signum, frame):
+    global _shutdown_requested
+    _shutdown_requested = True
+    log.warning("SIGTERM reçu — arrêt propre après le cycle en cours")
+    sb_log("WARNING", "SIGTERM reçu — arrêt propre en cours")
+
+signal.signal(signal.SIGTERM, _sigterm_handler)
+
+
 def main() -> None:
     log.info(f"ZeroToHeroBTC démarré — DRY_RUN={ZTH_DRY_RUN}")
     sb_log("INFO", f"ZeroToHeroBTC démarré — DRY_RUN={ZTH_DRY_RUN}")
-    while True:
+    while not _shutdown_requested:
         try:
             run_cycle()
         except Exception as e:
             log.error(f"Erreur cycle: {e}")
             sb_log("ERROR", f"Erreur cycle : {e}")
             time.sleep(5)
+    log.info("Arrêt propre — SIGTERM traité, fin du dernier cycle")
 
 
 if __name__ == "__main__":

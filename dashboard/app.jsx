@@ -147,7 +147,6 @@ function App() {
   const [nav, setNav] = useState({ page: 'dashboard', botId: null });
   const [sheet, setSheet] = useState(false);
   const [renaming, setRenaming] = useState(null);
-  const [meteoOpen, setMeteoOpen] = useState(false);
 
   // apply theme tokens
   useEffect(() => {
@@ -233,22 +232,15 @@ function App() {
   const active = bots.filter((b) => b.status === 'running').length;
   const portfolio = useMemo(() => window.computePortfolio(bots), [bots]);
   const actionBots  = bots.filter((b) => !b.type).sort((a, b) => (b.status === 'running') - (a.status === 'running'));
-  const dekoBot     = bots.find((b) => b.id === 'deko');
-  const luckBot     = bots.find((b) => b.id === 'luck');
   const zthResultsBot = bots.find((b) => b.id === 'zerotohero_results');
-  const meteoBots   = bots.filter((b) => b.type === 'temperature');
-  const meteoActive = meteoBots.filter((b) => b.status === 'running').length;
 
   let content;
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} transactions={liveActivity} />;
-  else if (nav.page === 'bot' && bot && bot.id === 'deko') content = <window.DekoPage onBack={() => go('dashboard')} />;
-  else if (nav.page === 'bot' && bot && bot.id === 'luck') content = <window.LuckPage onBack={() => go('dashboard')} />;
   else if (nav.page === 'bot' && bot && bot.id === 'zerotohero_results') content = <window.ZeroToHeroResultsPage onBack={() => go('dashboard')} />;
   else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} liveActivity={liveActivity} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
-  else if (nav.page === 'stratege') content = <window.StratègePage onBack={() => go('dashboard')} />;
   else if (nav.page === 'calendar') content = <window.CalendarPage onBack={() => go('dashboard')} />;
   else content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
 
@@ -335,43 +327,7 @@ function App() {
           <div style={{ padding: '14px 9px 6px', fontSize: 11.5, fontWeight: 700, color: 'var(--text-3)',
             textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 4 }}>🔍 Analyse</div>
 
-          {/* Deko */}
-          {dekoBot && (
-            <div className="bot-item" style={{ borderRadius: 'var(--r-md)',
-              background: nav.botId === 'deko' ? 'var(--fill)' : 'transparent' }}>
-              <button onClick={() => go('bot', 'deko')} className="tap"
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  border: 'none', cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
-                  borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
-                <window.BotGlyph bot={dekoBot} size={26} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: 'var(--text)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dekoBot.name}</span>
-                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
-                  background: dekoBot.status === 'running' ? 'var(--green)' : 'var(--text-3)',
-                  boxShadow: dekoBot.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
-              </button>
-            </div>
-          )}
-
-          {/* Luck */}
-          {luckBot && (
-            <div className="bot-item" style={{ borderRadius: 'var(--r-md)',
-              background: nav.botId === 'luck' ? 'var(--fill)' : 'transparent' }}>
-              <button onClick={() => go('bot', 'luck')} className="tap"
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  border: 'none', cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
-                  borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
-                <window.BotGlyph bot={luckBot} size={26} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: 'var(--text)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{luckBot.name}</span>
-                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
-                  background: luckBot.status === 'running' ? 'var(--green)' : 'var(--text-3)',
-                  boxShadow: luckBot.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
-              </button>
-            </div>
-          )}
-
-          {/* ZeroToHero — résultats DRY_RUN */}
+          {/* ZeroToHero — résultats */}
           {zthResultsBot && (
             <div className="bot-item" style={{ borderRadius: 'var(--r-md)',
               background: nav.botId === 'zerotohero_results' ? 'var(--fill)' : 'transparent' }}>
@@ -389,63 +345,6 @@ function App() {
             </div>
           )}
 
-          {/* Météo dépliable */}
-          {meteoBots.length > 0 && (
-            <>
-              <button onClick={() => setMeteoOpen((o) => !o)} className="tap" style={{
-                display: 'flex', alignItems: 'center', gap: 7, width: '100%', border: 'none',
-                cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
-                background: 'transparent', borderRadius: 'var(--r-md)' }}>
-                <span style={{ fontSize: 13.5 }}>🌡️</span>
-                <span style={{ fontSize: 13.5, fontWeight: 550, color: 'var(--text)', flex: 1 }}>Météo</span>
-                {meteoActive > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)',
-                    background: 'color-mix(in oklab, var(--green) 15%, transparent)',
-                    padding: '1px 6px', borderRadius: 999 }}>{meteoActive}</span>
-                )}
-                <window.Icon name={meteoOpen ? 'chevron-down' : 'chevron-right'} size={13} stroke={2.2}
-                  style={{ color: 'var(--text-3)', flexShrink: 0 }} />
-              </button>
-              {meteoOpen && (
-                <>
-                  <div className="bot-item" style={{ borderRadius: 'var(--r-md)', marginLeft: 8,
-                    background: nav.page === 'stratege' ? 'var(--fill)' : 'transparent' }}>
-                    <button onClick={() => go('stratege')} className="tap"
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                        border: 'none', cursor: 'pointer', textAlign: 'left', padding: '6px 9px',
-                        borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
-                      <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0,
-                        background: 'linear-gradient(135deg,#6366f1,#a855f7)',
-                        display: 'grid', placeItems: 'center', fontSize: 13 }}>🧠</span>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 550, color: 'var(--text)' }}>Mistral</span>
-                      <span style={{ fontSize: 10, color: '#a855f7', fontWeight: 700,
-                        background: 'color-mix(in oklab,#a855f7 12%,transparent)',
-                        padding: '1px 6px', borderRadius: 999 }}>IA</span>
-                    </button>
-                  </div>
-                  {meteoBots.map((b) => {
-                    const sel = nav.botId === b.id;
-                    return (
-                      <div key={b.id} className="bot-item"
-                        style={{ borderRadius: 'var(--r-md)', background: sel ? 'var(--fill)' : 'transparent', marginLeft: 8 }}>
-                        <button onClick={() => go('bot', b.id)} className="tap"
-                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                            border: 'none', cursor: 'pointer', textAlign: 'left', padding: '6px 9px',
-                            borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
-                          <window.BotGlyph bot={b} size={24} />
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 550, color: 'var(--text)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
-                          {b.flag && <span style={{ fontSize: 14, flexShrink: 0 }}>{b.flag}</span>}
-                          <span style={{ width: 6, height: 6, borderRadius: 999, flexShrink: 0,
-                            background: b.status === 'running' ? 'var(--green)' : 'var(--text-3)' }} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </>
-          )}
         </div>
         {/* Solde wallet Polygon */}
         <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 'var(--r-md)',

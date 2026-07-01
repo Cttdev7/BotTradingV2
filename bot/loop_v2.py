@@ -122,21 +122,6 @@ def save_strategy(strategy: dict):
     except Exception as e:
         log(f"⚠️  save_strategy : {e}")
 
-def load_deko_trades(hours: int = 4) -> set:
-    """Retourne les condition_id des marchés récemment achetés NO par sailor82."""
-    try:
-        since = (datetime.datetime.utcnow() - datetime.timedelta(hours=hours)).isoformat()
-        r = requests.get(
-            f"{SB_URL}/rest/v1/positions_tracker",
-            params={"trader": "eq.sailor82", "outcome": "eq.No", "detected_at": f"gte.{since}", "select": "condition_id"},
-            headers=_sb_headers(), timeout=5,
-        )
-        if r.status_code == 200:
-            return {t["condition_id"] for t in r.json() if t.get("condition_id")}
-    except Exception as e:
-        log(f"⚠️  load_deko : {e}")
-    return set()
-
 def load_history() -> list:
     try:
         r = requests.get(
@@ -463,11 +448,10 @@ def _detect_cascade(markets: list) -> dict:
 
 # ── Filtres pré-Claude ────────────────────────────────────────────────────────
 
-def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None) -> list:
+def _prefilter(markets: list, history: list, usdc: float) -> list:
     """
     Applique les filtres hard-codés AVANT de passer à Claude.
     Retourne uniquement les marchés qui méritent d'être analysés.
-    deko_cids : condition_ids récemment tradés par sailor82 (signal bonus).
     """
     open_cids    = {t.get("condition_id") for t in history if t.get("pnl") is None}
     # Compter les positions ouvertes par ville+date (max 2 par ville par jour)
@@ -480,7 +464,6 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
     # Portefeuille total = cash + positions ouvertes
     total_portfolio = usdc + total_exposed
     cascade_signals = _detect_cascade(markets)
-    deko_cids = deko_cids or set()
 
     kept = []
     for m in markets:
@@ -657,11 +640,6 @@ def _prefilter(markets: list, history: list, usdc: float, deko_cids: set = None)
         else:
             m["_gap"] = 0
 
-        # Signal Deko : sailor82 est aussi positionné NO sur ce marché
-        if cid in deko_cids:
-            m["_deko"] = True
-            log(f"  🔍 Signal Deko : sailor82 est NO sur {city} ({cid[:12]}…)")
-
         kept.append(m)
 
     return kept
@@ -752,13 +730,8 @@ def run_cycle():
     with ThreadPoolExecutor(max_workers=8) as pool:
         markets = list(pool.map(_enrich, markets))
 
-    # Trades récents de sailor82 (signal bonus)
-    deko_cids = load_deko_trades(hours=4)
-    if deko_cids:
-        log(f"🔍 {len(deko_cids)} trade(s) récent(s) de sailor82 chargés")
-
     # Pré-filtrage hard-codé
-    candidates = _prefilter(markets, history, usdc, deko_cids=deko_cids)
+    candidates = _prefilter(markets, history, usdc)
     log(f"📊 {len(candidates)}/{len(markets)} marchés passent les filtres")
 
     if not candidates:
@@ -798,13 +771,6 @@ def run_cycle():
         certainty = d.get("certainty", "low")
         mkt       = market_lookup.get(cid, {})
         city      = mkt.get("city", "")
-
-        # Boost certitude si sailor82 est aussi sur ce trade (avant le filtre high)
-        if mkt.get("_deko"):
-            old = certainty
-            certainty = {"low": "medium", "medium": "high"}.get(certainty, certainty)
-            if certainty != old:
-                log(f"  🔍 Deko boost : certitude {old} → {certainty} (sailor82 confirme)")
 
         # Pic METAR confirmé → on accepte medium aussi (max journalier connu = quasi-certitude)
         if mkt.get("_peak_confirmed_no") and certainty == "medium":

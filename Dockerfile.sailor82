@@ -6,7 +6,6 @@ COPY requirements-zth.txt .
 RUN pip install --no-cache-dir -r requirements-zth.txt && \
     pip install --no-cache-dir --pre "polymarket-client==0.1.0b11"
 
-COPY bot/zerotoherobtc.py .
-COPY bot/redeem_zth.py .
+COPY bot/copy_sailor82.py .
 
-CMD ["python", "zerotoherobtc.py"]
+CMD ["python", "copy_sailor82.py"]

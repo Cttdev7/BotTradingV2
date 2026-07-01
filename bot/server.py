@@ -8,7 +8,6 @@ Lance avec : python3 bot/server.py
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pm_api as polymarket
-import mistral
 import config
 import json
 import os
@@ -19,6 +18,8 @@ CORS(app, origins=["http://localhost:8080", "http://127.0.0.1:8080"])
 
 STRATEGY_FILE   = os.path.join(os.path.dirname(__file__), "strategy.json")
 PERF_RESET_DATE = "2026-06-17T15:34:00"  # stats V2 remises à 0 à cette heure
+SUPABASE_URL    = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY    = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -219,119 +220,6 @@ def save_bot_strategy(bot_id):
         return _ok({"ok": True})
     except Exception as e:
         return _err(e)
-
-# ── Analyse Mistral ───────────────────────────────────────────────────────────
-
-ANALYSES_FILE = os.path.join(os.path.dirname(__file__), "analyses.json")
-
-def _load_analyses() -> list:
-    if os.path.exists(ANALYSES_FILE):
-        with open(ANALYSES_FILE) as f:
-            return json.load(f)
-    return []
-
-def _save_analysis(result: dict):
-    analyses = _load_analyses()
-    analyses.insert(0, {"time": datetime.datetime.now().isoformat(), **result})
-    with open(ANALYSES_FILE, "w") as f:
-        json.dump(analyses[:20], f, indent=2, ensure_ascii=False)  # garde les 20 dernières
-
-@app.route("/api/analyse", methods=["POST"])
-def analyse():
-    try:
-        data         = request.get_json() or {}
-        category     = data.get("category", "tout")
-        min_volume   = float(data.get("min_volume", 5000))
-        instructions = data.get("instructions", "").strip()
-        markets      = polymarket.get_active_markets(limit=100)
-        result       = mistral.analyse(markets, category, min_volume, instructions)
-        _save_analysis(result)
-        return _ok(result)
-    except Exception as e:
-        return _err(e)
-
-@app.route("/api/analyse/history", methods=["GET"])
-def analyse_history():
-    return _ok(_load_analyses())
-
-# ── Agent Météo (Supabase + fallback JSON local) ──────────────────────────────
-
-SUPABASE_URL     = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY     = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
-METEO_RAPPORTS   = os.path.join(os.path.dirname(__file__), "meteo_rapports.json")
-METEO_TRACKING   = os.path.join(os.path.dirname(__file__), "meteo_tracking.json")
-METEO_RESUMES    = os.path.join(os.path.dirname(__file__), "meteo_resumes.json")
-
-def _supabase_get(table, order="created_at", limit=1):
-    try:
-        import urllib.request
-        url = f"{SUPABASE_URL}/rest/v1/{table}?order={order}.desc&limit={limit}"
-        req = urllib.request.Request(url, headers={
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-        })
-        with urllib.request.urlopen(req, timeout=5) as r:
-            return json.loads(r.read())
-    except Exception:
-        return None
-
-@app.route("/api/meteo/rapport")
-def meteo_rapport():
-    data = _supabase_get("meteo_rapports", limit=1)
-    if data:
-        return _ok(data[0] if data else {})
-    if os.path.exists(METEO_RAPPORTS):
-        with open(METEO_RAPPORTS) as f:
-            rapports = json.load(f)
-        return _ok(rapports[0] if rapports else {})
-    return _ok({})
-
-@app.route("/api/meteo/rapports")
-def meteo_rapports_history():
-    data = _supabase_get("meteo_rapports", order="created_at", limit=48)
-    if data:
-        return _ok(data)
-    if os.path.exists(METEO_RAPPORTS):
-        with open(METEO_RAPPORTS) as f:
-            return _ok(json.load(f))
-    return _ok([])
-
-@app.route("/api/meteo/tracking")
-def meteo_tracking():
-    data = _supabase_get("meteo_tracking", order="created_at", limit=100)
-    if data:
-        return _ok(data)
-    if os.path.exists(METEO_TRACKING):
-        with open(METEO_TRACKING) as f:
-            return _ok(json.load(f))
-    return _ok([])
-
-@app.route("/api/meteo/resumes")
-def meteo_resumes():
-    data = _supabase_get("meteo_resumes", order="created_at", limit=90)
-    if data:
-        return _ok(data)
-    if os.path.exists(METEO_RESUMES):
-        with open(METEO_RESUMES) as f:
-            return _ok(json.load(f))
-    return _ok([])
-
-# ── Agent Crypto ──────────────────────────────────────────────────────────────
-
-@app.route("/api/crypto/rapport")
-def crypto_rapport():
-    data = _supabase_get("crypto_rapports", limit=1)
-    return _ok(data[0] if data else {})
-
-@app.route("/api/crypto/rapports")
-def crypto_rapports_history():
-    data = _supabase_get("crypto_rapports", order="created_at", limit=48)
-    return _ok(data if data is not None else [])
-
-@app.route("/api/crypto/tracking")
-def crypto_tracking():
-    data = _supabase_get("crypto_tracking", order="created_at", limit=100)
-    return _ok(data if data is not None else [])
 
 # ── ProfitWeather V2 ──────────────────────────────────────────────────────────
 

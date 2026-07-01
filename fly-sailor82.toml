@@ -1,7 +1,8 @@
-app = "zth-bot"
+app = "sailor82-copy"
 primary_region = "yyz"
 
 [build]
+  dockerfile = "Dockerfile.sailor82"
 
 [[vm]]
   memory = "256mb"
