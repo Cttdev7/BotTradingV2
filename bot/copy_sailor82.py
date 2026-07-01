@@ -1,8 +1,10 @@
 """
 copy_sailor82.py — Copy-trade sailor82 sur marchés température Polymarket.
 
-Cycle toutes les 2.5 min :
-  1. Détecte les nouvelles positions température de sailor82
+Au démarrage : fige une baseline des positions déjà ouvertes de sailor82 (ignorées, jamais copiées).
+
+Cycle toutes les 30s :
+  1. Détecte les nouvelles positions température de sailor82 (absentes de la baseline/déjà vues)
   2. Récupère la météo Open-Meteo pour la ville/date
   3. Claude Haiku analyse pourquoi sailor82 prend ce trade + note de confiance 1-5
   4. Si dérive prix < 5¢ et confiance >= 2 → réplique l'ordre (10% de sa mise, min $5, max $20)
@@ -27,31 +29,27 @@ load_dotenv(".env")
 # ── Config ────────────────────────────────────────────────────────────────────
 
 SAILOR82_ADDRESS = "0xbbb72a812cfbc5217d77c0a0018c71f174d3a11a"
-POLL_INTERVAL    = 150       # 2.5 min entre les cycles
-RATIO            = 0.10      # 10% de la mise de sailor82 (base, modulée par tier ci-dessous)
-MIN_BET          = 5.0       # $5 minimum
+POLL_INTERVAL    = 30        # 30s entre les cycles
+TRADE_SIZE       = 5.0       # $5 fixe par trade copié, quelle que soit la mise de sailor82
 MIN_CONFIDENCE   = 2         # confiance Haiku minimum pour copier (1-5)
+STOP_LOSS_PCT    = 0.40      # -40% depuis notre prix d'entrée → on revend
 TIMEOUT          = 12
 
-# Tiers par prix d'entrée de sailor82 — analyse du 01/07/2026 sur 264 marchés résolus (activity API) :
-#   0-50¢   : 77.6% win  mais +125% ROI  → son vrai edge (effet de levier), on en veut plus
-#   50-85¢  : 92-100% win, +27-51% ROI   → standard
-#   85-95¢  : 95.9% win  mais +1.8% ROI  → marge quasi nulle malgré le + gros capital engagé, on limite
-#   95-100% : 100% win   mais +4.5% ROI  → quasi-certain, faible marge, exposition modérée
-# (low, high, max_price_drift, ratio_multiplier, max_bet)
-PRICE_TIERS = [
-    (0.00, 0.50, 0.08, 1.5, 30.0),
-    (0.50, 0.85, 0.05, 1.0, 20.0),
-    (0.85, 0.95, 0.03, 0.4, 20.0),
-    (0.95, 1.01, 0.03, 0.6, 20.0),
+# Dérive de prix max tolérée avant de copier, selon le prix d'entrée de sailor82 —
+# analyse du 01/07/2026 sur 264 marchés résolus (activity API) : plus le prix est bas,
+# plus il bouge vite, donc on tolère une dérive plus large avant de considérer l'entrée ratée.
+PRICE_DRIFT_TIERS = [
+    (0.00, 0.50, 0.08),
+    (0.50, 0.85, 0.05),
+    (0.85, 0.95, 0.03),
+    (0.95, 1.01, 0.03),
 ]
 
-def get_price_tier(price: float) -> tuple[float, float, float]:
-    """Retourne (max_drift, ratio_multiplier, max_bet) pour un prix d'entrée donné."""
-    for lo, hi, drift, mult, max_bet in PRICE_TIERS:
+def get_max_drift(price: float) -> float:
+    for lo, hi, drift in PRICE_DRIFT_TIERS:
         if lo <= price < hi:
-            return drift, mult, max_bet
-    return 0.05, 1.0, 20.0
+            return drift
+    return 0.05
 
 DATA_API   = "https://data-api.polymarket.com"
 CLOB_API   = "https://clob.polymarket.com"
@@ -157,6 +155,13 @@ def sb_insert(table: str, data: dict):
                       json=data, timeout=TIMEOUT)
     except Exception as e:
         log(f"⚠️ Supabase INSERT {table}: {e}")
+
+def sb_update(table: str, condition_id: str, data: dict):
+    try:
+        requests.patch(f"{SB_URL}/rest/v1/{table}", headers=_sb_headers(),
+                       params={"condition_id": f"eq.{condition_id}"}, json=data, timeout=TIMEOUT)
+    except Exception as e:
+        log(f"⚠️ Supabase UPDATE {table}: {e}")
 
 # ── Parsing marché ────────────────────────────────────────────────────────────
 
@@ -337,6 +342,17 @@ def get_best_ask(token_id: str) -> float | None:
         log(f"⚠️ get_best_ask: {e}")
     return None
 
+def get_best_bid(token_id: str) -> float | None:
+    try:
+        r = requests.get(f"{CLOB_API}/book", params={"token_id": token_id}, timeout=TIMEOUT)
+        if r.status_code == 200:
+            bids = r.json().get("bids", [])
+            if bids:
+                return float(bids[-1]["price"])  # meilleur bid = dernier de la liste triée croissant
+    except Exception as e:
+        log(f"⚠️ get_best_bid: {e}")
+    return None
+
 def already_copied(condition_id: str) -> bool:
     rows = sb_get("copy_sailor82_trades", {
         "condition_id": f"eq.{condition_id}",
@@ -344,6 +360,9 @@ def already_copied(condition_id: str) -> bool:
         "limit": "1",
     })
     return bool(rows)
+
+def get_open_positions() -> list:
+    return sb_get("copy_sailor82_trades", {"status": "eq.open", "select": "*"})
 
 # ── Ordre ─────────────────────────────────────────────────────────────────────
 
@@ -362,6 +381,15 @@ def _get_client():
         )
     return _client
 
+def get_token_balance(token_id: str) -> float:
+    try:
+        client = _get_client()
+        bal = client.get_balance_allowance(asset_type="CONDITIONAL", token_id=token_id)
+        return float(bal.balance) / 1_000_000
+    except Exception as e:
+        log(f"⚠️ get_token_balance: {e}")
+        return 0.0
+
 def place_order(token_id: str, outcome: str, price: float, bet_usdc: float) -> bool:
     if DRY_RUN:
         log(f"🔵 [DRY] BUY {outcome} — ${bet_usdc:.2f} @ {price:.2f}")
@@ -376,6 +404,44 @@ def place_order(token_id: str, outcome: str, price: float, bet_usdc: float) -> b
         log(f"⚠️ place_order: {e}")
         return False
 
+def sell_position(token_id: str, outcome: str, shares: float) -> bool:
+    if DRY_RUN:
+        log(f"🔵 [DRY] SELL {outcome} — {shares:.2f} tokens")
+        return True
+    try:
+        client = _get_client()
+        resp = client.place_market_order(token_id=token_id, side="SELL", shares=shares)
+        ok = getattr(resp, "ok", False)
+        log(f"{'✅' if ok else '❌'} SELL {outcome} {shares:.2f} tokens | {getattr(resp, 'status', '?')}")
+        return bool(ok)
+    except Exception as e:
+        log(f"⚠️ sell_position: {e}")
+        return False
+
+# ── Baseline (ignore les positions déjà ouvertes au démarrage) ────────────────
+
+def establish_baseline():
+    """
+    Fige les positions température déjà ouvertes par sailor82 au démarrage du bot,
+    sans les analyser ni les copier — on ne veut copier que ses futurs trades, pas
+    reproduire rétroactivement des positions qu'il a peut-être déjà à moitié résolues.
+    """
+    positions = fetch_sailor82_positions()
+    n = 0
+    for pos in positions:
+        title = pos.get("title", "")
+        cid   = pos.get("conditionId", "")
+        if not is_temperature_market(title) or not cid:
+            continue
+        if already_copied(cid):
+            continue
+        _save(cid, title, pos.get("outcome", ""), None,
+              float(pos.get("avgPrice") or 0), None,
+              float(pos.get("initialValue") or 0), 0.0,
+              "skipped_baseline", None, "Position déjà ouverte au démarrage du bot — ignorée", 0)
+        n += 1
+    log(f"📌 Baseline sailor82 : {n} position(s) déjà ouverte(s) mise(s) de côté (jamais copiées)")
+
 # ── Cycle ─────────────────────────────────────────────────────────────────────
 
 def run_cycle():
@@ -383,6 +449,11 @@ def run_cycle():
     if not positions:
         log("Aucune position sailor82 récupérée")
         return
+
+    sailor_open_cids = {
+        p.get("conditionId") for p in positions
+        if is_temperature_market(p.get("title", "")) and p.get("conditionId")
+    }
 
     for pos in positions:
         if _shutdown:
@@ -428,7 +499,7 @@ def run_cycle():
                   "no_price", forecast, analysis, confidence)
             continue
 
-        max_drift, ratio_mult, max_bet = get_price_tier(s_price)
+        max_drift = get_max_drift(s_price)
         drift = abs(current_price - s_price)
 
         if drift > max_drift:
@@ -443,12 +514,66 @@ def run_cycle():
                   "skipped_confidence", forecast, analysis, confidence)
             continue
 
-        bet = round(min(max(s_amount * RATIO * ratio_mult, MIN_BET), max_bet), 2)
-        log(f"   💰 Copie → ${bet:.2f} (sailor ${s_amount:.0f} × {RATIO*100:.0f}% × mult={ratio_mult})")
+        log(f"   💰 Copie → ${TRADE_SIZE:.2f} (mise fixe)")
 
-        ok = place_order(token_id, outcome, current_price, bet)
-        _save(cid, title, outcome, token_id, s_price, current_price, s_amount, bet,
-              "placed" if ok else "failed", forecast, analysis, confidence)
+        ok = place_order(token_id, outcome, current_price, TRADE_SIZE)
+        _save(cid, title, outcome, token_id, s_price, current_price, s_amount, TRADE_SIZE,
+              "open" if ok else "failed", forecast, analysis, confidence)
+
+    monitor_open_positions(sailor_open_cids)
+
+# ── Surveillance des positions ouvertes — stop-loss 40% + suivi des sorties de sailor82 ──
+
+def monitor_open_positions(sailor_open_cids: set):
+    """
+    On copie tout ce que fait sailor82, y compris ses ventes : si une position qu'on a
+    copiée n'apparaît plus dans ses positions actuelles, il l'a fermée → on suit et on
+    revend aussi. Indépendamment de ça, un stop-loss maison à -40% protège contre une
+    chute de prix pendant qu'on attend la prochaine synchro avec lui.
+    """
+    positions = get_open_positions()
+    for pos in positions:
+        if _shutdown:
+            return
+
+        cid        = pos.get("condition_id")
+        token_id   = pos.get("token_id")
+        outcome    = pos.get("outcome", "")
+        entry_price = float(pos.get("our_price") or 0)
+        bet_usdc   = float(pos.get("our_bet") or 0)
+        title      = pos.get("title", "")
+
+        if not token_id or entry_price <= 0:
+            continue
+
+        bid = get_best_bid(token_id)
+
+        if bid is not None and bid <= entry_price * (1 - STOP_LOSS_PCT):
+            log(f"🔻 Stop-loss {title[:50]} : {entry_price:.2f}→{bid:.2f} (-{STOP_LOSS_PCT*100:.0f}%)")
+            _close_position(cid, token_id, outcome, "stop_loss", bid, bet_usdc, entry_price)
+            continue
+
+        if cid not in sailor_open_cids:
+            log(f"🚪 sailor82 a fermé sa position — {title[:50]} : on suit et on revend")
+            exit_price = bid if bid is not None else 0.0
+            _close_position(cid, token_id, outcome, "sailor_exit", exit_price, bet_usdc, entry_price)
+            continue
+
+def _close_position(cid: str, token_id: str, outcome: str, reason: str,
+                     exit_price: float, bet_usdc: float, entry_price: float):
+    shares = bet_usdc / entry_price if entry_price > 0 else 0.0
+    if not DRY_RUN:
+        real_shares = get_token_balance(token_id)
+        if real_shares > 0:
+            shares = real_shares
+    ok = sell_position(token_id, outcome, shares)
+    proceeds = shares * exit_price
+    pnl = proceeds - bet_usdc
+    sb_update("copy_sailor82_trades", cid, {
+        "status": "closed_sell_failed" if not ok else ("closed_stop_loss" if reason == "stop_loss" else "closed_sailor_exit"),
+        "exit_reason": reason, "exit_price": exit_price, "pnl": round(pnl, 2),
+        "closed_at": datetime.datetime.now(UTC).isoformat(),
+    })
 
 def _save(cid, title, outcome, token_id, s_price, our_price, s_amount, our_bet,
           status, forecast, analysis, confidence):
@@ -473,8 +598,10 @@ def _save(cid, title, outcome, token_id, s_price, our_price, s_amount, our_bet,
 
 def main():
     log("🚀 Copy-trade sailor82 démarré")
-    log(f"   DRY_RUN={DRY_RUN} | RATIO_BASE={RATIO*100:.0f}% | MIN=${MIN_BET} | MIN_CONF={MIN_CONFIDENCE}/5")
-    log(f"   POLL={POLL_INTERVAL}s | TIERS (prix→drift/mult/max_bet): {PRICE_TIERS}")
+    log(f"   DRY_RUN={DRY_RUN} | TRADE_SIZE=${TRADE_SIZE} | STOP_LOSS={STOP_LOSS_PCT*100:.0f}% | MIN_CONF={MIN_CONFIDENCE}/5")
+    log(f"   POLL={POLL_INTERVAL}s | DRIFT_TIERS (prix→drift max): {PRICE_DRIFT_TIERS}")
+
+    establish_baseline()
 
     while not _shutdown:
         try:
