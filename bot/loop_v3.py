@@ -10,6 +10,14 @@ Stratégie (opposée à loop_v2.py qui achète NO tard et cher) :
      `resolutionSource` du marché) — vend immédiatement si la fourchette est compromise,
      ou si le prix a chuté de 30% depuis l'achat
 
+Deux boucles séparées : détection de nouveaux marchés toutes les 90s (thread principal),
+surveillance des positions ouvertes toutes les 1s (thread dédié) — une position achetée
+est trackée en continu jusqu'à sa clôture, indépendamment du cycle de scan.
+
+Chaque prévision faite à la détection (achetée ou non) est aussi loggée dans
+profitweather_v3_forecast_log et réconciliée avec le résultat réel une fois le marché
+résolu — ça construit une vraie mesure de fiabilité de la prévision à 2 jours dans le temps.
+
 Objectif : ~60% de réussite mais gains asymétriques (petites pertes, gros gains,
 symétrique à l'inverse de sailor82/V2 qui jouent la sécurité à prix élevé).
 
@@ -116,13 +124,15 @@ def sb_insert(table: str, data: dict):
     except Exception as e:
         log(f"⚠️ Supabase INSERT {table}: {e}")
 
-def sb_upsert(table: str, data: dict):
-    """Insert ou met à jour si condition_id existe déjà (ex: prix rechecké plusieurs cycles de suite)."""
+def sb_upsert(table: str, data: dict, conflict_col: str = "condition_id"):
+    """Insert ou met à jour si la clé unique existe déjà (ex: prix rechecké plusieurs cycles de suite)."""
     try:
         headers = _sb_headers()
         headers["Prefer"] = "resolution=merge-duplicates,return=minimal"
-        requests.post(f"{SB_URL}/rest/v1/{table}?on_conflict=condition_id",
-                      headers=headers, json=data, timeout=TIMEOUT)
+        r = requests.post(f"{SB_URL}/rest/v1/{table}?on_conflict={conflict_col}",
+                           headers=headers, json=data, timeout=TIMEOUT)
+        if r.status_code >= 400:
+            log(f"⚠️ Supabase UPSERT {table} HTTP {r.status_code}: {r.text[:200]}")
     except Exception as e:
         log(f"⚠️ Supabase UPSERT {table}: {e}")
 
@@ -153,6 +163,62 @@ def get_open_positions() -> list:
 def get_v3_open_exposure() -> float:
     rows = get_open_positions()
     return sum(float(r.get("bet_usdc") or 0) for r in rows)
+
+# ── Suivi de précision météo (prévision loggée à J+2, vérifiée contre le résultat réel) ──
+
+def log_forecast(city: str, target_date: datetime.date, station: str, forecast: float,
+                  low: float, high: float, condition_id: str):
+    """Enregistre CHAQUE prévision faite à la détection (achetée ou non) pour mesurer
+    dans le temps si la prévision à 2 jours colle au résultat réel sur Polymarket."""
+    sb_upsert("profitweather_v3_forecast_log", {
+        "city": city, "target_date": target_date.isoformat(), "station_source": station,
+        "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
+        "matched_low": low, "matched_high": high, "matched_condition_id": condition_id,
+    }, conflict_col="city,target_date")
+
+def check_forecast_accuracy():
+    """Reconcilie les prévisions loggées dont la date cible est passée avec le résultat
+    réel du marché (fourchette gagnante), pour construire une vraie stat de fiabilité."""
+    today = datetime.datetime.now(UTC).date()
+    pending = sb_get("profitweather_v3_forecast_log", {
+        "resolved": "eq.false", "target_date": f"lte.{today.isoformat()}", "select": "*",
+    })
+    if not pending:
+        return
+
+    import json as _json
+    for row in pending:
+        city = row["city"]
+        target_date = datetime.date.fromisoformat(row["target_date"])
+        event = fetch_city_day_event(city, target_date)
+        if not event or not event.get("closed"):
+            continue  # pas encore résolu, on retente au prochain check
+
+        winning_low, winning_high = None, None
+        for m in event.get("markets", []):
+            raw_prices = m.get("outcomePrices", [])
+            prices = _json.loads(raw_prices) if isinstance(raw_prices, str) else raw_prices
+            if not prices or float(prices[0]) < 0.5:
+                continue
+            rng = parse_range(m.get("question", ""))
+            if rng:
+                winning_low, winning_high = rng[0], rng[1]
+                break
+
+        if winning_low is None:
+            continue
+
+        hit = winning_low == row.get("matched_low") and winning_high == row.get("matched_high")
+        try:
+            requests.patch(f"{SB_URL}/rest/v1/profitweather_v3_forecast_log", headers=_sb_headers(),
+                           params={"city": f"eq.{city}", "target_date": f"eq.{row['target_date']}"},
+                           json={"resolved": True, "actual_hit": hit,
+                                 "checked_at": datetime.datetime.now(UTC).isoformat()},
+                           timeout=TIMEOUT)
+        except Exception as e:
+            log(f"⚠️ check_forecast_accuracy update: {e}")
+        log(f"🎯 Vérif prévision {city} {target_date} : prévu {row.get('forecast_temp')} → "
+            f"{'✅ correct' if hit else '❌ raté'} (gagnant {winning_low}-{winning_high})")
 
 # ── Solde on-chain ────────────────────────────────────────────────────────────
 
@@ -240,11 +306,19 @@ def extract_station_code(resolution_source: str) -> str | None:
     code = resolution_source.rstrip("/").split("/")[-1]
     return code if code else None
 
+_METAR_CACHE: dict = {}
+_METAR_CACHE_TTL = 60  # les stations METAR ne se mettent à jour que toutes les 20-60 min —
+                        # inutile de rappeler l'API à chaque check de position (jusqu'à 1x/s)
+
 def fetch_metar_observations(station: str, hours: int = 10) -> dict | None:
     """
     Relevés METAR réels des dernières `hours` heures pour la station donnée (code ICAO).
     Retourne current_c, max_observed_c, trend, peak_passed (temp en baisse de >2°C depuis le max).
+    Caché 60s — la surveillance de position tourne jusqu'à 1x/s, la station elle bien plus lentement.
     """
+    cached = _METAR_CACHE.get(station)
+    if cached and time.time() - cached[0] < _METAR_CACHE_TTL:
+        return cached[1]
     try:
         r = requests.get(METAR_API, params={"ids": station, "format": "json", "hours": hours}, timeout=TIMEOUT)
         if r.status_code != 200 or not r.json():
@@ -261,7 +335,9 @@ def fetch_metar_observations(station: str, hours: int = 10) -> dict | None:
         delta = current_c - temps_c[0] if len(temps_c) > 1 else 0
         trend = "rising" if delta > 0.5 else ("falling" if delta < -0.5 else "stable")
         peak_passed = (max_obs_c - current_c) >= 2.0
-        return {"current_c": current_c, "max_observed_c": max_obs_c, "trend": trend, "peak_passed": peak_passed}
+        result = {"current_c": current_c, "max_observed_c": max_obs_c, "trend": trend, "peak_passed": peak_passed}
+        _METAR_CACHE[station] = (time.time(), result)
+        return result
     except Exception as e:
         log(f"⚠️ fetch_metar_observations {station}: {e}")
         return None
@@ -470,11 +546,13 @@ def _gather_candidate(city: str, tz_name: str, delta: int) -> dict | None:
     if not match_cid:
         return {"slug": slug, "seen": True}
 
+    low, high, _ = bounds_by_cid[match_cid]
+    log_forecast(city, target_date, station, forecast, low, high, match_cid)
+
     if already_seen(match_cid):
         return {"slug": slug, "seen": True}
 
     title = match_market.get("question", "")
-    low, high, _ = bounds_by_cid[match_cid]
 
     token_id = get_token_id(match_cid, "Yes")
     if not token_id:
@@ -645,27 +723,44 @@ def _close_position(pos: dict, reason: str, exit_price: float, token_id: str, be
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run_cycle():
-    scan_for_new_markets()
-    monitor_open_positions()
+MONITOR_INTERVAL = 1  # une position ouverte est surveillée chaque seconde jusqu'à la clôture
+
+def _monitor_loop():
+    """Boucle dédiée aux positions ouvertes — tourne en continu à 1s, indépendamment
+    du scan de détection (90s), pour réagir vite à un stop-loss ou une divergence météo."""
+    while not _shutdown:
+        try:
+            monitor_open_positions()
+        except Exception as e:
+            log(f"⚠️ Erreur monitor: {e}")
+        for _ in range(MONITOR_INTERVAL):
+            if _shutdown:
+                break
+            time.sleep(1)
 
 def main():
     log("🚀 ProfitWeather V3 démarré")
     log(f"   DRY_RUN={DRY_RUN} | MAX_ENTRY_PRICE={MAX_ENTRY_PRICE:.2f} | MAX_TRADE_PCT={MAX_TRADE_PCT*100:.0f}% de l'alloc V3")
     log(f"   V3_EXPOSURE_CAP={V3_EXPOSURE_CAP*100:.0f}% | STOP_LOSS={STOP_LOSS_PCT*100:.0f}% | MIN_CONF={MIN_CONFIDENCE}/5")
-    log(f"   SCAN_INTERVAL={SCAN_INTERVAL}s | {len(WEATHER_VILLES)} villes surveillées")
+    log(f"   SCAN_INTERVAL={SCAN_INTERVAL}s | MONITOR_INTERVAL={MONITOR_INTERVAL}s | {len(WEATHER_VILLES)} villes surveillées")
+
+    import threading
+    monitor_thread = threading.Thread(target=_monitor_loop, daemon=True, name="monitor")
+    monitor_thread.start()
 
     while not _shutdown:
         try:
-            run_cycle()
+            scan_for_new_markets()
+            check_forecast_accuracy()
         except Exception as e:
-            log(f"⚠️ Erreur cycle: {e}")
+            log(f"⚠️ Erreur cycle scan: {e}")
 
         for _ in range(SCAN_INTERVAL):
             if _shutdown:
                 break
             time.sleep(1)
 
+    monitor_thread.join(timeout=5)
     log("👋 Bot arrêté proprement")
 
 if __name__ == "__main__":
