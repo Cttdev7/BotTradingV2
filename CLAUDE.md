@@ -137,13 +137,15 @@ Doc complète en langage simple : `STRATEGIE_PROFITWEATHER_V3.md`
 - **Source de résolution (surveillance)** : station officielle extraite du champ `resolutionSource` de chaque event Gamma API (ex: `.../history/daily/us/ny/new-york-city/KLGA` → station `KLGA`) — auto-détection générique, pas de liste figée
 - **Détection** : scan toutes les 90s, 45 villes × **J+2 uniquement** (`NEW_MARKET_DAY_OFFSET=2`) — vérifié empiriquement le 01/07/2026 : Polymarket crée les marchés température ~2 jours avant l'échéance (~4h-5h UTC), donc J+0/J+1 ont déjà 1-2 jours de trading, trop tard pour la fenêtre de prix bas
 - **Max 2 nouveaux achats par cycle** (`MAX_TRADES_PER_CYCLE=2`) — évite qu'une rafale d'opportunités simultanées engage tout le plafond de 50% d'un coup
+- **Deux boucles séparées** : détection toutes les 90s (thread principal) + surveillance des positions ouvertes **toutes les 1s** (thread dédié, `MONITOR_INTERVAL=1`) — une position achetée est trackée en continu jusqu'à sa clôture, indépendamment du cycle de scan
 - **Sortie anticipée** :
-  - Stop-loss prix : -30% depuis l'achat
-  - Divergence météo : le relevé METAR officiel dépasse la borne haute de la fourchette, ou le pic du jour est passé (temp en baisse depuis le max, après 18h locale) sans avoir atteint la borne basse
+  - Stop-loss prix : -30% depuis l'achat (vérifié chaque seconde)
+  - Divergence météo : le relevé METAR officiel dépasse la borne haute de la fourchette, ou le pic du jour est passé (temp en baisse depuis le max, après 18h locale) sans avoir atteint la borne basse (cache 60s sur l'appel METAR — une station ne se met à jour que toutes les 20-60 min, inutile de la rappeler chaque seconde)
 - **Compte Polymarket** : même que ProfitWeather V2 — partage le solde, plafond **50% chacun** (`MAX_EXPOSURE_PCT=0.5` dans les deux bots)
 - **Mise par trade** : max 10% du capital alloué au V3 (= 5% du solde total)
+- **Suivi de précision météo** : table `profitweather_v3_forecast_log` — chaque prévision faite à la détection (achetée ou non) est loggée puis réconciliée avec le résultat réel une fois le marché résolu (`check_forecast_accuracy()`, appelé chaque cycle de scan). Corrige la limite du premier backtest (`backtest_weather_sources.py`) qui ne pouvait pas vraiment mesurer la fiabilité à horizon J+2 (Open-Meteo ne conserve pas ses prévisions passées, donc impossible de tester rétroactivement — il faut le mesurer en avançant dans le temps)
 - **Persistance** : table Supabase `profitweather_v3_trades` (upsert sur `condition_id` — un marché "prix trop haut" reste rechecké aux cycles suivants, contrairement aux statuts terminaux comme `open`/`skipped_confidence`)
-- **Statut** : DRY_RUN depuis le 01/07/2026, actuellement **à l'arrêt** (machine Fly.io stoppée) en attendant le feu vert pour relancer
+- **Statut** : DRY_RUN depuis le 01/07/2026, actuellement **à l'arrêt** (machine Fly.io stoppée) en attendant le feu vert pour relancer. 32 prévisions déjà loggées dans `profitweather_v3_forecast_log` (target_date 2026-07-03) — à vérifier automatiquement une fois ces marchés résolus
 
 ### Déploiement Fly.io — profitweather-v3
 - **App** : `profitweather-v3` → fly.io/apps/profitweather-v3 | région `yyz` (Toronto)

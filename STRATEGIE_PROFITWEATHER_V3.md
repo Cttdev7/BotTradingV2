@@ -48,9 +48,22 @@ L'IA regarde le dossier (prévision, fourchette, prix) et donne une note de conf
 - **Maximum 2 nouveaux achats par cycle** — même si beaucoup d'opportunités apparaissent en même temps, le bot ne engage jamais plus de 2 positions d'un coup (déploiement progressif, pas de rafale qui viderait le plafond en un cycle)
 
 ### Étape 6 — Surveillance après achat (deux façons de sortir avant l'échéance)
+Dès qu'une position est achetée, elle est surveillée **chaque seconde** jusqu'à la clôture (thread séparé du scan de détection, qui lui continue tranquillement toutes les 90s) :
 - **Stop-loss prix** : si le prix de revente chute de **30%** par rapport à l'achat → vente immédiate.
-- **Divergence météo** : le bot surveille la vraie station officielle (pas un modèle) en continu. Si le relevé du jour montre que la température a déjà dépassé la fourchette achetée, ou que le pic du jour est clairement passé (après 18h heure locale) sans avoir atteint la fourchette → vente immédiate, plutôt que d'attendre une perte totale à la clôture.
+- **Divergence météo** : le bot surveille la vraie station officielle (pas un modèle) en continu (relevé mis en cache 60s — une station météo ne se met à jour que toutes les 20-60 min, inutile de la rappeler chaque seconde). Si le relevé du jour montre que la température a déjà dépassé la fourchette achetée, ou que le pic du jour est clairement passé (après 18h heure locale) sans avoir atteint la fourchette → vente immédiate, plutôt que d'attendre une perte totale à la clôture.
 - Sinon : la position reste jusqu'à la résolution naturelle.
+
+---
+
+## Est-ce que la prévision à 2 jours est vraiment fiable ?
+
+Question légitime : rien ne garantit qu'une prévision faite 2 jours à l'avance corresponde exactement à ce qui sera mesuré par la station officielle le jour J.
+
+**Le premier backtest ne répond pas vraiment à cette question.** En interrogeant Open-Meteo pour une date passée, l'API redonne sa meilleure estimation calculée **aujourd'hui** (proche de la réalité), pas ce qu'elle aurait dit 2 jours avant l'échéance — ça triche. Il n'existe pas d'API gratuite qui garde en mémoire "ce qui était prévu il y a 2 jours".
+
+**Solution : un suivi permanent dans le bot.** Chaque prévision faite à la détection (achetée ou non) est enregistrée dans la table Supabase `profitweather_v3_forecast_log`. Une fois le marché résolu, le bot compare automatiquement la fourchette prévue à la fourchette gagnante réelle (`check_forecast_accuracy()`, lancé à chaque cycle de scan). Ça construit une vraie statistique de fiabilité dans le temps, sans tricher.
+
+Premier lot : 32 prévisions loggées le 01/07/2026 pour des marchés du 3 juillet (ex: Paris → 28,1°C prévu, fourchette visée 28-29°C, station LFPB). Résultat vérifiable automatiquement une fois ces marchés résolus (vers le 3-4 juillet).
 
 ---
 
@@ -65,7 +78,8 @@ L'IA regarde le dossier (prévision, fourchette, prix) et donne une note de conf
 ## Paramètres actuels (`bot/loop_v3.py`)
 ```python
 NEW_MARKET_DAY_OFFSET = 2     # scan uniquement J+2 (marchés tout juste créés)
-SCAN_INTERVAL         = 90    # cycle toutes les 90s
+SCAN_INTERVAL         = 90    # cycle de détection toutes les 90s
+MONITOR_INTERVAL      = 1     # surveillance des positions ouvertes toutes les 1s
 MAX_ENTRY_PRICE        = 0.15 # achète seulement si prix ≤ 15¢
 MIN_CONFIDENCE         = 3    # confiance Haiku minimum (1-5)
 MAX_TRADES_PER_CYCLE   = 2    # jamais plus de 2 achats par cycle
@@ -79,7 +93,7 @@ LATE_DAY_HOUR          = 18   # heure locale à partir de laquelle "pic passé" 
 ---
 
 ## Persistance & déploiement
-- Table Supabase : `profitweather_v3_trades`
+- Table Supabase : `profitweather_v3_trades` (positions/trades) + `profitweather_v3_forecast_log` (suivi précision météo)
 - Fly.io app `profitweather-v3`, région Toronto (yyz)
 - Statut actuel : **DRY_RUN** (simulation, aucun argent réel) — bot actuellement à l'arrêt en attendant le feu vert pour relancer la collecte de données
 
