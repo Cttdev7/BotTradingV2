@@ -49,7 +49,6 @@ V3_EXPOSURE_CAP = 0.50      # V3 ne dépasse jamais 50% du solde total en positi
 STOP_LOSS_PCT   = 0.30      # vend si le prix de revente a chuté de 30% depuis l'achat
 MIN_CONFIDENCE  = 3         # confiance Haiku minimum pour acheter (1-5)
 MIN_BET         = 5.0       # $5 minimum par trade
-MAX_TRADES_PER_CYCLE = 2     # jamais plus de 2 nouveaux achats par cycle (évite d'engager tout le plafond d'un coup)
 SIMULATE_BANKROLL = 100.0    # bankroll fictive utilisée en DRY_RUN pour dimensionner les mises et calculer le P&L simulé
 NEW_MARKET_DAY_OFFSET = 2    # Polymarket crée les marchés température ~2 jours avant l'échéance — c'est la fenêtre "neuve"
 LATE_DAY_HOUR   = 18        # heure locale à partir de laquelle "pic déjà passé" devient un signal fort
@@ -692,14 +691,9 @@ def scan_for_new_markets():
             if result.get("candidate"):
                 candidates.append(result)
 
-    trades_this_cycle = 0
-
     for c in candidates:
         if _shutdown:
             return
-        if trades_this_cycle >= MAX_TRADES_PER_CYCLE:
-            log(f"⏸ Limite de {MAX_TRADES_PER_CYCLE} achats/cycle atteinte — le reste attendra le prochain cycle")
-            break
         city, match_cid, title = c["city"], c["match_cid"], c["title"]
         low, high, unit, forecast = c["low"], c["high"], c["unit"], c["forecast"]
         station, token_id, price, target_date = c["station"], c["token_id"], c["price"], c["target_date"]
@@ -750,7 +744,6 @@ def scan_for_new_markets():
             "status": "open" if ok else "failed", "dry_run": DRY_RUN,
         })
         room_left -= bet
-        trades_this_cycle += 1
 
 # ── Cycle de surveillance ─────────────────────────────────────────────────────
 
