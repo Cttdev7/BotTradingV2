@@ -50,6 +50,7 @@ STOP_LOSS_PCT   = 0.30      # vend si le prix de revente a chuté de 30% depuis 
 MIN_CONFIDENCE  = 3         # confiance Haiku minimum pour acheter (1-5)
 MIN_BET         = 5.0       # $5 minimum par trade
 MAX_TRADES_PER_CYCLE = 2     # jamais plus de 2 nouveaux achats par cycle (évite d'engager tout le plafond d'un coup)
+SIMULATE_BANKROLL = 100.0    # bankroll fictive utilisée en DRY_RUN pour dimensionner les mises et calculer le P&L simulé
 NEW_MARKET_DAY_OFFSET = 2    # Polymarket crée les marchés température ~2 jours avant l'échéance — c'est la fenêtre "neuve"
 LATE_DAY_HOUR   = 18        # heure locale à partir de laquelle "pic déjà passé" devient un signal fort
 TIMEOUT         = 12
@@ -654,7 +655,10 @@ def _gather_candidate(city: str, tz_name: str, delta: int) -> dict | None:
 
 
 def scan_for_new_markets():
-    balance = get_total_balance()
+    # En DRY_RUN, on teste la stratégie sur une bankroll fictive de $100 plutôt que sur le
+    # vrai solde on-chain — on veut mesurer le taux de réussite et le P&L simulé de la
+    # prédiction Open-Meteo, indépendamment du montant réellement disponible.
+    balance = SIMULATE_BANKROLL if DRY_RUN else get_total_balance()
     v3_cap = balance * V3_EXPOSURE_CAP
     v3_open = get_v3_open_exposure()
     room_left = v3_cap - v3_open
@@ -697,30 +701,34 @@ def scan_for_new_markets():
         station, token_id, price, target_date = c["station"], c["token_id"], c["price"], c["target_date"]
 
         if price > MAX_ENTRY_PRICE:
-            log(f"⏭ {city} {title[:50]} — prix {price:.2f}¢ déjà trop haut (>{MAX_ENTRY_PRICE:.2f})")
-            sb_upsert("profitweather_v3_trades", {
-                "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
-                "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
-                "station_source": station, "entry_price": price, "bet_usdc": 0.0,
-                "target_date": target_date.isoformat(),
-                "status": "skipped_price_too_high", "dry_run": DRY_RUN,
-            })
-            continue
+            if not DRY_RUN:
+                log(f"⏭ {city} {title[:50]} — prix {price:.2f}¢ déjà trop haut (>{MAX_ENTRY_PRICE:.2f})")
+                sb_upsert("profitweather_v3_trades", {
+                    "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
+                    "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
+                    "station_source": station, "entry_price": price, "bet_usdc": 0.0,
+                    "target_date": target_date.isoformat(),
+                    "status": "skipped_price_too_high", "dry_run": DRY_RUN,
+                })
+                continue
+            log(f"ℹ️ {city} {title[:50]} — prix {price:.2f}¢ au-dessus du seuil live ({MAX_ENTRY_PRICE:.2f}) — simulé quand même (collecte de data)")
 
         log(f"🔍 Candidat V3 : {city} — {title[:55]} | prévision {forecast} vs fourchette {low}-{high} | ask {price:.2f}¢")
         analysis, confidence = analyze_entry(title, price, (low, high), unit, forecast)
         log(f"   🤖 conf={confidence}/5 | {analysis[:100]}")
 
         if confidence < MIN_CONFIDENCE:
-            sb_upsert("profitweather_v3_trades", {
-                "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
-                "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
-                "station_source": station, "entry_price": price, "bet_usdc": 0.0,
-                "target_date": target_date.isoformat(),
-                "confidence": confidence, "analysis": analysis,
-                "status": "skipped_confidence", "dry_run": DRY_RUN,
-            })
-            continue
+            if not DRY_RUN:
+                sb_upsert("profitweather_v3_trades", {
+                    "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
+                    "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
+                    "station_source": station, "entry_price": price, "bet_usdc": 0.0,
+                    "target_date": target_date.isoformat(),
+                    "confidence": confidence, "analysis": analysis,
+                    "status": "skipped_confidence", "dry_run": DRY_RUN,
+                })
+                continue
+            log(f"ℹ️ Confiance {confidence}/5 sous le seuil live ({MIN_CONFIDENCE}) — simulé quand même (collecte de data)")
 
         v3_allocated = balance * V3_EXPOSURE_CAP
         bet = round(min(v3_allocated * MAX_TRADE_PCT, room_left), 2)
@@ -858,6 +866,8 @@ def _monitor_loop():
 
 def main():
     log("🚀 ProfitWeather V3 démarré")
+    if DRY_RUN:
+        log(f"   DRY_RUN=True — mode collecte de data : bankroll simulée ${SIMULATE_BANKROLL:.0f}, filtres prix/confiance désactivés")
     log(f"   DRY_RUN={DRY_RUN} | MAX_ENTRY_PRICE={MAX_ENTRY_PRICE:.2f} | MAX_TRADE_PCT={MAX_TRADE_PCT*100:.0f}% de l'alloc V3")
     log(f"   V3_EXPOSURE_CAP={V3_EXPOSURE_CAP*100:.0f}% | STOP_LOSS={STOP_LOSS_PCT*100:.0f}% | MIN_CONF={MIN_CONFIDENCE}/5")
     log(f"   SCAN_INTERVAL={SCAN_INTERVAL}s | MONITOR_INTERVAL={MONITOR_INTERVAL}s | {len(WEATHER_VILLES)} villes surveillées")
