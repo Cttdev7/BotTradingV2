@@ -50,7 +50,8 @@ Bottrading V2/
 ├── Dockerfile.sailor82 ← Image Docker pour sailor82-copy
 ├── Dockerfile.profitweather-v3 ← Image Docker pour profitweather-v3
 ├── requirements-zth.txt ← Dépendances Fly.io partagées (sans polymarket-client, installé séparément)
-├── STRATEGIE_BOT.md    ← Doc stratégie en langage simple
+├── STRATEGIE_BOT.md    ← Doc stratégie V2 en langage simple
+├── STRATEGIE_PROFITWEATHER_V3.md ← Doc stratégie V3 en langage simple
 └── scripts/
     ├── Lancer le dashboard.command
     └── Lancer le bot.command
@@ -129,17 +130,20 @@ PERF_RESET_DATE       = "2026-06-17T15:34:00"  # stats repartent à 0 ici
 - **Stations WU exactes** : London=EGLC, Paris=LFPB, NYC=KLGA, Dallas=KDAL, Denver=KBKF, Seoul=RKSI, Taipei=RCSS, Milan=LIMC
 
 ## ProfitWeather V3 (`bot/loop_v3.py`)
+Doc complète en langage simple : `STRATEGIE_PROFITWEATHER_V3.md`
+
 - **But** : acheter YES très tôt (dès la création du marché, prix ≤15¢) sur la fourchette la plus proche de la prévision, revendre en cours de journée si la fourchette est compromise. Opposé au V2 (qui achète NO tard et cher) — objectif ~60% de réussite mais gains asymétriques (petites pertes, gros gains)
 - **Source de prévision** : Open-Meteo blend (sans modèle spécifique) — retenue après backtest (`backtest_weather_sources.py`) contre ECMWF/GFS/ICON/MeteoFrance sur ~180 marchés résolus, toutes villes. Best hit-rate + MAE le plus bas, net sur les villes US (25% hit rate, MAE 1.66°F)
 - **Source de résolution (surveillance)** : station officielle extraite du champ `resolutionSource` de chaque event Gamma API (ex: `.../history/daily/us/ny/new-york-city/KLGA` → station `KLGA`) — auto-détection générique, pas de liste figée
-- **Détection** : scan toutes les 90s, 45 villes × J+0/J+1, en parallèle (ThreadPoolExecutor)
+- **Détection** : scan toutes les 90s, 45 villes × **J+2 uniquement** (`NEW_MARKET_DAY_OFFSET=2`) — vérifié empiriquement le 01/07/2026 : Polymarket crée les marchés température ~2 jours avant l'échéance (~4h-5h UTC), donc J+0/J+1 ont déjà 1-2 jours de trading, trop tard pour la fenêtre de prix bas
+- **Max 2 nouveaux achats par cycle** (`MAX_TRADES_PER_CYCLE=2`) — évite qu'une rafale d'opportunités simultanées engage tout le plafond de 50% d'un coup
 - **Sortie anticipée** :
   - Stop-loss prix : -30% depuis l'achat
   - Divergence météo : le relevé METAR officiel dépasse la borne haute de la fourchette, ou le pic du jour est passé (temp en baisse depuis le max, après 18h locale) sans avoir atteint la borne basse
 - **Compte Polymarket** : même que ProfitWeather V2 — partage le solde, plafond **50% chacun** (`MAX_EXPOSURE_PCT=0.5` dans les deux bots)
 - **Mise par trade** : max 10% du capital alloué au V3 (= 5% du solde total)
 - **Persistance** : table Supabase `profitweather_v3_trades` (upsert sur `condition_id` — un marché "prix trop haut" reste rechecké aux cycles suivants, contrairement aux statuts terminaux comme `open`/`skipped_confidence`)
-- **Statut** : DRY_RUN depuis le 01/07/2026, déployé Fly.io `profitweather-v3` (Toronto yyz)
+- **Statut** : DRY_RUN depuis le 01/07/2026, actuellement **à l'arrêt** (machine Fly.io stoppée) en attendant le feu vert pour relancer
 
 ### Déploiement Fly.io — profitweather-v3
 - **App** : `profitweather-v3` → fly.io/apps/profitweather-v3 | région `yyz` (Toronto)

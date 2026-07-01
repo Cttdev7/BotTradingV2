@@ -41,6 +41,8 @@ V3_EXPOSURE_CAP = 0.50      # V3 ne dépasse jamais 50% du solde total en positi
 STOP_LOSS_PCT   = 0.30      # vend si le prix de revente a chuté de 30% depuis l'achat
 MIN_CONFIDENCE  = 3         # confiance Haiku minimum pour acheter (1-5)
 MIN_BET         = 5.0       # $5 minimum par trade
+MAX_TRADES_PER_CYCLE = 2     # jamais plus de 2 nouveaux achats par cycle (évite d'engager tout le plafond d'un coup)
+NEW_MARKET_DAY_OFFSET = 2    # Polymarket crée les marchés température ~2 jours avant l'échéance — c'est la fenêtre "neuve"
 LATE_DAY_HOUR   = 18        # heure locale à partir de laquelle "pic déjà passé" devient un signal fort
 TIMEOUT         = 12
 
@@ -502,7 +504,11 @@ def scan_for_new_markets():
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    jobs = [(v["slug"], v["tz"], delta) for v in WEATHER_VILLES for delta in (0, 1)]
+    # Focus sur les marchés vraiment neufs : Polymarket crée les marchés température
+    # ~2 jours avant leur échéance (vérifié empiriquement le 01/07/2026 : marchés du 3 juillet
+    # créés le 1er juillet vers 04h UTC). J+0/J+1 ont déjà 1 à 2 jours de trading — trop tard
+    # pour la fenêtre de prix bas. On ne scanne que J+2 pour l'achat.
+    jobs = [(v["slug"], v["tz"], NEW_MARKET_DAY_OFFSET) for v in WEATHER_VILLES]
     candidates = []
     with ThreadPoolExecutor(max_workers=20) as pool:
         futures = [pool.submit(_gather_candidate, city, tz_name, delta) for city, tz_name, delta in jobs]
@@ -517,9 +523,14 @@ def scan_for_new_markets():
             if result.get("candidate"):
                 candidates.append(result)
 
+    trades_this_cycle = 0
+
     for c in candidates:
         if _shutdown:
             return
+        if trades_this_cycle >= MAX_TRADES_PER_CYCLE:
+            log(f"⏸ Limite de {MAX_TRADES_PER_CYCLE} achats/cycle atteinte — le reste attendra le prochain cycle")
+            break
         city, match_cid, title = c["city"], c["match_cid"], c["title"]
         low, high, unit, forecast = c["low"], c["high"], c["unit"], c["forecast"]
         station, token_id, price = c["station"], c["token_id"], c["price"]
@@ -563,6 +574,7 @@ def scan_for_new_markets():
             "status": "open" if ok else "failed", "dry_run": DRY_RUN,
         })
         room_left -= bet
+        trades_this_cycle += 1
 
 # ── Cycle de surveillance ─────────────────────────────────────────────────────
 
