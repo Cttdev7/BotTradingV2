@@ -3,6 +3,7 @@
 ## Ce que fait ce projet
 Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashboard iOS-style.
 - **ProfitWeather V2** : bot de trading météo — Claude Haiku décide quoi acheter (stratégie NO sur fourchettes température), tourne en local
+- **ProfitWeather V3** : achat YES précoce (≤15¢) à l'ouverture des marchés + revente si divergence météo/stop-loss — même compte que le V2 (partage le solde, plafond 50/50), tourne 24/7 sur **Fly.io Toronto (`yyz`)** — DRY_RUN depuis le 01/07/2026
 - **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — achète le côté ≥90% à T-90s de la clôture, compte dédié séparé (`ZTH_*`), tourne 24/7 sur **Fly.io Toronto (`yyz`)**
 - **Copy-trade sailor82** : copie les positions température de sailor82, analyse avec Claude Haiku + météo Open-Meteo, tourne 24/7 sur **Fly.io Toronto (`yyz`)** — DRY_RUN depuis le 30/06/2026
 
@@ -34,6 +35,8 @@ Bottrading V2/
 │   ├── brain.py        ← Claude Haiku : décide quoi trader (ProfitWeather V2)
 │   ├── trader.py       ← Exécution ordres (DRY_RUN=true par défaut)
 │   ├── loop_v2.py      ← ⭐ ProfitWeather V2 — stratégie NO, ACTIF en local
+│   ├── loop_v3.py      ← ⭐ ProfitWeather V3 — achat YES précoce, Fly.io app profitweather-v3
+│   ├── backtest_weather_sources.py ← Backtest précision Open-Meteo/ECMWF/GFS/ICON/MeteoFrance
 │   ├── copy_sailor82.py ← ⭐ Copy-trade sailor82 — Fly.io app sailor82-copy
 │   ├── zerotoherobtc.py ← ⭐ ZeroToHeroBTC — Fly.io app zth-bot
 │   ├── redeem_zth.py   ← Redeem automatique des gains ZTH (via Safe execTransaction)
@@ -49,8 +52,10 @@ Bottrading V2/
 │   └── .env            ← Toutes les clés (jamais committé)
 ├── fly.toml            ← Config Fly.io app zth-bot (Toronto yyz, 256mb)
 ├── fly-sailor82.toml   ← Config Fly.io app sailor82-copy (Toronto yyz, 256mb)
+├── fly-profitweather-v3.toml ← Config Fly.io app profitweather-v3 (Toronto yyz, 256mb)
 ├── Dockerfile          ← Image Docker pour zth-bot
 ├── Dockerfile.sailor82 ← Image Docker pour sailor82-copy
+├── Dockerfile.profitweather-v3 ← Image Docker pour profitweather-v3
 ├── requirements-zth.txt ← Dépendances Fly.io (sans polymarket-client, installé séparément)
 ├── Procfile            ← Railway : zth (legacy, plus utilisé pour ce process)
 ├── STRATEGIE_BOT.md    ← Doc stratégie en langage simple
@@ -78,9 +83,10 @@ source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/loop_v2.py
 - Variables CSS : `var(--accent)`, `var(--green)`, `var(--text)`, `var(--fill)`…
 - Dashboard déployé sur **Vercel** (auto-deploy depuis GitHub)
 
-## État actuel (au 30/06/2026)
+## État actuel (au 01/07/2026)
 - ✅ Dashboard iOS — Vercel, auto-deploy GitHub (nettoyé : plus de pages météo/deko/stratège)
-- ✅ **ProfitWeather V2** (`loop_v2.py`) — bot NO sur fourchettes température, **DRY_RUN=false**
+- ✅ **ProfitWeather V2** (`loop_v2.py`) — bot NO sur fourchettes température, **DRY_RUN=false**, `MAX_EXPOSURE_PCT=0.5` (partage le compte avec le V3)
+- ✅ **ProfitWeather V3** (`loop_v3.py`) — achat YES précoce, Fly.io `profitweather-v3`, **DRY_RUN=true depuis 01/07/2026**
 - ✅ **ZeroToHeroBTC V2** (`zerotoherobtc.py`) — Fly.io `zth-bot`, **trading réel depuis 30/06 17:53 CEST**
 - ✅ **Copy-trade sailor82** (`copy_sailor82.py`) — Fly.io `sailor82-copy`, **DRY_RUN=true depuis 30/06 22:10 CEST**
 - ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE, ZTH_*
@@ -101,7 +107,7 @@ source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/loop_v2.py
 ```python
 MIN_NO_PRICE          = 0.75    # NO minimum 75¢
 MAX_NO_PRICE          = 0.96    # NO maximum 96¢ (au-dessus = marge trop faible)
-MAX_EXPOSURE_PCT      = 1.0     # 100% du portefeuille peut être exposé
+MAX_EXPOSURE_PCT      = 0.5     # 50% du portefeuille peut être exposé (V3 partage le compte, plafond 50/50)
 MAX_BET_PCT           = 0.05    # jamais plus de 5% du solde sur 1 trade
 MIN_FORECAST_GAP_DOWN = 2.0     # range EN-DESSOUS prévision → 2°F suffisent
 MIN_FORECAST_GAP_UP   = 8.0     # range AU-DESSUS prévision → 8°F minimum
@@ -130,8 +136,29 @@ PERF_RESET_DATE       = "2026-06-17T15:34:00"  # stats repartent à 0 ici
 - **Auto-hedge** : si NO perdant avec YES en face entre 60-90% → achète YES pour ressortir neutre/+10%
 - **Stations WU exactes** : London=EGLC, Paris=LFPB, NYC=KLGA, Dallas=KDAL, Denver=KBKF, Seoul=RKSI, Taipei=RCSS, Milan=LIMC
 
+## ProfitWeather V3 (`bot/loop_v3.py`)
+- **But** : acheter YES très tôt (dès la création du marché, prix ≤15¢) sur la fourchette la plus proche de la prévision, revendre en cours de journée si la fourchette est compromise. Opposé au V2 (qui achète NO tard et cher) — objectif ~60% de réussite mais gains asymétriques (petites pertes, gros gains)
+- **Source de prévision** : Open-Meteo blend (sans modèle spécifique) — retenue après backtest (`backtest_weather_sources.py`) contre ECMWF/GFS/ICON/MeteoFrance sur ~180 marchés résolus, toutes villes. Best hit-rate + MAE le plus bas, net sur les villes US (25% hit rate, MAE 1.66°F)
+- **Source de résolution (surveillance)** : station officielle extraite du champ `resolutionSource` de chaque event Gamma API (ex: `.../history/daily/us/ny/new-york-city/KLGA` → station `KLGA`) — auto-détection générique, pas de liste figée
+- **Détection** : scan toutes les 90s, 45 villes × J+0/J+1, en parallèle (ThreadPoolExecutor)
+- **Sortie anticipée** :
+  - Stop-loss prix : -30% depuis l'achat
+  - Divergence météo : le relevé METAR officiel dépasse la borne haute de la fourchette, ou le pic du jour est passé (temp en baisse depuis le max, après 18h locale) sans avoir atteint la borne basse
+- **Compte Polymarket** : même que ProfitWeather V2 — partage le solde, plafond **50% chacun** (`MAX_EXPOSURE_PCT=0.5` dans les deux bots)
+- **Mise par trade** : max 10% du capital alloué au V3 (= 5% du solde total)
+- **Persistance** : table Supabase `profitweather_v3_trades` (upsert sur `condition_id` — un marché "prix trop haut" reste rechecké aux cycles suivants, contrairement aux statuts terminaux comme `open`/`skipped_confidence`)
+- **Statut** : DRY_RUN depuis le 01/07/2026, déployé Fly.io `profitweather-v3` (Toronto yyz)
+
+### Déploiement Fly.io — profitweather-v3
+- **App** : `profitweather-v3` → fly.io/apps/profitweather-v3 | région `yyz` (Toronto)
+- **Logs** : `/Users/clementctt/.fly/bin/fly logs --app profitweather-v3`
+- **Redéployer** : `cd "Bottrading V2" && /Users/clementctt/.fly/bin/fly deploy --app profitweather-v3 --config fly-profitweather-v3.toml`
+- **Passer en réel** : `/Users/clementctt/.fly/bin/fly secrets set V3_DRY_RUN=false --app profitweather-v3`
+- **Config** : `fly-profitweather-v3.toml` + `Dockerfile.profitweather-v3` + `requirements-zth.txt`
+
 ## ZeroToHeroBTC (`bot/zerotoherobtc.py`)
-- **Stratégie** : marché BTC up/down 5 min — surveille de T-90s à T-2s, achète si côté entre 90% et 97%
+- **Stratégie** : marché BTC up/down 5 min — surveille de T-90s à T-2s, achète si côté entre 85% et 95%
+- **Blackout horaires** : 7h–8h UTC (ouverture EU) et 22h–23h UTC (clôture US) — BTC trop volatile
 - **Mise** : fixe, `BET_USDC = 10.0` par trade
 - **Stop loss** : vend si le bid baisse de 25% depuis l'achat (`STOP_LOSS_PCT = 0.25`)
 - **Double vérification** : attend 2.5s puis relit le prix — annule si chute >2¢ ou dépasse plafond
@@ -146,8 +173,8 @@ PERF_RESET_DATE       = "2026-06-17T15:34:00"  # stats repartent à 0 ici
 ```python
 TRIGGER_MAX_REMAINING = 90    # sweet spot validé : T≤90s = 95.37% win rate
 TRIGGER_MIN_REMAINING = 2
-PRICE_THRESHOLD       = 0.90
-PRICE_CEILING         = 0.97
+PRICE_THRESHOLD       = 0.85  # abaissé le 01/07 : gain +$1.76 si win, seuil rentabilité 85%
+PRICE_CEILING         = 0.95  # abaissé le 01/07 : au-dessus gain trop faible (+$0.53) pour risque $10
 BET_USDC              = 10.0
 STOP_LOSS_PCT         = 0.25  # vend si bid baisse de 25%
 MIN_BALANCE_USDC      = 40.0  # arrêt si solde ≤ $40
@@ -155,6 +182,7 @@ MAX_CONSECUTIVE_LOSSES = 3    # pause 30 min
 POLL_INTERVAL         = 1     # check prix toutes les 1s dans la fenêtre de déclenchement
 POLL_INTERVAL_SL      = 0.5   # check stop loss toutes les 0.5s
 TIMEOUT_SL            = 2     # timeout HTTP court pour monitoring stop loss (≠ TIMEOUT=10s)
+BLACKOUT_HOURS_UTC    = {7, 8, 22, 23}  # ajouté le 01/07 : skip ouverture EU + clôture US
 ```
 
 ### Robustesse (audit 30/06/2026)

@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-zth.txt .
+RUN pip install --no-cache-dir -r requirements-zth.txt && \
+    pip install --no-cache-dir --pre "polymarket-client==0.1.0b11"
+
+COPY bot/loop_v3.py .
+COPY bot/weather_validator.py .
+
+CMD ["python", "loop_v3.py"]

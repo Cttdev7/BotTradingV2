@@ -40,7 +40,7 @@ SB_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY", "")
 
 MIN_NO_PRICE      = 0.75    # NO minimum 75¢ — gain +33% par win, plus d'opportunités
 MAX_NO_PRICE      = 0.96    # NO maximum 96¢ (au-dessus = marge trop faible)
-MAX_EXPOSURE_PCT  = 1.0     # 100% du solde peut être exposé simultanément
+MAX_EXPOSURE_PCT  = 0.5     # 50% du solde peut être exposé simultanément (V3 partage le compte, plafond 50/50)
 MAX_BET_PCT       = 0.05    # jamais plus de 5% du solde sur 1 trade (réduit de 6%)
 MIN_FORECAST_GAP_DOWN = 2.0  # range EN-DESSOUS de la prévision (temp dépasse déjà ce range) → 2°F suffisent
 MIN_FORECAST_GAP_UP   = 8.0  # range AU-DESSUS de la prévision (temp peut encore monter) → 8°F minimum

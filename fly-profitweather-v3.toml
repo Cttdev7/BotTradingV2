@@ -1,0 +1,13 @@
+app = "profitweather-v3"
+primary_region = "yyz"
+
+[build]
+  dockerfile = "Dockerfile.profitweather-v3"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[shutdown]
+  grace_period = "30s"
