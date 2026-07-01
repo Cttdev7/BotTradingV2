@@ -232,13 +232,11 @@ function App() {
   const active = bots.filter((b) => b.status === 'running').length;
   const portfolio = useMemo(() => window.computePortfolio(bots), [bots]);
   const actionBots  = bots.filter((b) => !b.type).sort((a, b) => (b.status === 'running') - (a.status === 'running'));
-  const zthResultsBot = bots.find((b) => b.id === 'zerotohero_results');
 
   let content;
   if (nav.page === 'dashboard') content = <window.DashboardPage bots={bots} portfolio={portfolio} onToggle={toggleBot} onOpen={(id) => go('bot', id)} onNewBot={() => setSheet(true)} />;
   else if (nav.page === 'portfolio') content = <window.PortfolioPage bots={bots} portfolio={portfolio} onOpen={(id) => go('bot', id)} />;
   else if (nav.page === 'history') content = <window.HistoryPage bots={bots} transactions={liveActivity} />;
-  else if (nav.page === 'bot' && bot && bot.id === 'zerotohero_results') content = <window.ZeroToHeroResultsPage onBack={() => go('dashboard')} />;
   else if (nav.page === 'bot' && bot) content = <window.BotPage bot={bot} onToggle={toggleBot} onBack={() => go('dashboard')} onSettings={() => go('settings', bot.id)} onRename={renameBot} livePositions={livePositions[bot.id]} liveActivity={liveActivity} />;
   else if (nav.page === 'settings' && bot) content = <window.SettingsPage bot={bot} onToggle={toggleBot} onBack={() => go('bot', bot.id)} />;
   else if (nav.page === 'calendar') content = <window.CalendarPage onBack={() => go('dashboard')} />;
@@ -322,28 +320,6 @@ function App() {
               </div>
             );
           })}
-
-          {/* ── 🔍 Analyse ── */}
-          <div style={{ padding: '14px 9px 6px', fontSize: 11.5, fontWeight: 700, color: 'var(--text-3)',
-            textTransform: 'uppercase', letterSpacing: '.05em', marginTop: 4 }}>🔍 Analyse</div>
-
-          {/* ZeroToHero — résultats */}
-          {zthResultsBot && (
-            <div className="bot-item" style={{ borderRadius: 'var(--r-md)',
-              background: nav.botId === 'zerotohero_results' ? 'var(--fill)' : 'transparent' }}>
-              <button onClick={() => go('bot', 'zerotohero_results')} className="tap"
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                  border: 'none', cursor: 'pointer', textAlign: 'left', padding: '7px 9px',
-                  borderRadius: 'var(--r-md)', background: 'transparent', minWidth: 0 }}>
-                <window.BotGlyph bot={zthResultsBot} size={26} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 550, color: 'var(--text)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{zthResultsBot.name}</span>
-                <span style={{ width: 7, height: 7, borderRadius: 999, flexShrink: 0,
-                  background: zthResultsBot.status === 'running' ? 'var(--green)' : 'var(--text-3)',
-                  boxShadow: zthResultsBot.status === 'running' ? '0 0 5px var(--green)' : 'none' }} />
-              </button>
-            </div>
-          )}
 
         </div>
         {/* Solde wallet Polygon */}

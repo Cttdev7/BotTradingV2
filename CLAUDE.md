@@ -4,7 +4,6 @@
 Bot de trading autonome sur **Polymarket** (marchés de prédiction) avec dashboard iOS-style.
 - **ProfitWeather V2** : bot de trading météo — Claude Haiku décide quoi acheter (stratégie NO sur fourchettes température), tourne en local
 - **ProfitWeather V3** : achat YES précoce (≤15¢) à l'ouverture des marchés + revente si divergence météo/stop-loss — même compte que le V2 (partage le solde, plafond 50/50), tourne 24/7 sur **Fly.io Toronto (`yyz`)** — DRY_RUN depuis le 01/07/2026
-- **ZeroToHeroBTC** : bot 100% mécanique sur marchés Polymarket BTC Up/Down 5 min — achète le côté ≥90% à T-90s de la clôture, compte dédié séparé (`ZTH_*`), tourne 24/7 sur **Fly.io Toronto (`yyz`)**
 - **Copy-trade sailor82** : copie les positions température de sailor82, analyse avec Claude Haiku + météo Open-Meteo, tourne 24/7 sur **Fly.io Toronto (`yyz`)** — DRY_RUN depuis le 30/06/2026
 
 ## Structure du projet
@@ -15,7 +14,7 @@ Bottrading V2/
 │   ├── styles.css
 │   ├── app.jsx         ← Shell, navigation, sidebar
 │   ├── api.jsx         ← Fetch données réelles depuis localhost:5050
-│   ├── data.jsx        ← 4 bots : polyedge, polyedge2, zerotohero, zerotohero_results
+│   ├── data.jsx        ← bots : polyedge, polyedge2
 │   ├── charts.jsx
 │   ├── icons.jsx
 │   ├── ui.jsx
@@ -25,8 +24,7 @@ Bottrading V2/
 │   ├── page_portfolio.jsx
 │   ├── page_settings.jsx
 │   ├── page_history.jsx
-│   ├── page_calendar.jsx       ← Calendrier P&L ProfitWeather V2 (depuis PERF_RESET_DATE)
-│   └── page_zerotohero_results.jsx ← Win rate + historique ZeroToHeroBTC depuis Supabase
+│   └── page_calendar.jsx       ← Calendrier P&L ProfitWeather V2 (depuis PERF_RESET_DATE)
 ├── bot/                ← Backend Python
 │   ├── config.py       ← Charge .env
 │   ├── auth.py         ← Signature HMAC-SHA256
@@ -38,9 +36,6 @@ Bottrading V2/
 │   ├── loop_v3.py      ← ⭐ ProfitWeather V3 — achat YES précoce, Fly.io app profitweather-v3
 │   ├── backtest_weather_sources.py ← Backtest précision Open-Meteo/ECMWF/GFS/ICON/MeteoFrance
 │   ├── copy_sailor82.py ← ⭐ Copy-trade sailor82 — Fly.io app sailor82-copy
-│   ├── zerotoherobtc.py ← ⭐ ZeroToHeroBTC — Fly.io app zth-bot
-│   ├── redeem_zth.py   ← Redeem automatique des gains ZTH (via Safe execTransaction)
-│   ├── zth_stats.py    ← Calcul win rate ZeroToHeroBTC depuis Supabase
 │   ├── weather_validator.py ← Enrichissement ECMWF (band_prob, models_spread, models_avg) + stations METAR/WU
 │   ├── server.py       ← Flask API port 5050 (/api/v2/trades, /api/v2/calendar) — pas 5000 (AirPlay bloque)
 │   ├── postmortem.py   ← Analyse post-mortem des trades perdants
@@ -50,14 +45,11 @@ Bottrading V2/
 │   ├── wu_stations.json ← Cache des stations WU scrapées
 │   ├── test_order.py   ← Test ponctuel d'ordre via SecureClient
 │   └── .env            ← Toutes les clés (jamais committé)
-├── fly.toml            ← Config Fly.io app zth-bot (Toronto yyz, 256mb)
 ├── fly-sailor82.toml   ← Config Fly.io app sailor82-copy (Toronto yyz, 256mb)
 ├── fly-profitweather-v3.toml ← Config Fly.io app profitweather-v3 (Toronto yyz, 256mb)
-├── Dockerfile          ← Image Docker pour zth-bot
 ├── Dockerfile.sailor82 ← Image Docker pour sailor82-copy
 ├── Dockerfile.profitweather-v3 ← Image Docker pour profitweather-v3
-├── requirements-zth.txt ← Dépendances Fly.io (sans polymarket-client, installé séparément)
-├── Procfile            ← Railway : zth (legacy, plus utilisé pour ce process)
+├── requirements-zth.txt ← Dépendances Fly.io partagées (sans polymarket-client, installé séparément)
 ├── STRATEGIE_BOT.md    ← Doc stratégie en langage simple
 └── scripts/
     ├── Lancer le dashboard.command
@@ -87,9 +79,9 @@ source bot/.env && ~/.pyenv/versions/3.11.9/bin/python3 bot/loop_v2.py
 - ✅ Dashboard iOS — Vercel, auto-deploy GitHub (nettoyé : plus de pages météo/deko/stratège)
 - ✅ **ProfitWeather V2** (`loop_v2.py`) — bot NO sur fourchettes température, **DRY_RUN=false**, `MAX_EXPOSURE_PCT=0.5` (partage le compte avec le V3)
 - ✅ **ProfitWeather V3** (`loop_v3.py`) — achat YES précoce, Fly.io `profitweather-v3`, **DRY_RUN=true depuis 01/07/2026**
-- ✅ **ZeroToHeroBTC V2** (`zerotoherobtc.py`) — Fly.io `zth-bot`, **trading réel depuis 30/06 17:53 CEST**
 - ✅ **Copy-trade sailor82** (`copy_sailor82.py`) — Fly.io `sailor82-copy`, **DRY_RUN=true depuis 30/06 22:10 CEST**
-- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE, ZTH_*
+- ❌ **ZeroToHeroBTC** décommissionné le 01/07/2026 — pertes récurrentes (~-25$ sur 2h, win rate 73% insuffisant vs ~92% requis) + bug stop-loss qui ne s'exécutait pas. App Fly.io `zth-bot` supprimée, code retiré
+- ✅ Toutes les clés dans `bot/.env` : ANTHROPIC, POLYMARKET (PRIVATE_KEY, API_KEY, API_SECRET, API_PASSPHRASE), SUPABASE
 - ✅ `can_trade: True` — clés Polymarket valides (API_KEY régénéré avec nonce=1 en juin 2026)
 - ✅ **Python 3.11.9** via pyenv (`~/.pyenv/versions/3.11.9/`) — requis pour trader.py et loop_v2.py
 - ✅ **trader.py** utilise le nouveau SDK `polymarket-client` (SecureClient) — CTF Exchange V2
@@ -156,54 +148,6 @@ PERF_RESET_DATE       = "2026-06-17T15:34:00"  # stats repartent à 0 ici
 - **Passer en réel** : `/Users/clementctt/.fly/bin/fly secrets set V3_DRY_RUN=false --app profitweather-v3`
 - **Config** : `fly-profitweather-v3.toml` + `Dockerfile.profitweather-v3` + `requirements-zth.txt`
 
-## ZeroToHeroBTC (`bot/zerotoherobtc.py`)
-- **Stratégie** : marché BTC up/down 5 min — surveille de T-90s à T-2s, achète si côté entre 85% et 95%
-- **Blackout horaires** : 7h–8h UTC (ouverture EU) et 22h–23h UTC (clôture US) — BTC trop volatile
-- **Mise** : fixe, `BET_USDC = 10.0` par trade
-- **Stop loss** : vend si le bid baisse de 25% depuis l'achat (`STOP_LOSS_PCT = 0.25`)
-- **Double vérification** : attend 2.5s puis relit le prix — annule si chute >2¢ ou dépasse plafond
-- **Coupe-circuit** : pause 30 min après 3 pertes d'affilée (`MAX_CONSECUTIVE_LOSSES = 3`)
-- **Min balance** : arrêt définitif si solde ≤ $40 (`MIN_BALANCE_USDC = 40.0`) — `while True: sleep(3600)` pour éviter restart Fly.io
-- **Compte dédié** : `ZTH_WALLET_ADDRESS`, `ZTH_PRIVATE_KEY`, `ZTH_API_KEY/SECRET/PASSPHRASE`, `ZTH_DRY_RUN`
-- **Trading réel depuis le 21/06** : `ZTH_DRY_RUN=false`. V2 (TRIGGER=90s) lancée le 30/06 à 17:53 CEST
-- **Persistance** : table Supabase `zerotoherobtc_trades` — `bot/zth_stats.py` calcule le win rate
-- **Redeem automatique** : `redeem_all_resolved()` s'exécute en daemon thread à chaque cycle
-
-### Paramètres ZeroToHeroBTC
-```python
-TRIGGER_MAX_REMAINING = 90    # sweet spot validé : T≤90s = 95.37% win rate
-TRIGGER_MIN_REMAINING = 2
-PRICE_THRESHOLD       = 0.85  # abaissé le 01/07 : gain +$1.76 si win, seuil rentabilité 85%
-PRICE_CEILING         = 0.95  # abaissé le 01/07 : au-dessus gain trop faible (+$0.53) pour risque $10
-BET_USDC              = 10.0
-STOP_LOSS_PCT         = 0.25  # vend si bid baisse de 25%
-MIN_BALANCE_USDC      = 40.0  # arrêt si solde ≤ $40
-MAX_CONSECUTIVE_LOSSES = 3    # pause 30 min
-POLL_INTERVAL         = 1     # check prix toutes les 1s dans la fenêtre de déclenchement
-POLL_INTERVAL_SL      = 0.5   # check stop loss toutes les 0.5s
-TIMEOUT_SL            = 2     # timeout HTTP court pour monitoring stop loss (≠ TIMEOUT=10s)
-BLACKOUT_HOURS_UTC    = {7, 8, 22, 23}  # ajouté le 01/07 : skip ouverture EU + clôture US
-```
-
-### Robustesse (audit 30/06/2026)
-- `while True: time.sleep(3600)` si solde ≤ MIN_BALANCE — pas de crash Fly.io (restart évité)
-- `redeem_all_resolved()` en daemon thread — non bloquant
-- `fetch_market_tokens()`, `best_ask_price()`, recheck wrappés en try/except
-- `get_consecutive_losses()` retourne MAX_CONSECUTIVE_LOSSES si Supabase down (fail-safe)
-- `best_bid_price_sl()` avec TIMEOUT_SL=2s — polling 0.5s compatible
-- Handler SIGTERM + `grace_period="30s"` dans fly.toml — arrêt propre en cours de cycle
-- Fix boucle rapide à T-2s : `time.sleep(remaining + 1)` avant break TRIGGER_MIN_REMAINING
-
-### Déploiement Fly.io — zth-bot
-- **App** : `zth-bot` → fly.io/apps/zth-bot | région `yyz` (Toronto)
-- **Logs** : `/Users/clementctt/.fly/bin/fly logs --app zth-bot`
-- **Redéployer** : `cd "Bottrading V2" && /Users/clementctt/.fly/bin/fly deploy --app zth-bot`
-- **Secret** : `/Users/clementctt/.fly/bin/fly secrets set CLE=valeur --app zth-bot`
-- **Config** : `fly.toml` + `Dockerfile` + `requirements-zth.txt`
-
-### Réclamer les gains (`bot/redeem_zth.py`)
-Le wallet ZTH est un Gnosis Safe v1.3.0. `redeem_zth.py` construit une transaction `Safe execTransaction` signée par l'EOA `ZTH_PRIVATE_KEY` (qui paie le gas en POL — vérifier ≥0.05 POL). Le contrat à appeler est `context.adapter_address` (pas `conditional_tokens`). Toujours simuler via `eth_call` avant de broadcaster. Redeem appelé automatiquement à chaque cycle en mode réel.
-
 ## Copy-trade sailor82 (`bot/copy_sailor82.py`)
 - **But** : copier les positions température de sailor82 (addr `0xbbb72a812cfbc5217d77c0a0018c71f174d3a11a`)
 - **Cycle** : toutes les 2.5 min — poll `/positions` de sailor82
@@ -227,7 +171,6 @@ Le wallet ZTH est un Gnosis Safe v1.3.0. `redeem_zth.py` construit une transacti
 ## Sécurité Supabase (audit du 21/06)
 - **RLS verrouillé** — lecture publique uniquement sur `bot_strategies` et `*_tracking`
 - Le backend utilise `SUPABASE_SERVICE_KEY` (pas la clé anon) — variable dans `bot/.env`
-- **Table `zerotoherobtc_logs`** : logs temps réel du bot ZTH, lecture publique + INSERT anon autorisé
 - **Table `copy_sailor82_trades`** : trades copiés de sailor82, accès service uniquement
 - Le dashboard centralise sa clé Supabase dans `dashboard/api.jsx` — toujours modifier là
 
@@ -257,16 +200,16 @@ Lancer : `~/.pyenv/versions/3.11.9/bin/python3 bot/derive_api_key.py`
 - Onglet **Stratégie** : schéma visuel 7 étapes + stratégie en lecture seule depuis Supabase (`bot_strategies`)
 - Le toggle "Activer ProfitWeather" sauvegarde directement dans Supabase (pas de bouton Sauvegarder)
 
-## Bots supprimés (30/06/2026)
-Ces bots et leurs fichiers ont été supprimés volontairement pour simplifier le projet :
-- **Agent Deko** (`agent_deko.py`) — remplacé par copy_sailor82.py plus direct
-- **Agent température multi-villes** (`agent_temperature_cloud.py`) — 45 bots d'analyse Railway
-- **Mistral Stratège** — analyse cross-ville (plus utilisé)
-- **Pages dashboard** supprimées : `page_stratege.jsx`, `page_deko.jsx`, `page_luck.jsx`
-- **Services Railway** arrêtés : `fabulous-perception` (deko), `BotTradingV2` (température)
+## Bots supprimés
+- **Agent Deko** (`agent_deko.py`) — remplacé par copy_sailor82.py plus direct (30/06/2026)
+- **Agent température multi-villes** (`agent_temperature_cloud.py`) — 45 bots d'analyse Railway (30/06/2026)
+- **Mistral Stratège** — analyse cross-ville (plus utilisé) (30/06/2026)
+- **Pages dashboard** supprimées : `page_stratege.jsx`, `page_deko.jsx`, `page_luck.jsx` (30/06/2026)
+- **Services Railway** arrêtés : `fabulous-perception` (deko), `BotTradingV2` (température) (30/06/2026)
+- **ZeroToHeroBTC** (`zerotoherobtc.py`, `redeem_zth.py`, `zth_stats.py`) — décommissionné le 01/07/2026 : pertes récurrentes (~-25$ sur 2h, win rate 73% insuffisant vs ~92% requis) + bug stop-loss qui ne s'exécutait pas (`shares is required for SELL market orders`). App Fly.io `zth-bot` détruite, `fly.toml`/`Dockerfile`/`Procfile`/`page_zerotohero_results.jsx` retirés. Focus reporté sur ProfitWeather V3
 
 ## Améliorations futures identifiées
-1. **YES à l'ouverture de marché** — acheter YES sur la fourchette ECMWF quand le marché vient d'être créé (prix 5-15¢, forte inefficacité)
+1. ~~YES à l'ouverture de marché~~ — implémenté dans ProfitWeather V3 (`loop_v3.py`, 01/07/2026)
 2. **Température en temps réel US** — stations NWS/ASOS pour savoir si le marché J+0 est déjà "gagné"
 3. **Temps restant avant clôture** — NO à 90¢ avec 2h restantes ≠ 14h restantes
 4. **Page dashboard copy-trade** — afficher les trades copiés de sailor82 + analyse Haiku
@@ -275,5 +218,5 @@ Ces bots et leurs fichiers ont été supprimés volontairement pour simplifier l
 - L'utilisateur ne code pas — expliquer simplement
 - Toujours tester en local avant de déclarer terminé
 - ProfitWeather V2 (`loop_v2.py`) tourne en local
-- ZeroToHeroBTC et copy-trade sailor82 tournent 24/7 sur Fly.io Toronto
+- ProfitWeather V3 et copy-trade sailor82 tournent 24/7 sur Fly.io Toronto
 - VPN requis uniquement pour les ordres Polymarket **depuis la France en local** (CLOB API géobloké pour les IPs françaises)

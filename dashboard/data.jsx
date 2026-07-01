@@ -52,22 +52,6 @@ const BOTS = [
     series: Array(90).fill(0),
   },
   {
-    id: 'zerotohero', name: 'ZeroToHeroBTC', market: 'crypto', glyph: '🚀',
-    strategy: 'BTC Up/Down 5 min — achat au-delà de 95%', venue: 'Polymarket',
-    status: 'running', capital: 0, allocPct: 0,
-    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
-    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
-    series: Array(90).fill(0),
-  },
-  {
-    id: 'zerotohero_results', name: 'Résultats ZeroToHero', market: 'crypto', glyph: '📝',
-    type: 'analyse', strategy: 'Suivi des trades DRY_RUN de ZeroToHeroBTC', venue: 'Polymarket',
-    status: 'running', capital: 0, allocPct: 0,
-    pnlDayPct: 0, pnlDayAbs: 0, pnlTotalPct: 0, pnlTotalAbs: 0,
-    winRate: 0, sharpe: 0, maxDD: 0, trades: 0, openPos: 0,
-    series: Array(90).fill(0),
-  },
-  {
     id: 'polyedge2', name: 'ProfitWeather V2.0', market: 'polymarket', glyph: '🌤️',
     strategy: 'Stratégie à définir', venue: 'Polymarket',
     status: 'running', capital: 0, allocPct: 0,
