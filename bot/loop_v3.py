@@ -43,7 +43,8 @@ from weather_validator import CITY_COORDS, CITY_TZ, get_rich_weather_context
 # ── Config ────────────────────────────────────────────────────────────────────
 
 SCAN_INTERVAL   = 90        # 1.5 min entre les cycles (détection + surveillance)
-MAX_ENTRY_PRICE = 0.15      # n'achète que si l'ask est encore ≤ 15¢ (fenêtre d'ouverture)
+MAX_ENTRY_PRICE = 0.15      # n'achète que si l'ask est encore ≤ 15¢ (fenêtre d'ouverture) — seuil live
+DATA_MAX_PRICE  = 0.70      # plafond dur, même en collecte de data : jamais d'achat au-dessus de 70¢
 MAX_TRADE_PCT   = 0.10      # max 10% du capital alloué à V3 par trade
 V3_EXPOSURE_CAP = 0.50      # V3 ne dépasse jamais 50% du solde total en position ouverte
 STOP_LOSS_PCT   = 0.30      # vend si le prix de revente a chuté de 30% depuis l'achat
@@ -698,6 +699,17 @@ def scan_for_new_markets():
         low, high, unit, forecast = c["low"], c["high"], c["unit"], c["forecast"]
         station, token_id, price, target_date = c["station"], c["token_id"], c["price"], c["target_date"]
 
+        if price > DATA_MAX_PRICE:
+            log(f"⏭ {city} {title[:50]} — prix {price:.2f}¢ hors zone d'achat (>{DATA_MAX_PRICE:.2f}, jamais copié)")
+            sb_upsert("profitweather_v3_trades", {
+                "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
+                "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
+                "station_source": station, "entry_price": price, "bet_usdc": 0.0,
+                "target_date": target_date.isoformat(),
+                "status": "skipped_price_too_high", "dry_run": DRY_RUN,
+            })
+            continue
+
         if price > MAX_ENTRY_PRICE:
             if not DRY_RUN:
                 log(f"⏭ {city} {title[:50]} — prix {price:.2f}¢ déjà trop haut (>{MAX_ENTRY_PRICE:.2f})")
@@ -709,7 +721,7 @@ def scan_for_new_markets():
                     "status": "skipped_price_too_high", "dry_run": DRY_RUN,
                 })
                 continue
-            log(f"ℹ️ {city} {title[:50]} — prix {price:.2f}¢ au-dessus du seuil live ({MAX_ENTRY_PRICE:.2f}) — simulé quand même (collecte de data)")
+            log(f"ℹ️ {city} {title[:50]} — prix {price:.2f}¢ au-dessus du seuil live ({MAX_ENTRY_PRICE:.2f}) mais dans la zone 0-{DATA_MAX_PRICE:.2f} — simulé (collecte de data)")
 
         log(f"🔍 Candidat V3 : {city} — {title[:55]} | prévision {forecast} vs fourchette {low}-{high} | ask {price:.2f}¢")
         analysis, confidence = analyze_entry(title, price, (low, high), unit, forecast)
