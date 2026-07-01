@@ -38,7 +38,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 load_dotenv(".env")
 
-from weather_validator import CITY_COORDS, CITY_TZ
+from weather_validator import CITY_COORDS, CITY_TZ, get_rich_weather_context
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -401,6 +401,89 @@ Règle : confidence >= 3 seulement si la prévision tombe clairement dans la fou
         log(f"⚠️ Haiku analyse: {e}")
         return "Analyse indisponible", 3
 
+# ── Claude Haiku — réévaluation d'une position ouverte avant le jour de clôture ──
+
+def analyze_hold_or_sell(title: str, low: float, high: float, unit: str, ctx: dict,
+                          entry_price: float, current_price: float | None) -> tuple[str, int, str]:
+    """
+    Réévalue une position déjà achetée, à partir du contexte météo actualisé (multi-modèles,
+    ensemble ECMWF, fréquence historique...). Retourne (analyse, confiance 1-5, 'hold'|'sell').
+    """
+    if not ANTHROPIC_KEY:
+        return "Clé Anthropic manquante", 3, "hold"
+
+    sym = "°F" if unit == "fahrenheit" else "°C"
+    parts = []
+    if ctx.get("current_temp") is not None:
+        parts.append(f"Température actuelle : {ctx['current_temp']}{sym}")
+    if ctx.get("models_avg") is not None:
+        parts.append(f"Prévision moyenne multi-modèles (ECMWF/GFS/ICON/MeteoFrance) : {ctx['models_avg']}{sym}")
+    if ctx.get("models_spread") is not None:
+        parts.append(f"Écart entre modèles (incertitude) : {ctx['models_spread']}{sym}")
+    if ctx.get("ensemble_prob") is not None:
+        parts.append(f"Probabilité ensemble ECMWF de dépasser la borne basse : {ctx['ensemble_prob']}%")
+    if ctx.get("band_prob") is not None:
+        parts.append(f"Probabilité ensemble ECMWF de tomber dans notre fourchette : {ctx['band_prob']}%")
+    if ctx.get("hist_yes_freq") is not None:
+        parts.append(f"Fréquence historique (mêmes dates, {ctx.get('hist_samples', '?')} années/jours passés) dans notre fourchette : {ctx['hist_yes_freq']}%")
+    if ctx.get("weather_label"):
+        parts.append(f"Conditions prévues : {ctx['weather_label']}")
+    context_str = "\n".join(f"- {p}" for p in parts) if parts else "Pas de données supplémentaires disponibles."
+
+    price_str = f"{current_price:.2f}¢" if current_price is not None else "indisponible"
+
+    prompt = f"""Tu gères une position déjà achetée (YES) sur un marché météo Polymarket, à réévaluer
+avant le jour de clôture (le marché n'est pas encore résolu, la station officielle n'a pas
+encore de données pertinentes pour cette date).
+
+MARCHÉ : {title}
+Fourchette achetée : {low}-{high}{sym}
+Prix d'achat : {entry_price:.2f}¢ | Prix actuel : {price_str}
+
+DONNÉES MÉTÉO ACTUALISÉES (utilise le maximum d'indicateurs disponibles) :
+{context_str}
+
+Deux options :
+- GARDER (hold) : les indicateurs confirment toujours notre fourchette, ou l'incertitude est
+  encore trop grande pour agir — on laisse courir vers la résolution ou une hausse de prix.
+- VENDRE (sell) : les indicateurs ont clairement dérivé vers une autre fourchette — mieux vaut
+  sécuriser la valeur restante maintenant plutôt que risquer de tout perdre.
+
+Réponds en JSON uniquement :
+{{
+  "reasoning": "2-3 phrases sur l'état actuel des indicateurs vs notre fourchette",
+  "decision": "hold" ou "sell",
+  "confidence": <entier 1-5, ta certitude dans cette décision>
+}}
+
+Règle : ne recommande "sell" que si tu es sûr à 3/5 minimum que la prévision a clairement dérivé
+hors de notre fourchette. En cas de doute, "hold"."""
+
+    try:
+        r = requests.post(HAIKU_API, headers={
+            "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json",
+        }, json={
+            "model": "claude-haiku-4-5-20251001", "max_tokens": 300,
+            "messages": [{"role": "user", "content": prompt}],
+        }, timeout=20)
+        if r.status_code != 200:
+            log(f"⚠️ Haiku HTTP {r.status_code}: {r.text[:100]}")
+            return "Analyse indisponible (API error)", 3, "hold"
+        text = r.json()["content"][0]["text"].strip()
+        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if json_match:
+            parsed = json.loads(json_match.group())
+            reasoning = parsed.get("reasoning", text)
+            decision = parsed.get("decision", "hold")
+            confidence = min(5, max(1, int(parsed.get("confidence", 3))))
+            if decision not in ("hold", "sell") or confidence < MIN_CONFIDENCE:
+                decision = "hold"
+            return reasoning, confidence, decision
+        return text[:200], 3, "hold"
+    except Exception as e:
+        log(f"⚠️ Haiku réévaluation: {e}")
+        return "Analyse indisponible", 3, "hold"
+
 # ── Polymarket — infos marché & ordres ────────────────────────────────────────
 
 def get_token_id(condition_id: str, outcome: str) -> str | None:
@@ -564,7 +647,7 @@ def _gather_candidate(city: str, tz_name: str, delta: int) -> dict | None:
 
     return {
         "slug": slug, "seen": True, "candidate": True,
-        "city": city, "match_cid": match_cid, "title": title,
+        "city": city, "match_cid": match_cid, "title": title, "target_date": target_date,
         "low": low, "high": high, "unit": unit, "forecast": forecast,
         "station": station, "token_id": token_id, "price": price,
     }
@@ -611,7 +694,7 @@ def scan_for_new_markets():
             break
         city, match_cid, title = c["city"], c["match_cid"], c["title"]
         low, high, unit, forecast = c["low"], c["high"], c["unit"], c["forecast"]
-        station, token_id, price = c["station"], c["token_id"], c["price"]
+        station, token_id, price, target_date = c["station"], c["token_id"], c["price"], c["target_date"]
 
         if price > MAX_ENTRY_PRICE:
             log(f"⏭ {city} {title[:50]} — prix {price:.2f}¢ déjà trop haut (>{MAX_ENTRY_PRICE:.2f})")
@@ -619,6 +702,7 @@ def scan_for_new_markets():
                 "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
                 "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
                 "station_source": station, "entry_price": price, "bet_usdc": 0.0,
+                "target_date": target_date.isoformat(),
                 "status": "skipped_price_too_high", "dry_run": DRY_RUN,
             })
             continue
@@ -632,6 +716,7 @@ def scan_for_new_markets():
                 "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
                 "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
                 "station_source": station, "entry_price": price, "bet_usdc": 0.0,
+                "target_date": target_date.isoformat(),
                 "confidence": confidence, "analysis": analysis,
                 "status": "skipped_confidence", "dry_run": DRY_RUN,
             })
@@ -648,6 +733,7 @@ def scan_for_new_markets():
             "condition_id": match_cid, "title": title, "city": city, "outcome": "Yes",
             "token_id": token_id, "forecast_source": "open_meteo_blend", "forecast_temp": forecast,
             "station_source": station, "entry_price": price, "bet_usdc": bet,
+            "target_date": target_date.isoformat(),
             "confidence": confidence, "analysis": analysis,
             "status": "open" if ok else "failed", "dry_run": DRY_RUN,
         })
@@ -656,10 +742,17 @@ def scan_for_new_markets():
 
 # ── Cycle de surveillance ─────────────────────────────────────────────────────
 
+# Dernière valeur de prévision vue par position (condition_id -> models_avg) — évite de
+# rappeler Haiku à chaque check (1x/s) si rien n'a changé depuis la dernière fois.
+_last_forecast_seen: dict[str, float] = {}
+FORECAST_CHANGE_THRESHOLD = 0.3  # °F ou °C — en dessous, on considère que rien n'a bougé
+
 def monitor_open_positions():
     positions = get_open_positions()
     if not positions:
         return
+
+    today = datetime.datetime.now(UTC).date()
 
     for pos in positions:
         if _shutdown:
@@ -671,38 +764,63 @@ def monitor_open_positions():
         city       = pos.get("city", "")
         station    = pos.get("station_source")
         title      = pos.get("title", "")
+        target_date_str = pos.get("target_date")
 
         rng = parse_range(title)
         if not rng or not token_id or entry_price <= 0:
             continue
         low, high, unit = rng
 
-        # 1) Stop-loss prix
+        # 1) Stop-loss prix — actif à tout moment, avant comme après le jour de clôture
         bid = get_best_bid(token_id)
         if bid is not None and bid <= entry_price * (1 - STOP_LOSS_PCT):
             log(f"🔻 Stop-loss {city} — {title[:50]} : {entry_price:.2f}→{bid:.2f} (-{STOP_LOSS_PCT*100:.0f}%)")
             _close_position(pos, "stop_loss", bid, token_id, bet_usdc, entry_price)
             continue
 
-        # 2) Divergence météo — station officielle
-        if station:
-            obs = fetch_metar_observations(station)
-            if obs:
-                max_obs = obs["max_observed_c"] if unit == "celsius" else c_to_f(obs["max_observed_c"])
-                tz_name = CITY_TZ.get(city, "UTC")
-                local_hour = get_local_hour(tz_name)
+        target_date = datetime.date.fromisoformat(target_date_str) if target_date_str else None
+        is_resolution_day = target_date is not None and target_date <= today
 
-                if max_obs > high:
-                    log(f"🌡️ Divergence météo {city} — max observé {max_obs:.1f} > borne haute {high}")
-                    exit_price = bid if bid is not None else 0.0
-                    _close_position(pos, "weather_divergence", exit_price, token_id, bet_usdc, entry_price)
-                    continue
+        if is_resolution_day:
+            # 2a) Jour de clôture : la station officielle a maintenant des données pertinentes
+            if station:
+                obs = fetch_metar_observations(station)
+                if obs:
+                    max_obs = obs["max_observed_c"] if unit == "celsius" else c_to_f(obs["max_observed_c"])
+                    tz_name = CITY_TZ.get(city, "UTC")
+                    local_hour = get_local_hour(tz_name)
 
-                if obs["peak_passed"] and local_hour >= LATE_DAY_HOUR and max_obs < low:
-                    log(f"🌡️ Divergence météo {city} — pic passé, max observé {max_obs:.1f} < borne basse {low}")
-                    exit_price = bid if bid is not None else 0.0
-                    _close_position(pos, "weather_divergence", exit_price, token_id, bet_usdc, entry_price)
-                    continue
+                    if max_obs > high:
+                        log(f"🌡️ Divergence météo {city} — max observé {max_obs:.1f} > borne haute {high}")
+                        exit_price = bid if bid is not None else 0.0
+                        _close_position(pos, "weather_divergence", exit_price, token_id, bet_usdc, entry_price)
+                        continue
+
+                    if obs["peak_passed"] and local_hour >= LATE_DAY_HOUR and max_obs < low:
+                        log(f"🌡️ Divergence météo {city} — pic passé, max observé {max_obs:.1f} < borne basse {low}")
+                        exit_price = bid if bid is not None else 0.0
+                        _close_position(pos, "weather_divergence", exit_price, token_id, bet_usdc, entry_price)
+                        continue
+        elif target_date is not None:
+            # 2b) Avant le jour de clôture : la station n'a pas encore de données utiles pour
+            # cette date — on réévalue à partir de la prévision actualisée (multi-indicateurs)
+            slug = _event_slug(city, target_date)
+            ctx = get_rich_weather_context(city, title, slug)
+            if ctx:
+                current_forecast = ctx.get("models_avg") or ctx.get("current_temp")
+                last_seen = _last_forecast_seen.get(cid)
+                changed = current_forecast is not None and (
+                    last_seen is None or abs(current_forecast - last_seen) >= FORECAST_CHANGE_THRESHOLD
+                )
+                if changed:
+                    _last_forecast_seen[cid] = current_forecast
+                    reasoning, confidence, decision = analyze_hold_or_sell(
+                        title, low, high, unit, ctx, entry_price, bid)
+                    log(f"🔄 Réévaluation {city} — {title[:50]} : {decision} (conf={confidence}/5) | {reasoning[:100]}")
+                    if decision == "sell":
+                        exit_price = bid if bid is not None else 0.0
+                        _close_position(pos, "forecast_revision", exit_price, token_id, bet_usdc, entry_price)
+                        continue
 
         # sinon : on tient jusqu'à résolution naturelle
 
