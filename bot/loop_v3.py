@@ -499,23 +499,27 @@ def get_token_id(condition_id: str, outcome: str) -> str | None:
     return None
 
 def get_best_ask(token_id: str) -> float | None:
+    """Meilleur ask = prix le plus BAS. L'API ne garantit pas l'ordre de la liste (vu en
+    pratique triée du pire au meilleur, donc asks[0] ≠ le vrai meilleur prix) — on calcule
+    le min explicitement plutôt que de faire confiance à l'ordre retourné."""
     try:
         r = requests.get(f"{CLOB_API}/book", params={"token_id": token_id}, timeout=TIMEOUT)
         if r.status_code == 200:
             asks = r.json().get("asks", [])
             if asks:
-                return float(asks[0]["price"])
+                return min(float(a["price"]) for a in asks)
     except Exception as e:
         log(f"⚠️ get_best_ask: {e}")
     return None
 
 def get_best_bid(token_id: str) -> float | None:
+    """Meilleur bid = prix le plus HAUT — calculé explicitement, même raison que get_best_ask."""
     try:
         r = requests.get(f"{CLOB_API}/book", params={"token_id": token_id}, timeout=TIMEOUT)
         if r.status_code == 200:
             bids = r.json().get("bids", [])
             if bids:
-                return float(bids[-1]["price"])  # meilleur bid = dernier de la liste triée croissant
+                return max(float(b["price"]) for b in bids)
     except Exception as e:
         log(f"⚠️ get_best_bid: {e}")
     return None
