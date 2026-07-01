@@ -3,7 +3,7 @@ copy_sailor82.py — Copy-trade sailor82 sur marchés température Polymarket.
 
 Au démarrage : fige une baseline des positions déjà ouvertes de sailor82 (ignorées, jamais copiées).
 
-Cycle toutes les 30s :
+Cycle toutes les 2s :
   1. Détecte les nouvelles positions température de sailor82 (absentes de la baseline/déjà vues)
   2. Récupère la météo Open-Meteo pour la ville/date
   3. Claude Haiku analyse pourquoi sailor82 prend ce trade + note de confiance 1-5
@@ -29,7 +29,7 @@ load_dotenv(".env")
 # ── Config ────────────────────────────────────────────────────────────────────
 
 SAILOR82_ADDRESS = "0xbbb72a812cfbc5217d77c0a0018c71f174d3a11a"
-POLL_INTERVAL    = 30        # 30s entre les cycles
+POLL_INTERVAL    = 2         # 2s entre les cycles — réagir vite avant que le prix ne bouge
 TRADE_SIZE       = 5.0       # $5 fixe par trade copié, quelle que soit la mise de sailor82
 MIN_CONFIDENCE   = 2         # confiance Haiku minimum pour copier (1-5)
 STOP_LOSS_PCT    = 0.40      # -40% depuis notre prix d'entrée → on revend
